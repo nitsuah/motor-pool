@@ -116,6 +116,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   compose look for `.env` one directory above the repo; dropped it everywhere
   (docs, `.env.example`, overlay headers, the ToolWorkbench hint) and added the
   missing `.env` copy step. Screenshots re-captured from the rebranded UI.
+- Quick Start commands in the README have been updated to run compose from the
+  `config/` directory without `--project-directory`.
 - Hub experience chips (Developer / Researcher / Safe Chat / Content Studio /
   Website Agent) all created a Developer session: `createSession` ignored the
   experience key the chip passed and always used the previously selected one.
