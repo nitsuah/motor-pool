@@ -24,17 +24,17 @@
     "@opentelemetry/semantic-conventions": "^1.43.0",
     "axios": "^1.20.0",
     "cors": "^2.8.5",
-    "dotenv": "^18.0.3",
+    "dotenv": "^18.0.5",
     "express": "^5.2.1",
-    "pg": "^8.23.0",
+    "pg": "^8.23.1",
     "three": "^0.186.1",
-    "ws": "^8.21.3"
+    "ws": "^8.22.0"
   },
   "devDependencies": {
     "@vitejs/plugin-react": "^6.1.1",
     "c8": "^12.0.0",
     "react": "^19.3.0",
     "react-dom": "^19.3.0",
-    "vite": "^8.3.1"
+    "vite": "^8.3.2"
   }
 }
