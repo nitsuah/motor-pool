@@ -1,0 +1,362 @@
+{
+  "product": "motor-pool",
+  "live": null,
+  "page": "https://nitsuah.github.io/motor-pool/",
+  "pagesDir": "site",
+  "features": [
+    {
+      "id": "agent-lifecycle-management",
+      "title": "Agent Lifecycle Management",
+      "category": "Core Functionality",
+      "screenshots": [],
+      "spots": []
+    },
+    {
+      "id": "real-time-status-monitoring",
+      "title": "Real-time Status Monitoring",
+      "category": "Core Functionality",
+      "screenshots": [],
+      "spots": []
+    },
+    {
+      "id": "task-queue-visualization",
+      "title": "Task Queue Visualization",
+      "category": "Core Functionality",
+      "screenshots": [],
+      "spots": []
+    },
+    {
+      "id": "multi-agent-coordination",
+      "title": "Multi-Agent Coordination",
+      "category": "Core Functionality",
+      "screenshots": [],
+      "spots": []
+    },
+    {
+      "id": "persistent-agent-history",
+      "title": "Persistent Agent History",
+      "category": "Core Functionality",
+      "screenshots": [],
+      "spots": []
+    },
+    {
+      "id": "dynamic-task-assignment",
+      "title": "Dynamic Task Assignment",
+      "category": "Core Functionality",
+      "screenshots": [],
+      "spots": []
+    },
+    {
+      "id": "workspace-file-engine",
+      "title": "Workspace File Engine",
+      "category": "Core Functionality",
+      "screenshots": [],
+      "spots": []
+    },
+    {
+      "id": "workspace-ide",
+      "title": "Workspace IDE",
+      "category": "Core Functionality",
+      "screenshots": [],
+      "spots": []
+    },
+    {
+      "id": "topbar-command-bar",
+      "title": "Topbar Command Bar",
+      "category": "Core Functionality",
+      "screenshots": [],
+      "spots": []
+    },
+    {
+      "id": "agent-lifecycle-api-documentation",
+      "title": "Agent Lifecycle API Documentation",
+      "category": "Core Functionality",
+      "screenshots": [],
+      "spots": []
+    },
+    {
+      "id": "conversation-replay-mode",
+      "title": "Conversation Replay Mode",
+      "category": "Core Functionality",
+      "screenshots": [],
+      "spots": []
+    },
+    {
+      "id": "3d-liminaldashboard-home",
+      "title": "3D LiminalDashboard Home",
+      "category": "Core Functionality",
+      "screenshots": [],
+      "spots": []
+    },
+    {
+      "id": "content-studio-website-agent",
+      "title": "Content Studio & Website Agent",
+      "category": "Integrations & AI Runtimes",
+      "screenshots": [],
+      "spots": []
+    },
+    {
+      "id": "multi-tier-model-provisioning",
+      "title": "Multi-Tier Model Provisioning",
+      "category": "Integrations & AI Runtimes",
+      "screenshots": [],
+      "spots": []
+    },
+    {
+      "id": "webhook-triggers",
+      "title": "Webhook Triggers",
+      "category": "Integrations & AI Runtimes",
+      "screenshots": [],
+      "spots": []
+    },
+    {
+      "id": "restful-api",
+      "title": "RESTful API",
+      "category": "Integrations & AI Runtimes",
+      "screenshots": [],
+      "spots": []
+    },
+    {
+      "id": "event-bus-integration",
+      "title": "Event Bus Integration",
+      "category": "Integrations & AI Runtimes",
+      "screenshots": [],
+      "spots": []
+    },
+    {
+      "id": "byok-external-llms-custom-endpoint-registry",
+      "title": "BYOK External LLMs & Custom Endpoint Registry",
+      "category": "Integrations & AI Runtimes",
+      "screenshots": [],
+      "spots": []
+    },
+    {
+      "id": "plugin-tools-in-the-agent-loop",
+      "title": "Plugin Tools in the Agent Loop",
+      "category": "Integrations & AI Runtimes",
+      "screenshots": [],
+      "spots": []
+    },
+    {
+      "id": "declarative-mcp-registry",
+      "title": "Declarative MCP Registry",
+      "category": "Integrations & AI Runtimes",
+      "screenshots": [],
+      "spots": []
+    },
+    {
+      "id": "bb-mcp-streaming-ui",
+      "title": "bb-mcp Streaming UI",
+      "category": "Integrations & AI Runtimes",
+      "screenshots": [],
+      "spots": []
+    },
+    {
+      "id": "multi-persona-blackboard-selector",
+      "title": "Multi-Persona Blackboard Selector",
+      "category": "Integrations & AI Runtimes",
+      "screenshots": [],
+      "spots": []
+    },
+    {
+      "id": "topic-based-event-channels",
+      "title": "Topic-Based Event Channels",
+      "category": "Integrations & AI Runtimes",
+      "screenshots": [],
+      "spots": []
+    },
+    {
+      "id": "live-model-pull-status",
+      "title": "Live Model Pull Status",
+      "category": "UI/UX",
+      "screenshots": [],
+      "spots": []
+    },
+    {
+      "id": "responsive-dashboard",
+      "title": "Responsive Dashboard",
+      "category": "UI/UX",
+      "screenshots": [],
+      "spots": []
+    },
+    {
+      "id": "dark-light-mode-support",
+      "title": "Dark/Light Mode Support",
+      "category": "UI/UX",
+      "screenshots": [],
+      "spots": []
+    },
+    {
+      "id": "dockerized-deployment",
+      "title": "Dockerized Deployment",
+      "category": "DevOps & Infrastructure",
+      "screenshots": [],
+      "spots": []
+    },
+    {
+      "id": "gpu-acceleration-via-cuda",
+      "title": "GPU Acceleration via CUDA",
+      "category": "DevOps & Infrastructure",
+      "screenshots": [],
+      "spots": []
+    },
+    {
+      "id": "ollama-startup-warmup",
+      "title": "Ollama Startup Warmup",
+      "category": "DevOps & Infrastructure",
+      "screenshots": [],
+      "spots": []
+    },
+    {
+      "id": "environment-variable-configuration",
+      "title": "Environment Variable Configuration",
+      "category": "DevOps & Infrastructure",
+      "screenshots": [],
+      "spots": []
+    },
+    {
+      "id": "health-check-endpoints",
+      "title": "Health Check Endpoints",
+      "category": "DevOps & Infrastructure",
+      "screenshots": [],
+      "spots": []
+    },
+    {
+      "id": "service-discovery-and-panel-control",
+      "title": "Service Discovery and Panel Control",
+      "category": "DevOps & Infrastructure",
+      "screenshots": [],
+      "spots": []
+    },
+    {
+      "id": "live-service-lifecycle-control",
+      "title": "Live Service Lifecycle Control",
+      "category": "DevOps & Infrastructure",
+      "screenshots": [],
+      "spots": []
+    },
+    {
+      "id": "model-management",
+      "title": "Model Management",
+      "category": "DevOps & Infrastructure",
+      "screenshots": [],
+      "spots": []
+    },
+    {
+      "id": "device-profile-system",
+      "title": "Device Profile System",
+      "category": "DevOps & Infrastructure",
+      "screenshots": [],
+      "spots": []
+    },
+    {
+      "id": "bb-mcp-opt-in-integration",
+      "title": "bb-mcp Opt-In Integration",
+      "category": "DevOps & Infrastructure",
+      "screenshots": [],
+      "spots": []
+    },
+    {
+      "id": "openllm-opt-in-endpoint",
+      "title": "OpenLLM Opt-In Endpoint",
+      "category": "DevOps & Infrastructure",
+      "screenshots": [],
+      "spots": []
+    },
+    {
+      "id": "validated-production-deployment-path",
+      "title": "Validated Production Deployment Path",
+      "category": "DevOps & Infrastructure",
+      "screenshots": [],
+      "spots": []
+    },
+    {
+      "id": "content-gen-without-the-docker-socket",
+      "title": "Content-gen Without the Docker Socket",
+      "category": "DevOps & Infrastructure",
+      "screenshots": [],
+      "spots": []
+    },
+    {
+      "id": "ci-unit-test-gate-coverage-artifact",
+      "title": "CI Unit-Test Gate + Coverage Artifact",
+      "category": "DevOps & Infrastructure",
+      "screenshots": [],
+      "spots": []
+    },
+    {
+      "id": "sanitized-gateway-proxy",
+      "title": "Sanitized Gateway Proxy",
+      "category": "Security & Verification",
+      "screenshots": [],
+      "spots": []
+    },
+    {
+      "id": "modular-plugin-architecture",
+      "title": "Modular Plugin Architecture",
+      "category": "Developer Experience",
+      "screenshots": [],
+      "spots": []
+    },
+    {
+      "id": "tmux-multi-agent-worktrees",
+      "title": "tmux Multi-Agent Worktrees",
+      "category": "Developer Experience",
+      "screenshots": [],
+      "spots": []
+    },
+    {
+      "id": "comprehensive-event-logging",
+      "title": "Comprehensive Event Logging",
+      "category": "Developer Experience",
+      "screenshots": [],
+      "spots": []
+    },
+    {
+      "id": "server-frontend-refactor",
+      "title": "Server/Frontend Refactor",
+      "category": "Developer Experience",
+      "screenshots": [],
+      "spots": []
+    },
+    {
+      "id": "safe-chat-hardening",
+      "title": "Safe Chat Hardening",
+      "category": "Developer Experience",
+      "screenshots": [],
+      "spots": []
+    },
+    {
+      "id": "tool-result-visibility-artifacts-tab",
+      "title": "Tool Result Visibility & Artifacts Tab",
+      "category": "Developer Experience",
+      "screenshots": [],
+      "spots": []
+    }
+  ],
+  "spots": [
+    {
+      "id": "launch-20s",
+      "seconds": 20,
+      "format": "landscape",
+      "tool": "brag (one-off, source not kept)",
+      "features": [],
+      "published": "site/assets/motor-pool-launch.mp4",
+      "rendered": "2026-10-01"
+    }
+  ],
+  "reels": [
+    {
+      "id": "hero",
+      "spots": [
+        "launch-20s"
+      ],
+      "published": "site/assets/motor-pool-launch.mp4"
+    }
+  ],
+  "brand": {
+    "source": null,
+    "derived": [],
+    "manual": []
+  }
+}
