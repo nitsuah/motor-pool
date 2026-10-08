@@ -11,7 +11,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
-- Visual showcase ([standard](https://github.com/nitsuah/.github/blob/main/showcase/STANDARD.md)): `promo/spots.json` maps every FEATURES.md entry to its screenshots and videos and records the existing launch video(s); the Pages site loads the shared expand kit (click-to-expand images, fullscreen button on videos).
+- Visual showcase ([standard](https://github.com/nitsuah/.github/blob/main/showcase/STANDARD.md)): `promo/spots.json` lists every shipped FEATURES.md entry and records the existing launch video(s); feature-to-video and screenshot links are still empty and get filled in on the next `/promo` run; the Pages site loads the shared expand kit (click-to-expand images, fullscreen button on videos).
 - **Agent workspace sandbox** (`modules/workspace-sandbox.js`) — by default agents
   work in their own checkout: a dedicated `agent_workspace` volume seeded by a
   one-shot `workspace-seed` service from a read-only repo mount (`git clone` onto
