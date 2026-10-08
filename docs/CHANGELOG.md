@@ -113,6 +113,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- README Quick Start `cd`'d into `...\code\agent-board\config`, a folder that doesn't exist after cloning per docs/DEPLOYMENT.md (`git clone .../motor-pool.git`); it now uses `motor-pool\config` relative to the clone's parent.
 - README/DEPLOYMENT quick-start commands used `--project-directory .`, which makes
   compose look for `.env` one directory above the repo; dropped it everywhere
   (docs, `.env.example`, overlay headers, the ToolWorkbench hint) and added the
@@ -161,7 +162,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   default to an isolated sandbox checkout (see Added).
 - The agent container no longer mounts the repo (`/workspace-root`) in the base
   stack — only the trusted-dev docker-control overlay does — so model-run shell
-  commands can't read the source tree or its `.env` (CWE-200).
+  commands can't reach the host repo mount or its `.env`; agents work in the
+  separate, secret-filtered `agent_workspace` checkout instead (CWE-200).
 - The `bash` agent tool ran with the dashboard's full environment, so `env` or
   `echo $GITHUB_SECRET` exposed every `.env` secret; it now gets only `PATH`,
   `HOME`, locale and git identity variables.
