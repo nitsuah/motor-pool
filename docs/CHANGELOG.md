@@ -113,7 +113,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
-- README Quick Start `cd`'d into `...\codegent-board\config`, a folder that doesn't exist after cloning per docs/DEPLOYMENT.md (`git clone .../motor-pool.git`); it now uses `motor-pool\config` relative to the clone's parent.
+- README Quick Start `cd`'d into `...\code\agent-board\config`, a folder that doesn't exist after cloning per docs/DEPLOYMENT.md (`git clone .../motor-pool.git`); it now uses `motor-pool\config` relative to the clone's parent.
 - README/DEPLOYMENT quick-start commands used `--project-directory .`, which makes
   compose look for `.env` one directory above the repo; dropped it everywhere
   (docs, `.env.example`, overlay headers, the ToolWorkbench hint) and added the
