@@ -46,14 +46,14 @@ Captured from the local Docker stack at `http://localhost:3000`.
 Minimal stack (dashboard + Ollama + DB — fits a 16 GB host):
 
 ```powershell
-cd C:\Users\$env:USERNAME\code\agent-board\config
+cd motor-pool\config   # from the folder that holds your clone (see docs/DEPLOYMENT.md)
 docker compose -f docker-compose.yml up -d
 ```
 
 or for GPU:
 
 ```powershell
-cd C:\Users\$env:USERNAME\code\agent-board\config
+cd motor-pool\config   # from the folder that holds your clone (see docs/DEPLOYMENT.md)
 docker compose -f docker-compose.yml -f docker-compose.gpu.yml up -d
 ```
 
