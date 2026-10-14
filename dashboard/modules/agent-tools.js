@@ -121,7 +121,7 @@ export const WEBSITE_AGENT_TOOLS = [
 const BASH_BLOCKLIST = ['rm -rf /', 'dd if=', ':(){ :|:& };:', '> /dev/sd', 'mkfs'];
 
 // Model-supplied shell commands must not inherit the dashboard's environment,
-// which carries every secret from .env (GITHUB_SECRET, API keys, DB URL…) —
+// which carries every secret from .env (API keys, POSTGRES_PASSWORD, DB URL…) —
 // `env` or `echo $X` would otherwise read them (CWE-200). Pass only what a
 // shell, git and node need.
 const AGENT_SHELL_ENV_KEYS = ['PATH', 'HOME', 'LANG', 'LC_ALL', 'TERM', 'TZ',

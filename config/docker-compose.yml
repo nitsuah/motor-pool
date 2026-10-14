@@ -299,17 +299,12 @@ services:
     build:
       context: ../dashboard
       dockerfile: Dockerfile
-      args:
-        GITHUB_ID: ${GITHUB_ID}
-        GITHUB_SECRET: ${GITHUB_SECRET}
     container_name: agent-dashboard
     ports:
       - "3000:3000"
     env_file:
       - ../.env
     environment:
-      - GITHUB_ID=${GITHUB_ID}
-      - GITHUB_SECRET=${GITHUB_SECRET}
       - PRIMARY_LLM_URL=http://ollama:8080
       - PRIMARY_LLM_MODEL=${PRIMARY_LLM_MODEL:-llama3.2:3b}
       # Docker Model Runner: Docker Desktop exposes this host to all containers
