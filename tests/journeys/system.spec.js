@@ -20,5 +20,6 @@ test('operator checks stack health and switches to light mode', {
     await step(page, 'switch to light mode', async () => {
         await page.getByTitle('Switch to light mode').click();
         await expect(page.getByTitle('Switch to dark mode')).toBeVisible();
+        await expect(page.locator('html')).toHaveAttribute('data-theme', 'light');
     }, { docs: 'dark-light-mode-support' });
 });

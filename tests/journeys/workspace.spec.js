@@ -8,7 +8,7 @@ const openWorkspace = async (page) => {
 test('developer opens a file in the workspace and saves a change', {
     tag: ['@feature:workspace-ide', '@feature:workspace-file-engine'],
 }, async ({ page }) => {
-    await mockDashboard(page);
+    const db = await mockDashboard(page);
     await page.goto('/');
     await settle(page);
 
@@ -28,6 +28,8 @@ test('developer opens a file in the workspace and saves a change', {
         await editor.fill("export function login(user, pass) {\n  if (tooManyAttempts(user)) return false;\n  return user === 'demo' && pass === 'demo';\n}\n");
         await page.getByRole('button', { name: /Save/ }).click();
         await expect(page.getByText('Saving…')).toHaveCount(0);
+        // The save reached /api/workspace/write, not just the button state.
+        await expect.poll(() => db.files['src/login.js']).toContain('tooManyAttempts(user)');
     }, { docs: 'workspace-ide' });
 });
 
