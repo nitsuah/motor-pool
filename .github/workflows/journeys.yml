@@ -17,22 +17,45 @@ on:
       - 'config/playwright.journeys.config.js'
       - '.github/workflows/journeys.yml'
 
-permissions:
-  contents: write # bot/journeys branch only
-  issues: write
+permissions: {}
 
 concurrency:
   group: journeys-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
-  journeys:
-    uses: nitsuah/.github/.github/workflows/journeys.yml@main
+  # Pull requests run repo code (npm ci, the journeys) and only print a summary,
+  # so they get a read-only token.
+  journeys-pr:
+    if: github.event_name == 'pull_request'
+    permissions:
+      contents: read
+      issues: read
+    uses: nitsuah/.github/.github/workflows/journeys.yml@b0a9f894a450790450aaecb2b1fb1b2ea524f64d # main 2026-10-15
     with:
       # Keep in step with @playwright/test in package.json.
       image: mcr.microsoft.com/playwright:v1.64.0-jammy
       command: npm run test:journeys
       features: promo/spots.json
+      kit-ref: b0a9f894a450790450aaecb2b1fb1b2ea524f64d # same commit as the workflow ref above; bump both together
+      repro: |
+        docker run --rm -v "$PWD:/w" -w /w -e CI=true mcr.microsoft.com/playwright:v1.64.0-jammy \
+          sh -c "npm ci && npm run test:journeys"
+
+  # Nightly and manual runs file and close bot:journey issues and update the
+  # bot/journeys branch (BUGS.md, metrics).
+  journeys:
+    if: github.event_name != 'pull_request'
+    permissions:
+      contents: write # bot/journeys branch only
+      issues: write
+    uses: nitsuah/.github/.github/workflows/journeys.yml@b0a9f894a450790450aaecb2b1fb1b2ea524f64d # main 2026-10-15
+    with:
+      # Keep in step with @playwright/test in package.json.
+      image: mcr.microsoft.com/playwright:v1.64.0-jammy
+      command: npm run test:journeys
+      features: promo/spots.json
+      kit-ref: b0a9f894a450790450aaecb2b1fb1b2ea524f64d # same commit as the workflow ref above; bump both together
       repro: |
         docker run --rm -v "$PWD:/w" -w /w -e CI=true mcr.microsoft.com/playwright:v1.64.0-jammy \
           sh -c "npm ci && npm run test:journeys"
