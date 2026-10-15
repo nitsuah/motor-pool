@@ -9,6 +9,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- Dashboard top bar no longer clips its second row at phone width, so session tabs and the workspace button are reachable (#96).
+- Chat header session name is styled as a heading button on the dark theme instead of a default white button (#97).
+
 ### Added
 
 - **Imps implementation plan** (`docs/IMPS-PLAN.md`): durable Postgres job queue with leases, principals/API tokens with per-owner visibility, a sandboxed `imp-runner` (headless Claude Code via 9router, DinD for tests, runner-side push behind a pre-push gate, GitHub App identity), dispatchers and a PR-by-PR build-day sequence. TASKS P1 and a 2026 Q4 ROADMAP section track it.

@@ -25,7 +25,7 @@ and `ROADMAP.md` 2027 Q1 for the condensed record._
 
 ### P2 - Medium
 
-- [ ] Fix the two defects from the journeys review pass.
+- [x] Fix the two defects from the journeys review pass. Done 2026-10-15: #96 top bar grows on a phone instead of clipping; #97 session name styled.
   - Priority: P2
   - #96: at 390px the wrapped second row of the top bar (workspace button, split toggles, session tabs) is cut off, so sessions and the workspace are unreachable on a phone (`dashboard/src/App.css:75-87`).
   - #97: `.session-name-btn` (`SessionHeader.jsx:40`) has no CSS, so the session name renders as a white default button.
