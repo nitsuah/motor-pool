@@ -1,0 +1,55 @@
+flowchart LR
+  user(["Browser: React + Three.js dashboard"])
+  hook(["External systems: CI, deploy, alerts"])
+
+  subgraph dash["agent-dashboard :3000 (Express)"]
+    direction TB
+    api["/api routes: sessions, tasks, tools, models, mcp-registry, docker, workspace, webhooks"]
+    safety["Safety pipeline: classify input, redact PII, sanitize output"]
+    loop["Agent loop: model call + tool calls"]
+    runner["Task runner: priority queue, 5s tick"]
+    bus["Event bus + /ws/events"]
+    api --> safety --> loop
+    api --> runner --> loop
+    api --> bus
+    runner --> bus
+    loop --> bus
+  end
+
+  subgraph llm["LLM endpoints"]
+    ollama["ollama :8081 (primary)"]
+    dmr["Docker Model Runner"]
+    openllm["OpenLLM :8082 (profile openllm)"]
+    byok["BYOK custom endpoints (keys held server-side)"]
+  end
+
+  subgraph mcp["MCP tool servers (profile tools)"]
+    cg["tool-content-gen :3200"]
+    web["tool-website :3201"]
+    bb["bb-mcp :3100 (profile bb-mcp, opt-in)"]
+  end
+
+  mpt["MoneyPrinterTurbo on host (MPT_API_URL)"]
+  db[("agent-db Postgres: sessions + events")]
+  ws[("agent_workspace volume: sandbox checkout")]
+  seed["workspace-seed (one-shot)"]
+  jaeger["Jaeger :16686 (profile observability)"]
+  compose["docker compose CLI (opt-in docker-control override)"]
+
+  user -- "HTTP + SSE" --> api
+  bus -- "WebSocket events" --> user
+  hook -- "POST /api/webhooks/trigger (HMAC)" --> api
+  loop --> ollama
+  loop --> dmr
+  loop --> openllm
+  loop --> byok
+  loop -- "plugin__tool calls" --> cg
+  loop --> web
+  loop --> bb
+  cg --> mpt
+  api -- "start / stop / restart" --> compose
+  compose -. "controls" .-> mcp
+  dash --> db
+  loop -- "file + shell tools" --> ws
+  seed --> ws
+  dash -. "OTLP :4318" .-> jaeger
