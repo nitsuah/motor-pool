@@ -259,3 +259,85 @@ A design that fits the codebase:
 6. **Phase 4, compliance packaging:** air-gapped install, data-flow and FERPA documentation, an accessibility audit, then one pilot district or agency.
 
 **Revised product grade, conditional:** still C+ today. If Phase 0 and Phase 1 ship with measured recall@k and one pilot, this is a credible B+ niche product, which is more than a Rust rewrite could do for it.
+
+## 10. Target architecture: safe async agents with role-based control
+
+The intent, as stated: one place that **hosts one or more models, is the front end for them, combines them into agent setups, and runs those agents asynchronously in their own sandboxes**. What an agent may do depends on who asked (student, teacher, admin, employee, intern), and how it spends (local, 9router, frontier) is a policy choice.
+
+### 10.1 Where it is today
+
+- `task-runner.js` (91 lines) keeps tasks in an in-memory `Map`, polls every 5 s, runs **one task at a time**, and dispatches it as a chat turn.
+- Tools (`bash`, `write_file`, …) execute **inside the dashboard process**, against one shared `agent_workspace` volume.
+- Parallelism means tmux windows plus git worktrees (`routes/worktrees.js`), still inside the same container.
+- "Experiences" (Developer / Research / Safe Chat) already bundle an endpoint, tools and a safety mode. That's the seed of the "setup" concept below.
+
+The sandbox *inside* the box is thoughtful (scrubbed env, tool allowlist, no `.env`). But every agent shares one process, one filesystem and one network identity, and nothing survives a restart. That's fine for a demo, and not something you can offer a school.
+
+### 10.2 Five concepts
+
+| Concept | What it is | Grows out of |
+| --- | --- | --- |
+| **Model pool** | Every model you can reach (local vLLM/llama.cpp/Ollama, 9router, BYOK, agency-contracted frontier), each tagged with cost, context size, speed and the **highest data classification it may receive** (e.g. student PII → local only) | `llm-config.js`, `endpoint-store.js`, device profiles |
+| **Blueprint** (a "setup") | A named agent recipe: roles → models (router, planner, worker, safety checker), a registry query or tool allowlist, sandbox profile, budget, approval rules, output contract | Experiences |
+| **Policy** | Tenant × role → allowed blueprints, models, tools, data classes, spend caps, which side effects need approval | New; the RBAC item, pulled forward |
+| **Job** | One async run of a blueprint for a user: durable, resumable, observable, with artifacts and an audit trail. Subagents are child jobs | `task-runner.js`, tasks routes |
+| **Runner** | Executes one job in a fresh, disposable sandbox, then destroys it | Replaces tmux worktrees |
+
+Example policy rows:
+
+- **Student:** "Tutor" and "Research helper" blueprints; local models only; no shell; web search through a filtered proxy; 50k tokens a day.
+- **Teacher:** adds "Grade assistant" (bb-mcp read-only) and "Lesson builder"; may escalate to the district's contracted frontier model; writes to the LMS need approval.
+- **Employee / intern:** "Dev agent" with shell in a sandbox. The intern's PRs and outbound messages always go to an approver; the employee's run without approval inside their own repos.
+- **Admin:** manages blueprints, the model pool and budgets, and reads audit logs, but doesn't see student content by default (separation of duties).
+
+### 10.3 How a job runs
+
+```
+user ──▶ gateway (auth, policy, registry, model routing, audit)
+             │  enqueue job (Postgres)
+             ▼
+        scheduler ──▶ runner supervisor ──▶ [ sandbox: agent loop + tools + workspace ]
+                                                │  all egress goes back through the gateway
+                                                ▼
+                                    gateway: model calls, tool/MCP calls, web
+```
+
+Design rules that make it safe rather than just isolated:
+
+1. **The sandbox holds no credentials and has no direct network access.** Its only route out is the gateway, so every model call, MCP call and web fetch passes through policy, PII redaction, budget accounting and the audit log. API keys, LMS tokens and repo credentials stay in the gateway (credential brokering). This is the single most important rule; it makes "a student can't exfiltrate data" and "an intern's agent can't push to main" properties you can enforce, not hopes.
+2. **Capabilities only shrink.** A subagent's policy is the intersection of its parent's policy and its own blueprint. A child can never get a tool, model, data class or budget its parent didn't have.
+3. **Side effects go through approval gates.** The agent works freely in its scratch workspace. Anything that leaves it (a commit pushed, an email sent, a grade written, a file shared) becomes a proposed action that policy can auto-approve or route to a human. Async work makes this natural: the user gets "your job finished; 2 actions await approval".
+4. **Durable and resumable.** Job state, step log and artifacts live in Postgres plus object or volume storage. If a runner dies, the job can resume from its last checkpoint instead of starting over.
+5. **Budgets are enforced, not just reported.** Tokens, money and GPU-seconds are counted per job, per user and per tenant at the gateway. Routing tries the cheapest model in the pool that satisfies the blueprint and data class, and escalates only if policy and the remaining budget allow.
+
+### 10.4 Isolation tiers (pick by role and blueprint)
+
+| Tier | Mechanism | Startup | Use for |
+| --- | --- | --- | --- |
+| 0 | In-process tools (today) | 0 | Read-only chat helpers only |
+| 1 | Rootless container per job, seccomp, read-only rootfs, CPU/mem/pid/time limits, egress only to the gateway | ~0.5–1 s | Staff dev agents, research |
+| 2 | gVisor (`runsc`) per job | ~1–2 s | Student-facing agents that execute code |
+| 3 | Firecracker or Kata microVM per job | ~150 ms–2 s | Untrusted code, multi-tenant gov workloads |
+
+Start with tier 1; tiers 2 and 3 are runtime flags on the same runner interface. **The dashboard must never hold the Docker socket.** A small, separate **runner supervisor** with a tiny API ("start this image with these limits, stream logs, kill it") is the only privileged component.
+
+**This is the one place Rust genuinely earns its keep.** The supervisor is small, privileged, long-running and security-critical, exactly the profile Rust is good at (Firecracker and youki are both Rust). If you want a Rust component for real reasons rather than performance theatre, make it this: ~1–2k lines, built separately, with the gateway staying in Node.
+
+### 10.5 Corrections to earlier sections
+
+- **Keep Postgres.** Section 5's "SQLite instead of Postgres" applies only to a single-user lite edition. A multi-user job system wants Postgres: the job queue via `SELECT … FOR UPDATE SKIP LOCKED`, audit log, tenants and policy. No Redis or Kafka needed at this scale.
+- **Retire tmux worktrees** once tier-1 runners exist. Git worktrees still make sense *inside* a job's workspace.
+- **The event bus becomes job event streaming:** step started, tool called, approval needed, artifact produced, job done, fanned out to the UI over the existing `/ws/events`.
+- **Policy engine:** begin with a plain Postgres table checked in one middleware. If rules get complex, use Cedar (it has a JS/WASM binding, is purpose-built for this "principal → action → resource" model, and its policies can be audited and shown to procurement).
+
+### 10.6 Build order (supersedes 9.5 where they differ)
+
+1. **Gate:** exec-route token → SSO/OIDC → tenants, roles and a policy table → audit log.
+2. **Jobs:** a durable Postgres job queue, job/step/artifact tables, concurrent workers, and job events over WebSocket. Still in-process tools for now, behind the same interface the runner will implement.
+3. **Runner, tier 1:** a separate supervisor, a per-job rootless container with no credentials and gateway-only egress, artifacts out, sandbox destroyed afterwards. Then retire tmux.
+4. **Blueprints and model pool:** migrate experiences to blueprints, add data-class tags on models, cheapest-first routing with escalation, and enforced budgets. 9router becomes one pool member.
+5. **Registry:** native BM25 disclosure (section 9) feeding blueprints' tool sets.
+6. **Approvals and subagents:** proposed-action queue with approve/deny UI; child jobs with shrinking policy.
+7. **Hardening for pilots:** gVisor tier for student blueprints, air-gapped install, FERPA data-flow doc, accessibility pass.
+
+Each step is independently demoable. Steps 1–3 alone make the "safe async agent" claim true at a basic level.
