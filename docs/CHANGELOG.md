@@ -78,6 +78,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- Docs: reconciled the ROADMAP 2026 reset note with the 2026 Q4 Imps section; qualified the Ollama concurrency and Section 508/WCAG claims in RUST-REWRITE-ASSESSMENT.md.
 - **Rebrand: agent-board → motor-pool.** Public-facing naming (README, docs,
   dashboard title/onboarding/3D hub, OTEL service name `motor-pool-dashboard`,
   npm package scopes `@motor-pool/*`, GitHub URLs `nitsuah/motor-pool`) is now
