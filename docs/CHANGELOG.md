@@ -11,6 +11,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Visual docs: `docs/diagrams/architecture.mmd` and `task-lifecycle.mmd` (rendered to SVG and embedded in the README under Architecture), a `visual-docs` workflow that re-renders them and opens a bot PR, and `promo/spots.json` now links 16 features to existing screenshots and marks 22 non-visual features `visual: none`.
 - Visual showcase ([standard](https://github.com/nitsuah/.github/blob/main/showcase/STANDARD.md)): `promo/spots.json` lists every shipped FEATURES.md entry and records the existing launch video(s); feature-to-video and screenshot links are still empty and get filled in on the next `/promo` run; the Pages site loads the shared expand kit (click-to-expand images, fullscreen button on videos).
 - **Agent workspace sandbox** (`modules/workspace-sandbox.js`) — by default agents
   work in their own checkout: a dedicated `agent_workspace` volume seeded by a
