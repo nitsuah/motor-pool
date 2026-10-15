@@ -110,6 +110,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `docs/MCP_SETUP.md` to `docs/archive/` — all three predated the current compose
   service names and MCP/plugin architecture and were superseded by `README.md` and
   `docs/API.md`.
+- Removed the unused `GITHUB_ID` / `GITHUB_SECRET` build args, `ARG`/`ENV` lines and
+  compose `environment` entries from the `agent-dashboard` service, and their
+  `.env.example` placeholders. Nothing in the dashboard, tools or scripts read them,
+  and the build args baked the secret into image layers.
 
 ### Fixed
 
