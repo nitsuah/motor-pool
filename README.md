@@ -528,6 +528,7 @@ Every committed Markdown doc in this repo (other than this README, `.github/` an
 - [Features](./docs/FEATURES.md) — `docs/FEATURES.md`
 - [Project Metrics: motor-pool](./docs/METRICS.md) — `docs/METRICS.md`
 - [ROADMAP](./docs/ROADMAP.md) — `docs/ROADMAP.md`
+- [Rust Rewrite Assessment](./docs/RUST-REWRITE-ASSESSMENT.md) — `docs/RUST-REWRITE-ASSESSMENT.md`
 - [TASKS](./docs/TASKS.md) — `docs/TASKS.md`
 
 **`docs/archive/`**
