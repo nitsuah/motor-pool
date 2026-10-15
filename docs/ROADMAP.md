@@ -2,12 +2,12 @@
 
 > 🧭 [motor-pool](../README.md) · [Features](./FEATURES.md) · **Roadmap** · [Tasks](./TASKS.md) · [Changelog](./CHANGELOG.md) · [Metrics](./METRICS.md) <!-- nav -->
 
-Last Updated: 2026-09-24
+Last Updated: 2026-10-15
 
 > 2027 planning reset (2026-09-24, `pmo-ff`): every completed 2026 item was removed from this file and
 > condensed into [FEATURES](./FEATURES.md) / [CHANGELOG](./CHANGELOG.md). Open 2026 items were carried
 > into 2027 Q1 below, except the multi-tenancy/RBAC, audit logging, analytics, host profiling Phase 1, decoupled
-> runtimes, and guardrails items, which had already been re-scoped to 2027 Q3. Nothing is scheduled in a 2026 quarter anymore.
+> runtimes, and guardrails items, which had already been re-scoped to 2027 Q3. Nothing from the original 2026 plan remains in a 2026 quarter; the 2026 Q4 Imps section below was added afterwards (2026-10-14).
 
 ## 2026 Q4 - Imps: safe async agent tasks (In Progress)
 
