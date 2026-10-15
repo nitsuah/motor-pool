@@ -12,10 +12,38 @@ test('operator opens motor-pool on a phone', {
     await step(page, 'see the hub on a phone', async () => {
         await expect(page.getByText('Your AI ops cockpit', { exact: false })).toBeVisible();
         await expect(page.getByRole('button', { name: /New Session/ })).toBeVisible();
+        for (const title of ['Workspace', 'Split — side by side', 'Split — stacked']) {
+            await expect(page.getByTitle(title, { exact: true })).toBeVisible();
+            await expect(page.getByTitle(title, { exact: true })).toBeEnabled();
+        }
+        await expect(page.locator('.session-tab')).toHaveCount(2);
     }, { docs: 'responsive-dashboard' });
 
     await step(page, 'page does not scroll sideways', async () => {
         const overflow = await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
         expect(overflow).toBe(0);
     }, { screenshot: false });
+});
+
+test('operator opens a session from the top bar on a phone', {
+    tag: ['@feature:responsive-dashboard'],
+}, async ({ page }) => {
+    await mockDashboard(page);
+    await page.goto('/');
+    await settle(page);
+
+    await step(page, 'open the Fix login bug session on a phone', async () => {
+        // A click fails if the tab is under another element (the hub canvas), so this proves it is reachable.
+        await page.locator('.session-tab', { hasText: 'Fix login bug' }).click();
+        await expect(page.getByPlaceholder('Type a message…')).toBeVisible();
+        for (const title of ['Workspace', 'Split — side by side', 'Split — stacked']) {
+            await expect(page.getByTitle(title, { exact: true })).toBeVisible();
+            await expect(page.getByTitle(title, { exact: true })).toBeEnabled();
+        }
+        const bar = await page.locator('.topbar').boundingBox();
+        const tab = await page.locator('.session-tab', { hasText: 'Fix login bug' }).boundingBox();
+        expect(tab.y + tab.height).toBeLessThanOrEqual(bar.y + bar.height);
+        await expect(page.locator('.topbar-tabs button').first()).toBeInViewport();
+        await settle(page);
+    }, { docs: 'responsive-dashboard-session' });
 });

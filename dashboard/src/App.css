@@ -264,6 +264,13 @@ body {
 }
 .topbar-session-tabs::-webkit-scrollbar { display: none; }
 
+/* Phone: the wrapped second row of the top bar was sized from the session tabs'
+   narrow-width height (~74px), so the bar stopped at 75px and the tabs sat under the
+   hub canvas. A fixed strip height keeps the bar tall enough for both rows. */
+@media (max-width: 600px) {
+  .topbar-session-tabs { height: 34px; }
+}
+
 /* Keep .session-tabs as alias in case anything still references it */
 .session-tabs {
   display: flex;
@@ -1094,6 +1101,20 @@ body {
   font-weight: 600;
   color: var(--text);
 }
+
+/* Session name in the chat header: a button, styled as the heading it replaces */
+.session-name-btn {
+  background: none;
+  border: none;
+  padding: 0;
+  font: inherit;
+  font-size: 1.05rem;
+  font-weight: 600;
+  color: var(--text);
+  cursor: pointer;
+  text-align: left;
+}
+.session-name-btn:hover { text-decoration: underline; }
 
 .chat-meta {
   font-size: 0.78rem;
