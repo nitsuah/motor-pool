@@ -1,0 +1,32 @@
+flowchart TD
+  create["Task created: POST /api/tasks or webhook createTask"]
+  pending["status: pending"]
+  tick{"Runner tick every 5s: nothing running?"}
+  pick["Pick highest priority, then oldest"]
+  tool{"Experience needs an MCP tool server?"}
+  ensure["ensureToolReady: health check, docker compose start, wait up to 30s"]
+  running["status: running"]
+  dispatch["dispatchMessage: create or reuse session, send task title"]
+  turn["Safety preflight, agent loop (model + tool calls), sanitize reply"]
+  done["status: completed, result stored (first 2000 chars)"]
+  failed["status: failed, error recorded"]
+  created_evt["task_created event on the bus"]
+  event["task_status_changed event on the bus"]
+  board["Dashboard tasks panel updates over /ws/events"]
+
+  create --> pending --> tick
+  tick -- "yes" --> pick --> tool
+  tick -- "no, wait" --> pending
+  tool -- "yes" --> ensure
+  tool -- "no" --> running
+  ensure -- "ready" --> running
+  ensure -- "unavailable" --> failed
+  running --> dispatch --> turn
+  turn -- "ok" --> done
+  turn -- "error" --> failed
+  create -.-> created_evt
+  created_evt --> board
+  running -. "each transition" .-> event
+  done -.-> event
+  failed -.-> event
+  event --> board

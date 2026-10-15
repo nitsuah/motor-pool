@@ -8,28 +8,36 @@
       "id": "agent-lifecycle-management",
       "title": "Agent Lifecycle Management",
       "category": "Core Functionality",
-      "screenshots": [],
+      "screenshots": [
+        "docs/screenshots/system-panel.png"
+      ],
       "spots": []
     },
     {
       "id": "real-time-status-monitoring",
       "title": "Real-time Status Monitoring",
       "category": "Core Functionality",
-      "screenshots": [],
+      "screenshots": [
+        "docs/screenshots/system-panel.png"
+      ],
       "spots": []
     },
     {
       "id": "task-queue-visualization",
       "title": "Task Queue Visualization",
       "category": "Core Functionality",
-      "screenshots": [],
+      "screenshots": [
+        "docs/screenshots/metrics-panel.png"
+      ],
       "spots": []
     },
     {
       "id": "multi-agent-coordination",
       "title": "Multi-Agent Coordination",
       "category": "Core Functionality",
-      "screenshots": [],
+      "screenshots": [
+        "docs/screenshots/dashboard-overview.png"
+      ],
       "spots": []
     },
     {
@@ -37,7 +45,8 @@
       "title": "Persistent Agent History",
       "category": "Core Functionality",
       "screenshots": [],
-      "spots": []
+      "spots": [],
+      "visual": "none"
     },
     {
       "id": "dynamic-task-assignment",
@@ -64,7 +73,9 @@
       "id": "topbar-command-bar",
       "title": "Topbar Command Bar",
       "category": "Core Functionality",
-      "screenshots": [],
+      "screenshots": [
+        "docs/screenshots/dashboard-overview.png"
+      ],
       "spots": []
     },
     {
@@ -72,34 +83,43 @@
       "title": "Agent Lifecycle API Documentation",
       "category": "Core Functionality",
       "screenshots": [],
-      "spots": []
+      "spots": [],
+      "visual": "none"
     },
     {
       "id": "conversation-replay-mode",
       "title": "Conversation Replay Mode",
       "category": "Core Functionality",
-      "screenshots": [],
+      "screenshots": [
+        "docs/screenshots/chat-session.png"
+      ],
       "spots": []
     },
     {
       "id": "3d-liminaldashboard-home",
       "title": "3D LiminalDashboard Home",
       "category": "Core Functionality",
-      "screenshots": [],
+      "screenshots": [
+        "docs/screenshots/dashboard-overview.png"
+      ],
       "spots": []
     },
     {
       "id": "content-studio-website-agent",
       "title": "Content Studio & Website Agent",
       "category": "Integrations & AI Runtimes",
-      "screenshots": [],
+      "screenshots": [
+        "docs/screenshots/discover-scan-result.png"
+      ],
       "spots": []
     },
     {
       "id": "multi-tier-model-provisioning",
       "title": "Multi-Tier Model Provisioning",
       "category": "Integrations & AI Runtimes",
-      "screenshots": [],
+      "screenshots": [
+        "docs/screenshots/discover-scan-result.png"
+      ],
       "spots": []
     },
     {
@@ -107,27 +127,32 @@
       "title": "Webhook Triggers",
       "category": "Integrations & AI Runtimes",
       "screenshots": [],
-      "spots": []
+      "spots": [],
+      "visual": "none"
     },
     {
       "id": "restful-api",
       "title": "RESTful API",
       "category": "Integrations & AI Runtimes",
       "screenshots": [],
-      "spots": []
+      "spots": [],
+      "visual": "none"
     },
     {
       "id": "event-bus-integration",
       "title": "Event Bus Integration",
       "category": "Integrations & AI Runtimes",
       "screenshots": [],
-      "spots": []
+      "spots": [],
+      "visual": "none"
     },
     {
       "id": "byok-external-llms-custom-endpoint-registry",
       "title": "BYOK External LLMs & Custom Endpoint Registry",
       "category": "Integrations & AI Runtimes",
-      "screenshots": [],
+      "screenshots": [
+        "docs/screenshots/discover-scan-result.png"
+      ],
       "spots": []
     },
     {
@@ -135,14 +160,16 @@
       "title": "Plugin Tools in the Agent Loop",
       "category": "Integrations & AI Runtimes",
       "screenshots": [],
-      "spots": []
+      "spots": [],
+      "visual": "none"
     },
     {
       "id": "declarative-mcp-registry",
       "title": "Declarative MCP Registry",
       "category": "Integrations & AI Runtimes",
       "screenshots": [],
-      "spots": []
+      "spots": [],
+      "visual": "none"
     },
     {
       "id": "bb-mcp-streaming-ui",
@@ -163,13 +190,16 @@
       "title": "Topic-Based Event Channels",
       "category": "Integrations & AI Runtimes",
       "screenshots": [],
-      "spots": []
+      "spots": [],
+      "visual": "none"
     },
     {
       "id": "live-model-pull-status",
       "title": "Live Model Pull Status",
       "category": "UI/UX",
-      "screenshots": [],
+      "screenshots": [
+        "docs/screenshots/discover-scan-result.png"
+      ],
       "spots": []
     },
     {
@@ -191,62 +221,75 @@
       "title": "Dockerized Deployment",
       "category": "DevOps & Infrastructure",
       "screenshots": [],
-      "spots": []
+      "spots": [],
+      "visual": "none"
     },
     {
       "id": "gpu-acceleration-via-cuda",
       "title": "GPU Acceleration via CUDA",
       "category": "DevOps & Infrastructure",
       "screenshots": [],
-      "spots": []
+      "spots": [],
+      "visual": "none"
     },
     {
       "id": "ollama-startup-warmup",
       "title": "Ollama Startup Warmup",
       "category": "DevOps & Infrastructure",
       "screenshots": [],
-      "spots": []
+      "spots": [],
+      "visual": "none"
     },
     {
       "id": "environment-variable-configuration",
       "title": "Environment Variable Configuration",
       "category": "DevOps & Infrastructure",
       "screenshots": [],
-      "spots": []
+      "spots": [],
+      "visual": "none"
     },
     {
       "id": "health-check-endpoints",
       "title": "Health Check Endpoints",
       "category": "DevOps & Infrastructure",
       "screenshots": [],
-      "spots": []
+      "spots": [],
+      "visual": "none"
     },
     {
       "id": "service-discovery-and-panel-control",
       "title": "Service Discovery and Panel Control",
       "category": "DevOps & Infrastructure",
-      "screenshots": [],
+      "screenshots": [
+        "docs/screenshots/discover-scan-result.png"
+      ],
       "spots": []
     },
     {
       "id": "live-service-lifecycle-control",
       "title": "Live Service Lifecycle Control",
       "category": "DevOps & Infrastructure",
-      "screenshots": [],
+      "screenshots": [
+        "docs/screenshots/system-panel.png"
+      ],
       "spots": []
     },
     {
       "id": "model-management",
       "title": "Model Management",
       "category": "DevOps & Infrastructure",
-      "screenshots": [],
+      "screenshots": [
+        "docs/screenshots/discover-scan-result.png"
+      ],
       "spots": []
     },
     {
       "id": "device-profile-system",
       "title": "Device Profile System",
       "category": "DevOps & Infrastructure",
-      "screenshots": [],
+      "screenshots": [
+        "docs/screenshots/discover-scan-result.png"
+      ],
       "spots": []
     },
     {
@@ -254,41 +297,48 @@
       "title": "bb-mcp Opt-In Integration",
       "category": "DevOps & Infrastructure",
       "screenshots": [],
-      "spots": []
+      "spots": [],
+      "visual": "none"
     },
     {
       "id": "openllm-opt-in-endpoint",
       "title": "OpenLLM Opt-In Endpoint",
       "category": "DevOps & Infrastructure",
       "screenshots": [],
-      "spots": []
+      "spots": [],
+      "visual": "none"
     },
     {
       "id": "validated-production-deployment-path",
       "title": "Validated Production Deployment Path",
       "category": "DevOps & Infrastructure",
       "screenshots": [],
-      "spots": []
+      "spots": [],
+      "visual": "none"
     },
     {
       "id": "content-gen-without-the-docker-socket",
       "title": "Content-gen Without the Docker Socket",
       "category": "DevOps & Infrastructure",
       "screenshots": [],
-      "spots": []
+      "spots": [],
+      "visual": "none"
     },
     {
       "id": "ci-unit-test-gate-coverage-artifact",
       "title": "CI Unit-Test Gate + Coverage Artifact",
       "category": "DevOps & Infrastructure",
       "screenshots": [],
-      "spots": []
+      "spots": [],
+      "visual": "none"
     },
     {
       "id": "sanitized-gateway-proxy",
       "title": "Sanitized Gateway Proxy",
       "category": "Security & Verification",
-      "screenshots": [],
+      "screenshots": [
+        "docs/screenshots/metrics-panel.png"
+      ],
       "spots": []
     },
     {
@@ -296,7 +346,8 @@
       "title": "Modular Plugin Architecture",
       "category": "Developer Experience",
       "screenshots": [],
-      "spots": []
+      "spots": [],
+      "visual": "none"
     },
     {
       "id": "tmux-multi-agent-worktrees",
@@ -310,21 +361,24 @@
       "title": "Comprehensive Event Logging",
       "category": "Developer Experience",
       "screenshots": [],
-      "spots": []
+      "spots": [],
+      "visual": "none"
     },
     {
       "id": "server-frontend-refactor",
       "title": "Server/Frontend Refactor",
       "category": "Developer Experience",
       "screenshots": [],
-      "spots": []
+      "spots": [],
+      "visual": "none"
     },
     {
       "id": "safe-chat-hardening",
       "title": "Safe Chat Hardening",
       "category": "Developer Experience",
       "screenshots": [],
-      "spots": []
+      "spots": [],
+      "visual": "none"
     },
     {
       "id": "tool-result-visibility-artifacts-tab",
