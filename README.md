@@ -381,6 +381,8 @@ All lint, test, and quality checks run via Docker — no local Node.js required.
 docker compose -f config/docker-compose.yml --profile test run --rm test
 ```
 
+**Nightly journeys:** Playwright "AI user" journeys with visual baselines (`tests/journeys/`, run nightly by `.github/workflows/journeys.yml`). Failures file `bot:journey` issues; [BUGS.md](https://github.com/nitsuah/motor-pool/blob/bot/journeys/BUGS.md) lists what is open. Baselines are Linux-only, so run them in the Playwright image (see `tests/journeys/README.md`).
+
 **Start the full stack:**
 
 ```powershell

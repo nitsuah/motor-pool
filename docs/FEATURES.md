@@ -58,6 +58,7 @@
 - **Validated Production Deployment Path** - Documented in `docs/DEPLOYMENT.md`.
 - **Content-gen Without the Docker Socket** - `tool-content-gen` is a `tools`-profile sidecar that calls the host MoneyPrinterTurbo API via `MPT_API_URL` instead of mounting `/var/run/docker.sock`.
 - **CI Unit-Test Gate + Coverage Artifact** - `npm run test:unit` runs in `.github/workflows/ci.yml` before the image build; the lcov report is uploaded as a workflow artifact. Coverage ≥80% statements (see `docs/METRICS.md`).
+- **Nightly Journeys** - `tests/journeys/` drives the dashboard like a user (mocked `/api`, frozen clock, 7 journeys, a visual baseline per step); `.github/workflows/journeys.yml` files and auto-closes `bot:journey` issues with no AI. Failures are listed in `BUGS.md` on the `bot/journeys` branch.
 
 ## Security & Verification
 

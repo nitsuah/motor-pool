@@ -83,3 +83,5 @@ tools/content-gen/examples/
 # Pulled-down upstream repos (cloned at build time, see tools/README.md)
 tools/opencut/
 tools/opencut-controller/
+journeys-report/
+test-results/
