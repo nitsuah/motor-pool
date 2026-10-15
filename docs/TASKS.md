@@ -8,7 +8,18 @@ Last Updated: 2026-09-24
 
 ### P1 - High
 
-_No open P1 items — coverage (≥80%, see `docs/METRICS.md`), CI's unit-test gate + lcov
+**Imps (build plan: [IMPS-PLAN.md](./IMPS-PLAN.md)).** Each PR updates this list.
+
+- [ ] **Principals & API tokens**: `principals`/`api_tokens` tables, bootstrap superadmin, `requireAuth` on exec/worktree/admin/imps routes, per-principal WebSocket event filtering.
+  - Acceptance Criteria: unauthenticated `/api/workspace/exec` returns 401; a dispatcher cannot see another principal's job events over WS.
+- [ ] **Durable job queue**: `jobs`/`job_events` in Postgres, claim/lease/heartbeat/reaper/cancel/hold with fencing, `/api/imps` CRUD.
+  - Acceptance Criteria: Postgres-backed tests for claim exclusivity, lease-expiry requeue, attempts cap, cancel and stale-complete fencing.
+- [ ] **Imp runner**: `imp-runner` service + `imp-docker` DinD sidecar, repo mirrors/worktrees, `claude -p` via 9router, stream → events, time/cost limits, pre-push gate (deny paths, diff cap, gitleaks), runner-side push and PR via GitHub App.
+  - Acceptance Criteria: a stub-`claude` dry run reaches every terminal status; one real `bot:journey` fix lands as an open PR.
+- [ ] **Imps panel + `/imp` skill**: list/detail/live tail/cancel in the dashboard; one-call dispatch from Claude Code.
+  - Acceptance Criteria: an imp dispatched from a Claude session is visible live to its owner and to a superadmin, and to no one else.
+
+_The earlier P1 items — coverage (≥80%, see `docs/METRICS.md`), CI's unit-test gate + lcov
 artifact upload, and the coverage-baseline work are all complete; see `CHANGELOG.md`
 and `ROADMAP.md` 2027 Q1 for the condensed record._
 
