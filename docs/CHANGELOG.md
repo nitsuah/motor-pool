@@ -11,6 +11,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Nightly journeys** (`tests/journeys/`, `.github/workflows/journeys.yml`, `npm run test:journeys`): 7 backend-free journeys (hub, chat, stack health and light mode, workspace file edit, task queue, git log, phone) with 11 visual baselines, tagged with the feature ids in `promo/spots.json`. The dashboard bundle runs against mocked `/api` and a silent WebSocket with fictional demo data and a frozen clock. Failures become deduplicated `bot:journey` issues through the shared `nitsuah/.github` harness with no AI. The one-time review pass filed #96 (phone top bar clips the session tabs) and #97 (unstyled session-name button).
 - Visual docs: `docs/diagrams/architecture.mmd` and `task-lifecycle.mmd` (rendered to SVG and embedded in the README under Architecture), a `visual-docs` workflow that re-renders them and opens a bot PR, and `promo/spots.json` now links 16 features to existing screenshots and marks 22 non-visual features `visual: none`.
 - Visual showcase ([standard](https://github.com/nitsuah/.github/blob/main/showcase/STANDARD.md)): `promo/spots.json` lists every shipped FEATURES.md entry and records the existing launch video(s); feature-to-video and screenshot links are still empty and get filled in on the next `/promo` run; the Pages site loads the shared expand kit (click-to-expand images, fullscreen button on videos).
 - **Agent workspace sandbox** (`modules/workspace-sandbox.js`) — by default agents
