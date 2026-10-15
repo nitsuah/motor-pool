@@ -66,6 +66,10 @@ const eol = readme.includes('\r\n') ? '\r\n' : '\n';
 const normalized = readme.replace(/\r\n/g, '\n');
 const s = normalized.indexOf(START);
 const e = normalized.indexOf(END);
+if (s !== -1 !== (e !== -1) || (s !== -1 && e < s)) {
+  console.error(`${README}: visual-docs markers are malformed (start/end missing or out of order)`);
+  process.exit(1);
+}
 const next = s !== -1 && e > s
   ? normalized.slice(0, s) + block + normalized.slice(e + END.length)
   : `${normalized.replace(/\n*$/, '\n')}\n## Screenshots & diagrams\n\n${block}\n`;

@@ -10,6 +10,7 @@ flowchart TD
   turn["Safety preflight, agent loop (model + tool calls), sanitize reply"]
   done["status: completed, result stored (first 2000 chars)"]
   failed["status: failed, error recorded"]
+  created_evt["task_created event on the bus"]
   event["task_status_changed event on the bus"]
   board["Dashboard tasks panel updates over /ws/events"]
 
@@ -23,7 +24,8 @@ flowchart TD
   running --> dispatch --> turn
   turn -- "ok" --> done
   turn -- "error" --> failed
-  create -. "task_created" .-> event
+  create -.-> created_evt
+  created_evt --> board
   running -. "each transition" .-> event
   done -.-> event
   failed -.-> event
