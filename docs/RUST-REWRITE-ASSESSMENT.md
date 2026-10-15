@@ -77,7 +77,7 @@ Given the hardware (a 16 GB Windows host with an RTX-3070-class 8 GB GPU, per th
 
 So "efficient and impressive" with small models depends on things that work the same in Node and in Rust:
 
-1. **Constrained decoding.** Pass a JSON schema via Ollama's `format` field for tool turns, so the model *can't* emit malformed calls. This is the single biggest quality lever, and it's currently unused.
+1. **Constrained decoding (to be tested).** Ollama's `format` (JSON mode or a JSON Schema) constrains `message.content`; it is documented separately from `tools`/`message.tool_calls` and isn't known to constrain native tool calls. The approach to try for small models: on tool turns, skip native `tools`, set `format` to a schema of `{tool: enum[offered names], arguments: object}`, and parse the content ourselves. `parseTextToolCall` already handles content-encoded calls. Keep the existing tool allowlist and text-call fallback either way. Measure malformed-call rates per model and Ollama version before treating it as the biggest quality lever; it's currently unused.
 2. **Offer fewer tools per turn.** Route first (a cheap 1B classification: "is this a file task, a search task, or chat?"), then expose only 1–3 tools. Today the developer experience offers 4 base tools plus every enabled plugin tool.
 3. **Prompt budget.** Measure tokens per turn (system + tools + history) and cap them. Trim history by summarizing older turns.
 4. **Streaming.** The agent loop uses `stream: false`. On a slow local model, seeing tokens arrive is the difference between "feels broken" and "feels alive". `session-stream.js` streams plain chat but not the tool loop.
@@ -119,7 +119,7 @@ Goal: a **lean profile** that idles under ~300 MB total excluding model weights,
 
 ### Phase B: make small models look good (≈1 week)
 
-- [ ] Schema-constrained tool calls via Ollama `format`.
+- [ ] Try schema-constrained tool selection via Ollama `format` (content-encoded calls, not native `tool_calls`; see section 3) and measure malformed-call rates.
 - [ ] Route, then expose a minimal tool set per turn.
 - [ ] Stream the agent loop, sending tokens and tool events over the existing `/ws/events`.
 - [ ] Token budget meter per turn in the UI (prompt / tools / history / output).
