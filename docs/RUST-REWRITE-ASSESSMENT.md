@@ -14,6 +14,8 @@ Written 2026-10-15 against `master` @ `c0864c1`. It answers three questions:
 
 **Grade: B− as an engineering artifact, C+ as a product.**
 
+**Update (same day, section 9):** the intended target is a large shared host serving government and schools, with 9router's progressive tool disclosure ([decolua/9router#3575](https://github.com/decolua/9router/pull/3575)) and a BM25 agent/tool registry. That strengthens the "no Rust" verdict, because the disclosure code is MIT-licensed JavaScript you can lift directly. It also gives the project the focus it was missing: an on-prem AI gateway for gov/edu. But it moves auth, RBAC, audit logging and multi-user serving from "2027 someday" to prerequisites.
+
 ---
 
 ## 1. What exists today
@@ -189,3 +191,71 @@ It's a good harness for learning and showing your work. Its problem is breadth, 
 - [ ] Decide what motor-pool *is*: a harness testbed (keep it, trim it) or a daily assistant (adopt Open WebUI / Claude Code, archive this).
 - [ ] If keeping it: Phase A → B → C above, then re-measure.
 - [ ] Only then, and only for learning or portfolio reasons: `motor-pool-lite` in Rust, scoped as in section 6.
+
+## 9. Addendum: big host, gov/edu, 9router and a BM25 registry
+
+The original sections assumed a single user on a 16 GB laptop. The stated target is different: **motor-pool on one large shared machine, serving many users and uses, for government and schools that can't or won't send data to a hosted vendor.** This section re-runs the analysis for that target.
+
+### 9.1 What 9router#3575 does, and why it matters more for local models
+
+The PR (`toolFilter.js` 76 lines, `toolDisclosure.js` 270, `toolBudget.js` 100, all JS, MIT-licensed upstream) adds three passes before the request goes upstream:
+
+1. **Static filter:** include or exclude by server prefix, exact name or description pattern.
+2. **BM25 disclosure:** index the tool schemas once per connection, score them against the latest user message, and send only the top `maxTools`. It always pins `ToolSearch`, `tool_choice`-forced tools and tools already referenced in history.
+3. **Context budget:** estimate tokens (JSON bytes / 4) and cull tool schemas, never history, until the request fits the target model's input budget, with a hard ceiling.
+
+On a 200k-context frontier model this saves 10–15% per turn. **On a local model it decides whether the turn works at all.** At ~200 tokens per schema, 20 tools is ~4k tokens, which is half of an 8k context, and CPU or small-GPU prompt eval is the slow part of every turn. Disclosure is the most valuable item in section 3, and a better form of its "route, then offer 1–3 tools" idea: BM25 costs no model call, while a 1B router model costs a full model call per turn.
+
+### 9.2 Connect to 9router, or bring the code in? Both, for different reasons
+
+| | **A. Use 9router as an upstream endpoint** | **B. Native disclosure in motor-pool** |
+| --- | --- | --- |
+| How | Register 9router (`http://9router:20128/v1`, OpenAI-compatible) in `CUSTOM_LLM_ENDPOINTS`; sessions pick it like any BYOK endpoint | Port `toolFilter`/`toolDisclosure`/`toolBudget` into `dashboard/modules/` (keep the MIT notice), and call it inside `runAgentLoop` before each model call |
+| Gets you | Its routing, fallback, RTK/headroom compression and disclosure for hosted models, today, for zero code | Disclosure on **every** endpoint, including direct Ollama/vLLM, plus plugin tools and the future registry |
+| Limits | Applies only to traffic that passes through 9router. Its disclosure is still an open PR, not merged upstream. It's a third-party dependency in the trust boundary | You own maintenance; it starts as a fork of upstream logic |
+| Gov/edu fit | OK for dev and for routing to approved hosted providers; needs vetting (no telemetry, pinned image digest) before a deployment | Required: the registry is the product and has to live in-process |
+
+**Recommendation:** do A this week (it's configuration only), and B as the first real feature of the registry work. Shared language is a concrete reason not to rewrite in Rust: every improvement made in 9router can move into motor-pool as a copy instead of a re-implementation.
+
+**Compression ("bells and whistles"):** take the **deterministic** parts: tool-output truncation, dedupe, RTK-style command-output trimming, stable-prefix ordering for KV-cache reuse. Be wary of **model-based** compression (LLM summarization of history) on local hardware. It spends a model call to save model tokens, which only pays off on long sessions, so make it opt-in with a threshold.
+
+### 9.3 The collective BM25 agent/tool registry
+
+The idea: one registry of tools **and** agents (an agent is just a tool with a description), retrieved per turn with BM25. Ranking improves with "collective" usage: which tools actually got called, and succeeded, for which kinds of request.
+
+A design that fits the codebase:
+
+- **Two text fields per entry:** (1) the authored doc: name, description, parameter names; (2) a learned doc: redacted snippets of past requests that led to a *successful* call of that entry, a lightweight form of doc2query. Score = BM25(doc) + w · BM25(usage), with the usage field capped so popular tools can't drown out new ones.
+- **Cold start:** with no usage data it behaves exactly like 9router#3575, so it is never worse than the baseline.
+- **Sources:** `config/mcp-registry.json`, the plugin loader, BYOK endpoints and agent definitions all feed one index. Rebuild on registry change, as 9router does per `connectionId`.
+- **Evaluate before trusting it:** log (query, offered tools, called tool, outcome) and report recall@k, i.e. "was the tool the model needed among the k offered?", on held-out turns. Ship the learned field only if it beats descriptions alone.
+
+**For gov/edu, "collective" is where the legal risk is.** Usage snippets are user prompts: student data under FERPA (COPPA for under-13s), and for agencies possibly CJIS or other controlled data. Rules that make it defensible:
+
+- Run every snippet through `safety.js` redaction **before** indexing, and store the redacted form only.
+- Keep the learned field **per tenant** (district or agency) by default. Share across tenants only as aggregate counts (tool X selected N times for term set Y), never raw text.
+- Set a retention limit, provide an admin-visible "what the registry learned" view, and a per-tenant off switch.
+
+### 9.4 What changes about the earlier assessment
+
+- **Rust verdict: unchanged, and stronger.** A big shared host makes **concurrency** the real bottleneck. Ollama is built for one user at a time and batches poorly. For many concurrent users, put **vLLM** (continuous batching, paged KV cache) or **llama.cpp server** with parallel slots behind the gateway. Neither choice depends on the language the gateway is written in.
+- **Hardware assumption flips.** On a big GPU host, 30B-class or MoE models are practical, so tool-calling quality improves a lot. Constrained decoding and disclosure still matter, now for throughput and cost per user rather than for viability.
+- **Product focus: problem solved, if you commit to it.** "Private AI gateway with a tool/agent registry for gov/edu" is a clear product. Keep chat, safety/PII, sandboxed tools, endpoints/BYOK, MCP registry, observability and replay/audit. Move out the website lead-gen agent, content-gen, the Blackboard *showcase* framing (bb-mcp becomes one integration in the registry, which is actually a great edu demo), Docker control and tmux worktrees. Keep the 3D view as an optional admin visual.
+- **Security moves from C+ to a hard gate.** No institution can pilot this without these, so they become the new Phase 0:
+  - SSO: SAML/OIDC, because districts use Google Workspace or Entra and agencies use Login.gov or Entra.
+  - Tenants and roles: tenant → role → route/tool permissions, i.e. the ROADMAP 2027 Q3 RBAC item, pulled forward.
+  - Audit log: the 2027 Q3 item, pulled forward. Who ran which tool on what data.
+  - Hardening: fail-closed secrets, encryption at rest, a documented data flow, an air-gapped install path, and a Section 508 / WCAG 2.1 AA accessibility pass (required for public-sector procurement).
+- **"Can't trust Anthropic"** is better framed as "**model-agnostic and data-resident**". Many agencies will want frontier models through their own contracts (Bedrock GovCloud, Azure Government) next to local ones. A gateway that routes to *their* approved endpoints, local or hosted, with policy per tenant, sells better than "local only" and avoids looking like it competes with the vendors they already use.
+- **Be clear-eyed about the competition.** Open WebUI + LiteLLM is what many universities and some agencies already self-host. The pitch has to be what they lack: per-turn tool/agent retrieval that makes small or local models usable with large tool catalogs, PII safety and audit built in, sandboxed agent execution, and gov/edu compliance as a first-class design goal rather than an afterthought.
+
+### 9.5 Revised order of work
+
+1. **Now (config only):** add 9router as a BYOK endpoint and try motor-pool sessions through it.
+2. **Phase 0, gate:** exec-route token → SSO/OIDC → tenants + RBAC → audit log.
+3. **Phase 1, registry:** port the disclosure modules natively, unify tools/MCP/plugins/agents into one index, log offered vs. called tools, and report recall@k.
+4. **Phase 2, serving:** a vLLM or llama.cpp-server profile for multi-user batching, plus constrained decoding and streaming in the agent loop.
+5. **Phase 3, learned registry:** a redacted, per-tenant usage field, but only if the recall@k data says it helps.
+6. **Phase 4, compliance packaging:** air-gapped install, data-flow and FERPA documentation, an accessibility audit, then one pilot district or agency.
+
+**Revised product grade, conditional:** still C+ today. If Phase 0 and Phase 1 ship with measured recall@k and one pilot, this is a credible B+ niche product, which is more than a Rust rewrite could do for it.
