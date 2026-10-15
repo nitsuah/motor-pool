@@ -68,6 +68,7 @@ jobs:
           CONFIG=""; [ -f docs/diagrams/mermaid.config.json ] && CONFIG="-c docs/diagrams/mermaid.config.json"
           for f in docs/diagrams/*.mmd; do
             npx -y @mermaid-js/mermaid-cli@12.0.0 $PUPPETEER $CONFIG -b white -i "$f" -o "${f%.mmd}.svg"
+            echo >> "${f%.mmd}.svg"  # end-of-file-fixer in pre-commit wants a trailing newline
           done
 
       - name: Update README block
