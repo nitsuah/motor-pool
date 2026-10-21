@@ -14,7 +14,7 @@ Last Updated: 2026-10-15
 > Plan: [IMPS-PLAN.md](./IMPS-PLAN.md). Direction: [RUST-REWRITE-ASSESSMENT.md §10](./RUST-REWRITE-ASSESSMENT.md#10-target-architecture-safe-async-agents-with-role-based-control).
 
 - [ ] **Principals & API tokens with per-owner visibility** (pulls the 2027 Q1 exec-route token item forward).
-- [ ] **Durable Postgres job queue** with leases, the first consumer being imps; the in-memory `/api/tasks` migrates onto it afterwards.
+- [ ] **Durable Postgres job queue** with leases, the first consumer being imps; the in-memory `/api/tasks` migrates onto it afterward.
 - [ ] **Imp runner**: headless Claude Code workers through 9router in sandboxed worktrees, opening PRs that a human or reviewer agent approves.
 - [ ] **Dispatchers**: `/imp` skill, phone (Tailscale + token), vigil/routines tokens, `bot:journey` webhook rule.
 
