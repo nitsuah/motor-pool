@@ -10,7 +10,8 @@
   "scripts": {
     "test": "vitest run",
     "lint": "eslint .",
-    "test:journeys": "playwright test --config config/playwright.journeys.config.js"
+    "test:journeys": "playwright test --config config/playwright.journeys.config.js",
+    "capture:screenshots": "DOCS_SCREENSHOTS=docs/screenshots playwright test --config config/playwright.journeys.config.js --ignore-snapshots --retries 0"
   },
   "repository": {
     "type": "git",
