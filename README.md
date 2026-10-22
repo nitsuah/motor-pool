@@ -25,25 +25,9 @@ motor-pool is a local-first control room for multi-model AI workflows. It gives 
 - **Workspace IDE**: VSCode-style split layout with file tabs, integrated terminal pane, compact git panel, and task dispatch — all in-browser.
 - **Topbar command bar**: unified top-bar replaces the sidebar; model/endpoint controls, session picker, and system actions accessible from one surface.
 
-## Screenshots
+## Architecture and screenshots
 
-Captured from the local Docker stack at `http://localhost:3000`.
-
-### Dashboard Overview
-
-![agent-board dashboard overview](https://github.com/nitsuah/motor-pool/blob/master/docs/screenshots/dashboard-overview.png)
-
-### Metrics View
-
-![agent-board metrics panel](https://github.com/nitsuah/motor-pool/blob/master/docs/screenshots/metrics-panel.png)
-
-### System Management
-
-![agent-board system management panel](https://github.com/nitsuah/motor-pool/blob/master/docs/screenshots/system-panel.png)
-
-## Architecture
-
-How the pieces fit, and what happens to a task from creation to a finished result. The diagrams are rendered from `docs/diagrams/*.mmd` by the visual-docs workflow.
+How the pieces fit, what happens to a task from creation to a finished result, and what the dashboard looks like. The visual-docs workflow renders the diagrams from `docs/diagrams/*.mmd` and captures the screenshots from the journeys (`npm run capture:screenshots`: each file is named after a `promo/spots.json` feature id).
 
 <!-- visual-docs:start -->
 
@@ -58,6 +42,64 @@ How the pieces fit, and what happens to a task from creation to a finished resul
 **Task lifecycle** — [`docs/diagrams/task-lifecycle.svg`](./docs/diagrams/task-lifecycle.svg) · source [`docs/diagrams/task-lifecycle.mmd`](./docs/diagrams/task-lifecycle.mmd)
 
 ![Task lifecycle](./docs/diagrams/task-lifecycle.svg)
+
+### Screenshots
+
+**3d liminaldashboard home** — [`docs/screenshots/3d-liminaldashboard-home.png`](./docs/screenshots/3d-liminaldashboard-home.png)
+
+![3d liminaldashboard home](./docs/screenshots/3d-liminaldashboard-home.png)
+
+**Chat session** — [`docs/screenshots/chat-session.png`](./docs/screenshots/chat-session.png)
+
+![Chat session](./docs/screenshots/chat-session.png)
+
+**Dark light mode support** — [`docs/screenshots/dark-light-mode-support.png`](./docs/screenshots/dark-light-mode-support.png)
+
+![Dark light mode support](./docs/screenshots/dark-light-mode-support.png)
+
+**Dashboard overview** — [`docs/screenshots/dashboard-overview.png`](./docs/screenshots/dashboard-overview.png)
+
+![Dashboard overview](./docs/screenshots/dashboard-overview.png)
+
+**Discover scan result** — [`docs/screenshots/discover-scan-result.png`](./docs/screenshots/discover-scan-result.png)
+
+![Discover scan result](./docs/screenshots/discover-scan-result.png)
+
+**Dynamic task assignment** — [`docs/screenshots/dynamic-task-assignment.png`](./docs/screenshots/dynamic-task-assignment.png)
+
+![Dynamic task assignment](./docs/screenshots/dynamic-task-assignment.png)
+
+**Metrics panel** — [`docs/screenshots/metrics-panel.png`](./docs/screenshots/metrics-panel.png)
+
+![Metrics panel](./docs/screenshots/metrics-panel.png)
+
+**Responsive dashboard session** — [`docs/screenshots/responsive-dashboard-session.png`](./docs/screenshots/responsive-dashboard-session.png)
+
+![Responsive dashboard session](./docs/screenshots/responsive-dashboard-session.png)
+
+**Responsive dashboard** — [`docs/screenshots/responsive-dashboard.png`](./docs/screenshots/responsive-dashboard.png)
+
+![Responsive dashboard](./docs/screenshots/responsive-dashboard.png)
+
+**Service discovery and panel control** — [`docs/screenshots/service-discovery-and-panel-control.png`](./docs/screenshots/service-discovery-and-panel-control.png)
+
+![Service discovery and panel control](./docs/screenshots/service-discovery-and-panel-control.png)
+
+**System panel** — [`docs/screenshots/system-panel.png`](./docs/screenshots/system-panel.png)
+
+![System panel](./docs/screenshots/system-panel.png)
+
+**Task queue visualization** — [`docs/screenshots/task-queue-visualization.png`](./docs/screenshots/task-queue-visualization.png)
+
+![Task queue visualization](./docs/screenshots/task-queue-visualization.png)
+
+**Workspace file engine** — [`docs/screenshots/workspace-file-engine.png`](./docs/screenshots/workspace-file-engine.png)
+
+![Workspace file engine](./docs/screenshots/workspace-file-engine.png)
+
+**Workspace ide** — [`docs/screenshots/workspace-ide.png`](./docs/screenshots/workspace-ide.png)
+
+![Workspace ide](./docs/screenshots/workspace-ide.png)
 
 <!-- visual-docs:end -->
 
