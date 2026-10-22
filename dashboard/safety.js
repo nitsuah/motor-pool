@@ -214,7 +214,7 @@ export function resolveEffectiveSafetyMode(session, useSafeMode = false) {
 export function normalizeForMatching(text) {
   return text
     .toLowerCase()
-    .replace(/[​-‍﻿]/g, '')
+    .replace(/[\u200B-\u200D\uFEFF]/g, '')
     .replace(/\s+/g, ' ');
 }
 
@@ -356,7 +356,8 @@ export function sanitizeResponse(text, safetyMode = 'standard') {
 export function normalizePromptText(text = '') {
   return String(text)
     .replace(/\r\n/g, '\n')
-    .replace(/ /g, '')
+    // eslint-disable-next-line no-control-regex -- stripping NUL bytes is the point
+    .replace(/\x00/g, '')
     .trim();
 }
 

@@ -9,7 +9,7 @@ export function createToolsRouter({ TOOL_SERVERS, DOCKER_CONTROL_ENABLED, servic
   router.get('/tools', async (req, res) => {
     const tools = await Promise.all(
       Object.values(TOOL_SERVERS).map(async (tool) => {
-        let running = false;
+        let running;
         let health = null;
         try {
           const probe = await axios.get(`${tool.url}/health`, { timeout: 3000 });
