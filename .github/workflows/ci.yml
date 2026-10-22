@@ -26,6 +26,13 @@ jobs:
         run: pip install pre-commit
       - name: Run pre-commit
         run: pre-commit run --all-files --config config/.pre-commit-config.yaml
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: '26'
+      - name: Lint and root unit tests
+        # Root package: eslint.config.mjs covers dashboard/, scripts/ and tests/;
+        # vitest.config.mjs runs test/. Dashboard suites run in Docker below.
+        run: npm ci && npm run lint && npm test
       - name: Create .env for compose
         # config/docker-compose.yml's env_file entries resolve as ../.env relative to
         # the compose file (config/), i.e. repo-root .env — not config/.env.

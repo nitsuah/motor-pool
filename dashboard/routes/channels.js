@@ -7,7 +7,7 @@
  */
 import express from 'express';
 
-const CHANNEL_NAME_RE = /^[a-zA-Z0-9_\-\.]{1,128}$/;
+const CHANNEL_NAME_RE = /^[a-zA-Z0-9_.-]{1,128}$/;
 
 export function createChannelsRouter({ eventBus, logStructured }) {
   const router = express.Router();

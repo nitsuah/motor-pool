@@ -11,7 +11,7 @@ This document tracks the health, performance, and quality metrics of the `motor-
 | **Unit Test Coverage** | 81.10% statements / 71.39% branches / 89.83% functions (native run 2026-09-11 — no Docker in this cloud automation environment — `npm run test:coverage` in `dashboard/` with NODE_V8_COVERAGE + c8; 66/66 unit tests pass, 0 failures) | >80% | 🟢 |
 | **Test File Count** | 70 test files (66 unit + 4 e2e requiring a live LLM/Docker stack); 66/66 unit tests pass natively (2026-09-11) | >50 | 🟢 |
 | **Critical Vulnerabilities** | 0 | 0 | 🟢 |
-| **ESLint Errors** | 0 | 0 | 🟢 |
+| **ESLint Errors** | 0 errors / 75 warnings (mostly unused vars; `npm run lint` at the root, enforced in CI since 2026-10-22) | 0 | 🟢 |
 | **Avg. Cyclomatic Complexity** | TBD | <10 | ⚪ |
 | **Production Bundle Size** | TBD | <500KB | ⚪ |
 | **CI Build Time** | TBD | <3 mins | ⚪ |
