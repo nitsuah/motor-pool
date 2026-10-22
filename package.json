@@ -8,7 +8,8 @@
     "test": "test"
   },
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1",
+    "test": "vitest run",
+    "lint": "eslint .",
     "test:journeys": "playwright test --config config/playwright.journeys.config.js",
     "capture:screenshots": "DOCS_SCREENSHOTS=docs/screenshots playwright test --config config/playwright.journeys.config.js --ignore-snapshots --retries 0"
   },
@@ -25,6 +26,11 @@
   },
   "homepage": "https://github.com/nitsuah/motor-pool#readme",
   "devDependencies": {
-    "@playwright/test": "1.64.1"
+    "@eslint/js": "^10.0.1",
+    "@playwright/test": "1.64.1",
+    "eslint": "^10.13.0",
+    "eslint-plugin-react-hooks": "^7.1.1",
+    "globals": "^17.13.0",
+    "vitest": "^5.0.5"
   }
 }

@@ -240,7 +240,7 @@ export function createWorktreesRouter({
         error: 'A "name" is required and must reduce to a slug matching [a-z0-9][a-z0-9-]{0,39}',
       });
     }
-    if (requestedBranch !== null && (typeof requestedBranch !== 'string' || !/^[A-Za-z0-9._\/-]{1,100}$/.test(requestedBranch))) {
+    if (requestedBranch !== null && (typeof requestedBranch !== 'string' || !/^[A-Za-z0-9._/-]{1,100}$/.test(requestedBranch))) {
       return res.status(400).json({ success: false, error: 'Invalid branch name' });
     }
     if (command !== null && (typeof command !== 'string' || command.length > 2000)) {
