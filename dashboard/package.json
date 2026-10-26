@@ -15,11 +15,11 @@
     "test:coverage": "node --input-type=module -e \"import { rmSync, mkdirSync } from 'node:fs'; rmSync('.v8-coverage', { recursive: true, force: true }); mkdirSync('.v8-coverage', { recursive: true });\" && node --input-type=module -e \"import { spawnSync } from 'node:child_process'; const npmCmd = process.platform === 'win32' ? 'npm.cmd' : 'npm'; const result = spawnSync(npmCmd, ['run', 'test:unit'], { stdio: 'inherit', env: { ...process.env, NODE_V8_COVERAGE: '.v8-coverage' } }); process.exit(result.status ?? 1);\" && c8 report --temp-directory=.v8-coverage --reporter=text --reporter=lcov"
   },
   "dependencies": {
-    "@opentelemetry/api": "^1.10.0",
-    "@opentelemetry/auto-instrumentations-node": "^0.82.0",
-    "@opentelemetry/exporter-trace-otlp-http": "^0.300.0",
-    "@opentelemetry/resources": "^3.0.0",
-    "@opentelemetry/sdk-node": "^0.300.0",
+    "@opentelemetry/api": "^1.9.0",
+    "@opentelemetry/auto-instrumentations-node": "^0.81.2",
+    "@opentelemetry/exporter-trace-otlp-http": "^0.223.0",
+    "@opentelemetry/resources": "^2.12.0",
+    "@opentelemetry/sdk-node": "^0.223.0",
     "@opentelemetry/sdk-trace-node": "^2.6.0",
     "@opentelemetry/semantic-conventions": "^1.43.0",
     "axios": "^1.20.0",
