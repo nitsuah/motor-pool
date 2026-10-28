@@ -69,7 +69,7 @@ async function runPs1(script, args = {}) {
 // ── MCP server factory ─────────────────────────────────────────────────────────
 
 function buildServer() {
-  const server = new McpServer({ name: 'website', version: '1.0.0' });
+  const server = new McpServer({ name: 'website', version: '1.0.0' }, { maxToolInputElements: 10_000 });
 
   // ── Tool: discover_leads ────────────────────────────────────────────────────
   server.tool(
@@ -286,7 +286,7 @@ function buildServer() {
 // ── Express app ────────────────────────────────────────────────────────────────
 
 const app = express();
-app.use(express.json());
+app.use(express.json({ limit: '1mb' }));
 
 app.get('/health', (_req, res) => res.json({
   status:     'ok',
