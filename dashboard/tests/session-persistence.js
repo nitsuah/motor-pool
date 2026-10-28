@@ -11,7 +11,7 @@ import { join } from 'path';
 const testDir = mkdtempSync(join(tmpdir(), 'session-snapshot-test-'));
 const snapshotPath = join(testDir, 'sessions-snapshot.json');
 process.env.SESSION_SNAPSHOT_PATH = snapshotPath;
-const { initSessionSnapshot, scheduleSnapshotWrite } = await import('../modules/session-snapshot.js');
+const { flushSessionSnapshot, initSessionSnapshot, scheduleSnapshotWrite } = await import('../modules/session-snapshot.js');
 
 // 1. initSessionSnapshot with an empty sessions Map does not throw
 const map1 = new Map();
@@ -52,6 +52,17 @@ const map3 = new Map();
 initSessionSnapshot(map3, null);
 assert.ok(map3.has('test-snap-1'), 'session restored from snapshot on re-init');
 assert.strictEqual(map3.get('test-snap-1').name, 'snap-test', 'name preserved after restore');
+
+// 7. A pending write can be flushed synchronously during shutdown.
+map3.set('test-snap-shutdown', {
+  id: 'test-snap-shutdown', name: 'shutdown-snap-test', endpoint: 'primary', model: 'llama3.2:3b',
+  experience: 'developer', messages: [], createdAt: new Date(), updatedAt: new Date(),
+  status: 'idle', errorCount: 0,
+});
+scheduleSnapshotWrite(null);
+assert.equal(flushSessionSnapshot(null), true, 'flush writes the pending snapshot synchronously');
+const afterFlush = JSON.parse(readFileSync(snapshotPath, 'utf8'));
+assert.ok(afterFlush.sessions.some(s => s.id === 'test-snap-shutdown'), 'flush includes the latest session state');
 
 console.log('Session persistence tests passed.');
 rmSync(testDir, { recursive: true, force: true });

@@ -238,7 +238,7 @@ DELETE /api/sessions/:id
 { "success": true, "deleted": true }
 ```
 
-This ends the session and removes it from the active session map. The ended session record and history remain in persistent storage; it is not a hard-delete or history-erasure operation. `deleted` is `false` if the session did not exist.
+This ends the session and removes it from the active session map. Later snapshot writes omit the session and its message history from `data/sessions-snapshot.json`. When Postgres is enabled, the ended record and messages remain there; this is not a hard-delete or history-erasure operation. Export history you need before ending a session. `deleted` is `false` if the session did not exist.
 
 ---
 

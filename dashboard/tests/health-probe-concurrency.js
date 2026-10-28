@@ -1,12 +1,17 @@
 import assert from 'node:assert/strict';
 import http from 'node:http';
 import axios from 'axios';
+import { mkdtempSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 
 process.env.AGENT_DASHBOARD_DISABLE_LISTEN = '1';
 // The live vault may have persisted BYOK endpoints (for example, a 9router
 // instance still being configured). Keep the concurrency assertion limited to
 // the three mock upstreams plus the two shared runner aliases.
 process.env.CUSTOM_LLM_ENDPOINTS = '[]';
+const endpointStoreDir = mkdtempSync(join(tmpdir(), 'motor-pool-health-probe-'));
+process.env.ENDPOINT_STORE_PATH = join(endpointStoreDir, 'endpoints.json');
 
 let activeProbes = 0;
 let maxConcurrentProbes = 0;
@@ -38,7 +43,11 @@ const models = [
 ];
 const primaryProbe = createProbeServer(() => ({ models: [] }));
 const runnerProbe = createProbeServer(() => ({ data: models }));
-const openllmProbe = createProbeServer(() => ({ data: models }));
+const openllmPaths = [];
+const openllmProbe = createProbeServer(path => {
+  openllmPaths.push(path);
+  return path === '/v1/models' ? { data: models } : { error: 'expected /v1/models' };
+});
 const probes = [primaryProbe, runnerProbe, openllmProbe];
 let dashboard;
 
@@ -48,6 +57,8 @@ try {
   process.env.DOCKER_RUNNER_URL = runnerUrl;
   process.env.OPENLLM_URL = openllmUrl;
   process.env.OPENLLM_MODEL = 'local-test';
+  process.env.DOCKER_RUNNER_MODEL = 'ai/qwen3-coder:latest';
+  process.env.GLM_FLASH_MODEL = 'ai/glm-4.7-flash:latest';
 
   const { app } = await import('../server.js');
   dashboard = app.listen(0, '127.0.0.1');
@@ -62,6 +73,7 @@ try {
   assert.equal(response.data.endpoints.docker_runner, 'healthy');
   assert.equal(response.data.endpoints.glm_flash, 'healthy');
   assert.equal(response.data.endpoints.openllm, 'healthy');
+  assert.ok(openllmPaths.includes('/v1/models'), 'OpenLLM must use its OpenAI-compatible model-list route');
   assert.equal(maxConcurrentProbes, 3, 'primary, shared runner, and OpenLLM probes should overlap');
   assert.ok(elapsedMs < 450, `three 150ms probes should not stack sequentially (took ${elapsedMs}ms)`);
 
@@ -80,4 +92,5 @@ try {
 } finally {
   if (dashboard) await new Promise(resolve => dashboard.close(resolve));
   await Promise.all(probes.map(server => new Promise(resolve => server.close(resolve))));
+  rmSync(endpointStoreDir, { recursive: true, force: true });
 }

@@ -40,7 +40,7 @@ services:
       # Default keep_alive (5m) unloads the model between requests; on CPU-only
       # hosts reloading a 7B model from disk can exceed the dashboard's chat
       # timeout. Keep it resident for 30m of inactivity instead.
-      - OLLAMA_KEEP_ALIVE=30m
+      - OLLAMA_KEEP_ALIVE=${OLLAMA_KEEP_ALIVE:-30m}
     volumes:
       - ollama_data:/root/.ollama
     networks:

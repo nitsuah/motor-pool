@@ -59,22 +59,37 @@ export function initSessionSnapshot(sessions, logStructured) {
   }
 }
 
+function writeSnapshot(logStructured) {
+  if (!sessionsRef) return false;
+  try {
+    ensureDir();
+    const payload = {
+      savedAt: new Date().toISOString(),
+      sessions: Array.from(sessionsRef.values()).filter(s => !s.endedAt),
+    };
+    const tmp = SNAPSHOT_PATH + '.tmp';
+    writeFileSync(tmp, JSON.stringify(payload, null, 2), { encoding: 'utf8', mode: 0o600 });
+    renameSync(tmp, SNAPSHOT_PATH);
+    return true;
+  } catch (err) {
+    logStructured?.('warn', 'session_snapshot_write_failed', { error: err.message });
+    return false;
+  }
+}
+
+/** Flush a pending debounced write before the process exits. */
+export function flushSessionSnapshot(logStructured) {
+  if (writeTimer) {
+    clearTimeout(writeTimer);
+    writeTimer = null;
+  }
+  return writeSnapshot(logStructured);
+}
+
 export function scheduleSnapshotWrite(logStructured) {
   if (writeTimer) clearTimeout(writeTimer);
   writeTimer = setTimeout(() => {
     writeTimer = null;
-    if (!sessionsRef) return;
-    try {
-      ensureDir();
-      const payload = {
-        savedAt: new Date().toISOString(),
-        sessions: Array.from(sessionsRef.values()).filter(s => !s.endedAt),
-      };
-      const tmp = SNAPSHOT_PATH + '.tmp';
-      writeFileSync(tmp, JSON.stringify(payload, null, 2), { encoding: 'utf8', mode: 0o600 });
-      renameSync(tmp, SNAPSHOT_PATH);
-    } catch (err) {
-      logStructured?.('warn', 'session_snapshot_write_failed', { error: err.message });
-    }
+    writeSnapshot(logStructured);
   }, WRITE_DEBOUNCE_MS);
 }
