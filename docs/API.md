@@ -170,7 +170,17 @@ POST /api/sessions/:id/stream
 Content-Type: application/json
 ```
 
-Same body as Send Message. Response is `text/event-stream` (SSE); each `data:` line is a token chunk. Final event is `data: [DONE]`.
+Same body as Send Message. Response is `text/event-stream` (SSE), with a JSON object in each `data:` frame:
+
+| `type` | Fields | Meaning |
+| --- | --- | --- |
+| `token` | `content` | Assistant text chunk. Tool-enabled experiences stream model output while it arrives. |
+| `reset` | — | Discard provisional text when the model switches to a tool call or output controls replace streamed text. |
+| `tool_call` | `tool`, `args`, `result` | A tool call completed. |
+| `done` | `messageCount`, optional `blocked`, `redacted`, `truncated` | The turn finished and its final response was persisted. |
+| `error` | `message` | The turn failed or the upstream stream stalled. |
+
+In strict output-filter modes, assistant text is buffered and one sanitized `token` frame is sent after the complete turn. Disconnecting aborts the active model stream and finalizes the session state.
 
 ---
 

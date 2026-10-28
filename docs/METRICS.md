@@ -8,12 +8,12 @@ This document tracks the health, performance, and quality metrics of the `motor-
 
 | Metric | Current | Target | Status |
 | :--- | :--- | :--- | :--- |
-| **Unit Test Coverage** | 81.10% statements / 71.39% branches / 89.83% functions (historical coverage run 2026-09-11 across 66 suites; coverage not remeasured for the current 69-suite set). Current isolated run: 69/69 pass, 0 failures (2026-10-27). | >80% | ⚪ |
-| **Test File Count** | 73 test files (69 unit + 4 integration requiring a live LLM/Docker stack); 69/69 unit suites pass in the isolated Docker test image (2026-10-27). | >50 | 🟢 |
+| **Unit Test Coverage** | 81.10% statements / 71.39% branches / 89.83% functions (historical coverage run 2026-09-11 across 66 suites; coverage not remeasured for the current 70-suite set). Current isolated run: 70/70 pass, 0 failures (2026-10-28). | >80% | ⚪ |
+| **Test File Count** | 74 test files (70 unit + 4 integration requiring a live LLM/Docker stack); 70/70 unit suites pass in the isolated Docker test image (2026-10-28). | >50 | 🟢 |
 | **Critical Vulnerabilities** | 0 | 0 | 🟢 |
 | **ESLint Errors** | 0 errors / 75 warnings (mostly unused vars; `npm run lint` at the root, enforced in CI since 2026-10-22) | 0 | 🟢 |
 | **Avg. Cyclomatic Complexity** | TBD | <10 | ⚪ |
-| **Production Bundle Size** | 249.10 KB gzipped JS (934.02 KB raw, one chunk; dashboard Docker build 2026-10-27) | <500KB gzipped | 🟢 |
+| **Production Bundle Size** | 249.11 KB gzipped JS (934.07 KB raw, one chunk; dashboard Docker build 2026-10-28; Vite warns the minified chunk exceeds 500 KB) | <500KB gzipped | 🟢 |
 | **CI Build Time** | TBD | <3 mins | ⚪ |
 | **CI Pipeline Success Rate** | TBD | 100% | ⚪ |
 | **Outdated Dependencies** | TBD | 0 | ⚪ |
@@ -59,6 +59,34 @@ tokens/s for 8B; the tokenizers differ, so treat this as directional rather
 than a strict apples-to-apples score. Keep the 8B selection for quality
 evaluation, and prefer the 3B tier when latency is the priority until a
 verified accelerator path is available.
+
+## Tool-enabled Agent Streaming Comparison (2026-10-28)
+
+Measured in the isolated Compose test image against the running local Ollama
+container (`llama3.2:3b`, CPU-only, warm model). The benchmark ran three valid
+buffered/streamed pairs each for Developer (`read_file`), Research
+(`write_artifact`), and Website (`save_website_file`). It used temporary local
+files and an in-process website MCP stub; no external web requests or live
+dashboard/database data were involved. The reported first token is the first
+model text available to the route. In buffered mode the route cannot emit that
+final reply until the tool loop completes, so first-token time equals total
+loop time. Total time excludes the session HTTP route's preflight/finalization.
+
+| Experience | Buffered first token / total | Streamed first token | First-token reduction | Streamed total |
+| :--- | ---: | ---: | ---: | ---: |
+| Developer | 2.672 s / 2.672 s | 1.074 s | 59.8% | 2.704 s |
+| Research | 4.429 s / 4.429 s | 1.654 s | 62.6% | 3.904 s |
+| Website | 4.671 s / 4.671 s | 2.540 s | 45.6% | 4.582 s |
+
+These are three-sample medians from one local run, not a broad performance
+claim. Streaming reduced visible first-token latency in all three experiences;
+total loop latency was essentially unchanged for Developer (+32 ms), lower for
+Research (-525 ms), and lower for Website (-89 ms). The UI's main JavaScript
+bundle measured 249.11 KB gzipped and 934.07 KB minified against a 500 KB
+minified-chunk warning threshold. The gzip budget is met, though the
+single-chunk warning makes startup measurement and a possible panel split worth
+tracking separately. The LLM benchmark does not measure dashboard startup.
+Collect a browser startup baseline before changing bundle boundaries.
 
 ## How to Update
 
@@ -147,4 +175,4 @@ cloc . --exclude-dir=node_modules,dist
 ```
 
 ----
-*Last Updated: 2026-09-11*
+*Last Updated: 2026-10-28*

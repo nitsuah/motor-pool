@@ -27,6 +27,7 @@
 - **Event Bus Integration** - Internal event emitter system for handling cross-agent communication.
 - **BYOK External LLMs & Custom Endpoint Registry** - `CUSTOM_LLM_ENDPOINTS` adds any OpenAI-compatible endpoint (OpenRouter, vLLM, LM Studio, Claude/Gemini gateways); API keys are injected server-side and never sent to the frontend.
 - **Plugin Tools in the Agent Loop** - Enabled plugin tools are merged into the model's tool list for the developer/research/website experiences as `<plugin>__<tool>` function calls, so agents can invoke them on their own.
+- **Streaming Tool-Enabled Agent Turns** - Developer, research, and website experiences stream model text and completed tool results during `/api/sessions/:id/stream`; provisional text clears when the model chooses a tool, and strict output-filter modes remain buffered until sanitization.
 - **Declarative MCP Registry** - `config/mcp-registry.json` declares MCP containers once; `GET /api/mcp-registry` lists them with live health and `POST /api/mcp-registry/:key/ensure|stop` JIT-starts or stops one on demand.
 - **bb-mcp Streaming UI** - `GET /api/mcp/:id/stream` SSE endpoint plus a `ToolStream` component (fade-in tokens, typing indicator) and a Stream button in ToolWorkbench.
 - **Multi-Persona Blackboard Selector** - Student/Instructor/Admin/Parent persona picker in the SystemPanel BLACKBOARD MCP section filters the loaded bb-mcp tool list.

@@ -24,15 +24,28 @@ writeFileSync(join(WORKSPACE, 'hello.txt'), 'file contents\n');
 // ── Scripted stub LLM ────────────────────────────────────────────────────────
 // `script` is a queue of message objects to hand back, one per request.
 let script = [];
+let streamScript = [];
 const requests = [];
 const llmApp = express();
 llmApp.use(express.json({ limit: '5mb' }));
 llmApp.post('/api/chat', (req, res) => {
   requests.push(req.body);
+  if (req.body.stream) {
+    const events = streamScript.shift()?.events || [];
+    res.writeHead(200, { 'Content-Type': 'application/x-ndjson' });
+    for (const event of events) res.write(`${JSON.stringify(event)}\n`);
+    return res.end();
+  }
   res.json({ message: script.shift() ?? { content: 'fallback' } });
 });
 llmApp.post('/chat/completions', (req, res) => {
   requests.push(req.body);
+  if (req.body.stream) {
+    const events = streamScript.shift()?.events || [];
+    res.writeHead(200, { 'Content-Type': 'text/event-stream' });
+    for (const event of events) res.write(`data: ${JSON.stringify(event)}\n\n`);
+    return res.end('data: [DONE]\n\n');
+  }
   res.json({ choices: [{ message: script.shift() ?? { content: 'fallback' } }] });
 });
 const llm = llmApp.listen(0);
@@ -77,6 +90,11 @@ const helpersWithPlugin = createAgentHelpers({
 const run = (h, tools = DEVELOPER_TOOLS, style = 'ollama') =>
   h.runAgentLoop([{ role: 'user', content: 'go' }], style, LLM_URL, {}, tools, session);
 
+const runStreaming = (h, tools, style, callbacks) =>
+  h.runAgentLoop([{ role: 'user', content: 'go' }], style, LLM_URL, {}, tools, session, {
+    stream: true, ...callbacks,
+  });
+
 try {
   // ── getExperienceTools ─────────────────────────────────────────────────────
   assert.strictEqual(helpers.getExperienceTools('developer'), DEVELOPER_TOOLS, 'developer tools with a workspace');
@@ -97,6 +115,67 @@ try {
   out = await run(helpers);
   assert.strictEqual(out.content, 'No response received', 'null content falls back to a placeholder');
   console.log('  ✅ a reply with no tool calls is returned directly');
+
+  // ── Ollama streaming tool loop ────────────────────────────────────────────
+  streamScript = [
+    { events: [
+      { message: { content: 'Checking ' } },
+      { message: { content: '', tool_calls: [{ function: { name: 'read_file', arguments: { path: 'hello.txt' } } }] } },
+    ] },
+    { events: [{ message: { content: 'Ollama streamed answer' } }] },
+  ];
+  const ollamaTokens = [];
+  const ollamaResets = [];
+  const ollamaToolEvents = [];
+  out = await runStreaming(helpers, DEVELOPER_TOOLS, 'ollama', {
+    onToken: token => ollamaTokens.push(token),
+    onReset: () => ollamaResets.push(true),
+    onToolCall: call => ollamaToolEvents.push(call),
+  });
+  assert.equal(out.content, 'Ollama streamed answer');
+  assert.equal(ollamaTokens.join(''), 'Checking Ollama streamed answer');
+  assert.equal(ollamaResets.length, 1, 'provisional text is cleared when a tool call arrives');
+  assert.equal(ollamaToolEvents[0].result.content, 'file contents\n', 'tool result is reported as soon as it completes');
+  assert.equal(requests.at(-2).stream, true);
+  assert.equal(requests.at(-1).stream, true);
+  console.log('  ✅ Ollama tool calls and final text stream through the agent loop');
+
+  // ── OpenAI-compatible SSE with fragmented tool arguments ──────────────────
+  streamScript = [
+    { events: [
+      { choices: [{ delta: { content: 'Inspecting ' } }] },
+      { choices: [{ delta: { tool_calls: [{ index: 0, id: 'call_streamed', function: { name: 'read_file', arguments: '{"path":' } }] } }] },
+      { choices: [{ delta: { tool_calls: [{ index: 0, function: { arguments: '"hello.txt"}' } }] } }] },
+      { choices: [{ delta: {}, finish_reason: 'tool_calls' }] },
+    ] },
+    { events: [
+      { choices: [{ delta: { content: 'OpenAI streamed ' } }] },
+      { choices: [{ delta: { content: 'answer' }, finish_reason: 'stop' }] },
+    ] },
+  ];
+  const openAiTokens = [];
+  const openAiToolEvents = [];
+  out = await runStreaming(helpers, DEVELOPER_TOOLS, 'openai', {
+    onToken: token => openAiTokens.push(token),
+    onToolCall: call => openAiToolEvents.push(call),
+  });
+  assert.equal(out.content, 'OpenAI streamed answer');
+  assert.equal(openAiTokens.join(''), 'Inspecting OpenAI streamed answer');
+  assert.equal(openAiToolEvents[0].callId, 'call_streamed');
+  assert.equal(openAiToolEvents[0].result.content, 'file contents\n');
+  const streamedHistory = requests.at(-1).messages.find(message => message.role === 'assistant' && message.tool_calls);
+  assert.deepEqual(JSON.parse(streamedHistory.tool_calls[0].function.arguments), { path: 'hello.txt' });
+  console.log('  ✅ OpenAI-compatible SSE parses split tool-call arguments and streams the final reply');
+
+  // ── A normal streamed text reply has no tools and emits its chunks live ────
+  streamScript = [{ events: [
+    { message: { content: 'Fast ' } }, { message: { content: 'answer' } },
+  ] }];
+  const plainTokens = [];
+  out = await runStreaming(helpers, DEVELOPER_TOOLS, 'ollama', { onToken: token => plainTokens.push(token) });
+  assert.equal(out.content, 'Fast answer');
+  assert.equal(plainTokens.join(''), 'Fast answer');
+  console.log('  ✅ streamed text chunks are emitted while the response is arriving');
 
   // ── read_file executes for real ────────────────────────────────────────────
   script = [toolCall('read_file', { path: 'hello.txt' }), { content: 'done reading' }];

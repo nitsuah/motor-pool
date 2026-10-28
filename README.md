@@ -160,7 +160,7 @@ Optional endpoints (require profile flags above):
 
 ## Features
 
-- **Multi-model support**: Llama2, Qwen3-Coder (Ollama), Docker Model Runner, GLM-Flash, OpenLLM (opt-in)
+- **Multi-model support**: local Ollama models, optional Docker Model Runner endpoints, and OpenLLM (opt-in)
 - **Agent sessions**: persistent session management with full message history
 - **Safety controls**: dashboard input classification, prompt handling, output filtering, and experience-level tool restrictions; NemoClaw remains a deferred optional sandbox profile
 - **Experience modes**: server-enforced endpoint and safety rules per experience

@@ -120,6 +120,12 @@ export function useSessionStreaming({
             if (event.type === 'token') {
               accumulated += event.content;
               setStreamingBySession(prev => ({ ...prev, [sessionId]: accumulated }));
+            } else if (event.type === 'reset') {
+              // A model may stream a short preamble before choosing a tool. It
+              // is provisional until the tool decision is known; clear it before
+              // showing the final post-tool answer.
+              accumulated = '';
+              setStreamingBySession(prev => ({ ...prev, [sessionId]: '' }));
             } else if (event.type === 'tool_call') {
               const toolMsg = { role: 'tool_call', tool: event.tool, args: event.args, result: event.result, timestamp: new Date() };
               if (sessionId === activeSessionRef.current) setActiveSessionMessagesRef.current(prev => [...prev, toolMsg]);
