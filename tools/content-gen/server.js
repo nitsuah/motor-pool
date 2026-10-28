@@ -71,7 +71,7 @@ async function pollTaskUntilDone(taskId) {
 // ── MCP server factory ─────────────────────────────────────────────────────────
 
 function buildServer() {
-  const server = new McpServer({ name: 'content-gen', version: '1.0.0' });
+  const server = new McpServer({ name: 'content-gen', version: '1.0.0' }, { maxToolInputElements: 10_000 });
 
   // ── Tool: generate_video ─────────────────────────────────────────────────────
   server.tool(
@@ -182,7 +182,7 @@ function buildServer() {
 // ── Express app ────────────────────────────────────────────────────────────────
 
 const app = express();
-app.use(express.json());
+app.use(express.json({ limit: '1mb' }));
 
 app.get('/health', (_req, res) => res.json({
   status: 'ok',
