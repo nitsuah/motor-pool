@@ -8,12 +8,12 @@ This document tracks the health, performance, and quality metrics of the `motor-
 
 | Metric | Current | Target | Status |
 | :--- | :--- | :--- | :--- |
-| **Unit Test Coverage** | 81.10% statements / 71.39% branches / 89.83% functions (native run 2026-09-11 — no Docker in this cloud automation environment — `npm run test:coverage` in `dashboard/` with NODE_V8_COVERAGE + c8; 66/66 unit tests pass, 0 failures) | >80% | 🟢 |
-| **Test File Count** | 70 test files (66 unit + 4 e2e requiring a live LLM/Docker stack); 66/66 unit tests pass natively (2026-09-11) | >50 | 🟢 |
+| **Unit Test Coverage** | 81.10% statements / 71.39% branches / 89.83% functions (historical coverage run 2026-09-11 across 66 suites; coverage not remeasured for the current 69-suite set). Current isolated run: 69/69 pass, 0 failures (2026-10-28). | >80% | ⚪ |
+| **Test File Count** | 73 test files (69 unit + 4 integration requiring a live LLM/Docker stack); 69/69 unit suites pass in the isolated Docker test image (2026-10-28). | >50 | 🟢 |
 | **Critical Vulnerabilities** | 0 | 0 | 🟢 |
 | **ESLint Errors** | 0 errors / 75 warnings (mostly unused vars; `npm run lint` at the root, enforced in CI since 2026-10-22) | 0 | 🟢 |
 | **Avg. Cyclomatic Complexity** | TBD | <10 | ⚪ |
-| **Production Bundle Size** | TBD | <500KB | ⚪ |
+| **Production Bundle Size** | 249.10 KB gzipped JS (934.02 KB raw, one chunk; dashboard Docker build 2026-10-28) | <500KB gzipped | 🟢 |
 | **CI Build Time** | TBD | <3 mins | ⚪ |
 | **CI Pipeline Success Rate** | TBD | 100% | ⚪ |
 | **Outdated Dependencies** | TBD | 0 | ⚪ |
@@ -30,20 +30,38 @@ This document tracks the health, performance, and quality metrics of the `motor-
 *   **CI Build Time:** The wall-clock time from commit trigger to successful deployment/artifact.
 *   **Outdated Dependencies:** Number of packages with available major updates.
 
+## Ollama Startup and Inference Baseline (2026-10-28)
+
+Measured against the running local Ollama container using `llama3.2:3b` on a
+Windows Docker Desktop setup. `ollama ps` reported `100% CPU`, `llamacpp`, and
+4096 context; no GPU acceleration was in use.
+
+| Probe | Wall time | Model metrics |
+| :--- | ---: | :--- |
+| First request after model was unloaded (30-token prompt, 8-token cap) | 8.16 s | 30 prompt tokens; model reported 0.455 s prompt evaluation and 0.062 s generation before stopping at 2 tokens |
+| Warm request (40-token prompt, 32-token cap) | 2.01 s | 0.283 s prompt evaluation; 1.684 s generation; 19.0 generated tokens/s |
+
+The first request includes model loading, while Ollama's reported generation
+duration excludes it. This is a single short baseline, not a comparative
+benchmark. During the warm run, `docker stats` showed 2.55 GiB container memory;
+the reading is specific to this setup and should be re-measured for other model
+sizes or concurrent workloads. The result gives a baseline for comparing a
+supported GPU/runtime path under issue [#117](https://github.com/nitsuah/motor-pool/issues/117).
+
 ## How to Update
 
 Run the following commands to generate current values for this table:
 
 ### 1. Test Count
 ```bash
-# Unit + integration/e2e test run inside Docker
-docker compose run --rm agent-dashboard npm run test
+# Isolated unit tests: test image, no live data or database mounts
+docker compose --env-file .env -f config/docker-compose.yml --profile test run --build --rm test
 ```
 
 ### 2. Coverage
 ```bash
 # Coverage baseline from the dashboard image (Docker path)
-docker compose run --rm agent-dashboard npm run test:coverage
+docker compose --env-file .env -f config/docker-compose.yml --profile test run --build --rm test npm run test:coverage
 
 # Native path (no host Docker required) — run from dashboard/
 cd dashboard && npm install && npm run test:coverage

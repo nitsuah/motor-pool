@@ -4,9 +4,14 @@
  * is preserved across the module's in-memory lifecycle.
  */
 import assert from 'assert';
-import { initSessionSnapshot, scheduleSnapshotWrite } from '../modules/session-snapshot.js';
-import { existsSync } from 'fs';
+import { existsSync, mkdtempSync, readFileSync, rmSync } from 'fs';
+import { tmpdir } from 'os';
 import { join } from 'path';
+
+const testDir = mkdtempSync(join(tmpdir(), 'session-snapshot-test-'));
+const snapshotPath = join(testDir, 'sessions-snapshot.json');
+process.env.SESSION_SNAPSHOT_PATH = snapshotPath;
+const { initSessionSnapshot, scheduleSnapshotWrite } = await import('../modules/session-snapshot.js');
 
 // 1. initSessionSnapshot with an empty sessions Map does not throw
 const map1 = new Map();
@@ -16,8 +21,7 @@ initSessionSnapshot(map1, null);
 scheduleSnapshotWrite(null);
 
 // 3. After init, the data directory exists
-const dataDir = join(process.cwd(), 'data');
-assert.ok(existsSync(dataDir), 'data directory was created by initSessionSnapshot');
+assert.ok(existsSync(testDir), 'test data directory was created by initSessionSnapshot');
 
 // 4. A session added to the map before scheduleSnapshotWrite gets flushed
 const map2 = new Map();
@@ -32,11 +36,9 @@ scheduleSnapshotWrite(null);
 // Give the debounce time to flush (3s > 2s debounce)
 await new Promise(r => setTimeout(r, 3000));
 
-const snapshotPath = join(process.cwd(), 'data', 'sessions-snapshot.json');
 assert.ok(existsSync(snapshotPath), 'sessions-snapshot.json was written');
 
 // 5. Snapshot file is valid JSON with expected shape
-const { readFileSync } = await import('fs');
 const raw = readFileSync(snapshotPath, 'utf8');
 const parsed = JSON.parse(raw);
 assert.ok(typeof parsed.savedAt === 'string', 'savedAt timestamp present');
@@ -52,3 +54,4 @@ assert.ok(map3.has('test-snap-1'), 'session restored from snapshot on re-init');
 assert.strictEqual(map3.get('test-snap-1').name, 'snap-test', 'name preserved after restore');
 
 console.log('Session persistence tests passed.');
+rmSync(testDir, { recursive: true, force: true });

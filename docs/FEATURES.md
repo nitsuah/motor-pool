@@ -44,7 +44,7 @@
 ## DevOps & Infrastructure
 
 - **Dockerized Deployment** - Pre-configured Dockerfile and Compose setups for containerized environments, utilizing optimized threadpool scaling (`UV_THREADPOOL_SIZE=16`).
-- **GPU Acceleration via CUDA** - Opt-in Docker Compose hardware passthrough supporting localized runtime acceleration on NVIDIA systems.
+- **GPU Acceleration via CUDA** - Opt-in Docker Compose hardware passthrough for NVIDIA systems; AMD and runtime-aware accelerator selection are tracked in [issue #117](https://github.com/nitsuah/motor-pool/issues/117).
 - **Ollama Startup Warmup** - Dedicated compose-level warmup orchestration layer shifting model cold-load latency overhead to stack initialization time.
 - **Environment Variable Configuration** - Flexible setup using `.env` files for secrets and system paths.
 - `[planned]` **Resource Usage Monitoring** - Visual tracking of CPU and memory consumption per agent process.
@@ -52,7 +52,7 @@
 - **Service Discovery and Panel Control** - Backend resolves primary LLM URL from a candidate list; exposes controllability metadata and gated start/stop/restart service actions; system panel surfaces discovery data and live controls.
 - **Live Service Lifecycle Control** - Start/Stop/Restart on the Services panel invoke live `docker compose` CLI commands (gated by `AGENT_BOARD_ENABLE_DOCKER_CONTROL` via `config/docker-compose.docker-control.yml`); inline error feedback shown per service; all tool containers (`tool-content-gen`, `tool-website`, `bb-mcp`) and core services share uniform controls.
 - **Model Management** - Dashboard Models panel shows pull status and streams live progress for each configured LLM endpoint (`ollama pull` streamed over `/ws/events`, `docker model pull` for Docker Model Runner); primary Ollama model is env-configurable via `PRIMARY_LLM_MODEL` (default: `llama3.2:3b`); opt-in `ollama-warmup` service (profile `warmup`) pre-loads the model at `docker compose up` time to eliminate cold-start latency.
-- **Device Profile System** - Auto-detects host hardware (GPU VRAM + total RAM) at startup and selects a model tier: `minimal` (CPU-only), `laptop` (RTX 3070 / 8 GB VRAM), or `desktop` (RTX 4080 / 24 GB VRAM); profiles defined in `config/device-profiles.json`; overridable via `DEVICE_PROFILE`; active profile and GPU status shown in the System panel.
+- **Device Profile System** - `scripts/detect-profile.ps1` recommends a tier from NVIDIA VRAM reported by `nvidia-smi` plus system RAM; `DEVICE_PROFILE` selects the runtime's model defaults. It does not yet detect AMD accelerators or verify that Docker can access a detected GPU ([#117](https://github.com/nitsuah/motor-pool/issues/117)).
 - **bb-mcp Opt-In Integration** - `BB_MCP_ENABLED` compose profile flag gates the bb-mcp service; dashboard API hides Blackboard connectors and proxy routes when disabled, keeping the default footprint minimal.
 - **OpenLLM Opt-In Endpoint** - `openllm` compose profile adds a second OpenAI-compatible endpoint (port 8082) for custom/fine-tuned HuggingFace models via BentoML, registered alongside Ollama and Docker Model Runner; gated by `OPENLLM_ENABLED`.
 - **Validated Production Deployment Path** - Documented in `docs/DEPLOYMENT.md`.

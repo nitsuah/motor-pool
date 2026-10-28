@@ -10,10 +10,10 @@
  * this file layer covers full message history in all cases.
  */
 import { readFileSync, writeFileSync, renameSync, mkdirSync, existsSync } from 'fs';
-import { join } from 'path';
+import { dirname, join } from 'path';
 
-const SNAPSHOT_DIR = join(process.cwd(), 'data');
-const SNAPSHOT_PATH = join(SNAPSHOT_DIR, 'sessions-snapshot.json');
+const SNAPSHOT_PATH = process.env.SESSION_SNAPSHOT_PATH || join(process.cwd(), 'data', 'sessions-snapshot.json');
+const SNAPSHOT_DIR = dirname(SNAPSHOT_PATH);
 const WRITE_DEBOUNCE_MS = 2000;
 
 let writeTimer = null;

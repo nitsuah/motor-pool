@@ -2,7 +2,7 @@
 
 > 🧭 [motor-pool](../README.md) · [Features](./FEATURES.md) · **Roadmap** · [Tasks](./TASKS.md) · [Changelog](./CHANGELOG.md) · [Metrics](./METRICS.md) <!-- nav -->
 
-Last Updated: 2026-10-15
+Last Updated: 2026-10-28
 
 > 2027 planning reset (2026-09-24, `pmo-ff`): every completed 2026 item was removed from this file and
 > condensed into [FEATURES](./FEATURES.md) / [CHANGELOG](./CHANGELOG.md). Open 2026 items were carried
@@ -27,6 +27,7 @@ Critical path: service lifecycle UI → auth gate (+ interim exec-route token) �
 - [ ] **Scoped API token for exec-capable routes (interim, before full auth gate)**: the worktree launch/exec route and `/api/workspace/exec` stay unauthenticated until the JWT/session gate lands; a shared-secret header check on just those routes closes the LAN-exposure gap sooner.
 - [ ] **Persistent BYOK endpoints**: wire `CUSTOM_LLM_ENDPOINTS` env → encrypted volume store so runtime-added endpoints survive restart without editing `.env`.
 - [ ] **Host architecture profiling Phase 2**: Windows host lean-baseline profile accounting for WSL2/Docker Desktop overhead.
+- [ ] **Cross-vendor, runtime-aware GPU profile** ([#117](https://github.com/nitsuah/motor-pool/issues/117)): detect NVIDIA/AMD host devices, then separately verify the accelerator Ollama can access through its active runtime before choosing a GPU model tier; retain CPU fallback when access is not confirmed.
 - [ ] **Named pub/sub event channels — validation** *(carried from 2026 Q3)*: the topic-based mechanism is implemented; close once two agents exchange events in a documented demo path (`TASKS.md` → "Validate cross-agent event bus behavior").
 - [ ] `[deferred/P3]` **Unblock NemoClaw sandbox container** *(carried from 2026 Q2)* — Ollama is the active local runtime; revisit only if NemoClaw becomes relevant.
 - [ ] `[deferred/P3]` **Replace OpenLLM endpoint** *(carried from 2026 Q2)* — CPU-incompatible with the current workflow; `OPENLLM_ENABLED=false` stays.

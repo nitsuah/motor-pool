@@ -1,6 +1,6 @@
 {
-  "default": "llama2:latest",
+  "default": "llama3.1:8b-instruct-q4_K_M",
   "enabled": [
-    "llama2:latest"
+    "llama3.1:8b-instruct-q4_K_M"
   ]
 }

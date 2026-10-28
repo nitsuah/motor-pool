@@ -598,23 +598,31 @@ app.get('/api/health', async (req, res) => {
         ? Number(((recentErrors.length / recentMessages.length) * 100).toFixed(1)) : 0,
     },
   };
-  let cachedRunnerModels = null;
-  for (const [key, config] of Object.entries(LLM_CONFIG)) {
+  const runnerModelsByUrl = new Map();
+  const probeEndpoint = async ([key, config]) => {
     try {
       if (config.apiStyle === 'openai') {
-        if (cachedRunnerModels === null) {
-          const r = await axios.get(`${config.url}/models`, { timeout: 3000 });
-          cachedRunnerModels = r.data?.data || [];
+        // Docker Runner endpoints share one model catalog. Reuse the same
+        // in-flight request while allowing unrelated provider probes to run
+        // concurrently instead of stacking their individual timeouts.
+        if (!runnerModelsByUrl.has(config.url)) {
+          runnerModelsByUrl.set(config.url, axios.get(`${config.url}/models`, { timeout: 3000 })
+            .then(r => r.data?.data || []));
         }
-        const modelLoaded = checkModelInRunnerList(cachedRunnerModels, config.defaultModel);
-        health.endpoints[key] = modelLoaded ? 'healthy' : 'runner_up_model_not_loaded';
-        if (!modelLoaded && health.status === 'ok') health.status = 'degraded';
-      } else {
-        await axios.get(`${config.url}/api/tags`, { timeout: 3000 });
-        health.endpoints[key] = 'healthy';
+        const models = await runnerModelsByUrl.get(config.url);
+        const modelLoaded = checkModelInRunnerList(models, config.defaultModel);
+        return [key, modelLoaded ? 'healthy' : 'runner_up_model_not_loaded'];
       }
+      await axios.get(`${config.url}/api/tags`, { timeout: 3000 });
+      return [key, 'healthy'];
     } catch {
-      health.endpoints[key] = 'unavailable';
+      return [key, 'unavailable'];
+    }
+  };
+  const endpointStatuses = await Promise.all(Object.entries(LLM_CONFIG).map(probeEndpoint));
+  for (const [key, status] of endpointStatuses) {
+    health.endpoints[key] = status;
+    if (status !== 'healthy') {
       if (key === 'primary') health.status = 'critical';
       else if (health.status === 'ok') health.status = 'degraded';
     }

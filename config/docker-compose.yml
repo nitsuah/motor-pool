@@ -300,6 +300,7 @@ services:
       context: ../dashboard
       dockerfile: Dockerfile
     container_name: agent-dashboard
+    restart: unless-stopped
     ports:
       - "3000:3000"
     env_file:
@@ -338,9 +339,11 @@ services:
     volumes:
       - agent_workspace:/workspace
       - agent_endpoint_data:/data
+      # Active session snapshots (including messages) survive container recreation.
+      - agent_session_data:/app/data
     # Docker socket access is intentionally not mounted by default.
     # Add it only in a trusted dev override/profile when Docker control is explicitly needed.
-    # healthcheck is disabled until a stable in-container HTTP client is available
+    # Healthcheck is inherited from dashboard/Dockerfile.
     # depends_on:
 
     #   llm_qwen3:
@@ -507,7 +510,10 @@ services:
     profiles:
       - test
     environment:
-      - AGENT_DASHBOARD_DISABLE_LISTEN=1
+      AGENT_DASHBOARD_DISABLE_LISTEN: "1"
+      DATABASE_URL: ""
+      ENDPOINT_STORE_PATH: /tmp/endpoint-store.json
+      SESSION_SNAPSHOT_PATH: /tmp/session-snapshot.json
     # Bind-mount the lcov report dir so `npm run test:coverage` output
     # (coverage/lcov.info, written by c8) survives after `--rm` removes the
     # container — CI needs it on the host filesystem to upload as an artifact.
@@ -521,6 +527,7 @@ volumes:
   nemoclaw_data:
   website_output:  # Persistent storage for generated client sites and pitch materials
   agent_endpoint_data:  # Encrypted custom endpoint store (survives restarts)
+  agent_session_data:  # Active-session snapshots including message history
   agent_workspace:  # Agent sandbox checkout — reset with: docker volume rm <project>_agent_workspace
 
 networks:

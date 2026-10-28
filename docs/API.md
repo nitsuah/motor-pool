@@ -79,7 +79,7 @@ Content-Type: application/json
 }
 ```
 
-`endpointAdjusted: true` means the requested endpoint was overridden by the experience's policy (e.g. `safe_chat` always uses `primary`).
+`endpointAdjusted: true` means the requested endpoint was overridden by the experience's policy (e.g. `safechat` always uses `primary`).
 
 **Errors:** 400 invalid experience, 400 invalid safetyMode
 
@@ -147,7 +147,7 @@ Content-Type: application/json
 | Field | Type | Required | Default | Description |
 |-------|------|----------|---------|-------------|
 | `message` | string | ✅ | | User message |
-| `useSafeMode` | boolean | | `false` | Route through NemoClaw sandbox (requires `sandbox` profile) |
+| `useSafeMode` | boolean | | `false` | Apply the dashboard safety policy and disable experience tools for this turn |
 
 **Response**
 ```json
@@ -238,7 +238,7 @@ DELETE /api/sessions/:id
 { "success": true, "deleted": true }
 ```
 
-Sessions are in-memory; they are lost on server restart. `deleted: false` if the session didn't exist.
+This ends the session and removes it from the active session map. The ended session record and history remain in persistent storage; it is not a hard-delete or history-erasure operation. `deleted` is `false` if the session did not exist.
 
 ---
 
@@ -494,7 +494,7 @@ GET /api/metrics/summary
     "totalMessages": 47,
     "avgMessagesPerSession": 3.9,
     "modelDistribution": { "llama3.2:3b": 30, "ai/qwen3-coder:latest": 17 },
-    "experienceDistribution": { "developer": 8, "research": 3, "safe_chat": 1 }
+    "experienceDistribution": { "developer": 8, "research": 3, "safechat": 1 }
   }
 }
 ```
@@ -605,7 +605,7 @@ GET /api/experiences
       "defaultSafetyMode": "standard"
     },
     {
-      "key": "safe_chat",
+      "key": "safechat",
       "name": "Safe Chat",
       "description": "Strict safety policy, primary endpoint only",
       "allowedEndpoints": ["primary"],
@@ -649,7 +649,7 @@ GET /api/tools
 }
 ```
 
-Start tool servers with `--profile tools`: `docker compose --profile tools up -d tool-content-gen tool-website`.
+Start tool servers with the repository Compose file and root environment file: `docker compose --env-file .env -f config/docker-compose.yml --profile tools up -d tool-content-gen tool-website`.
 
 ---
 

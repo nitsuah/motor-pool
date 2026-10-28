@@ -2,9 +2,18 @@
 
 > 🧭 [motor-pool](../README.md) · [Features](./FEATURES.md) · [Roadmap](./ROADMAP.md) · **Tasks** · [Changelog](./CHANGELOG.md) · [Metrics](./METRICS.md) <!-- nav -->
 
-Last Updated: 2026-09-24
+Last Updated: 2026-10-28
 
 ## Todo
+
+### New-machine follow-up (2026-10-28)
+
+- [x] **Connect Obsidian to Codex** — verified vault search/read/create operations through the native Obsidian MCP connection; a non-secret motor-pool handoff prompt is saved in the vault.
+- [x] **Set memory-sharing boundary** — keep raw/private notes local; only add sanitized project summaries to the public stash vault. Never store credentials or private transcripts in mirrored notes.
+- [x] **Refresh the Obsidian motor-pool hub** — updated the overview with the Ollama-first setup and open latency/hardware follow-ups; avoided bulk sync over the user's modified stash working tree.
+- [x] **Isolate unit tests from persistent app data** — the runner uses per-test temp files and disables Postgres; the Compose test profile mounts only the coverage output directory.
+- [ ] **Wire `model-manifest.json` into model loading or retire it** — runtime currently pulls only `PRIMARY_LLM_MODEL`; the manifest's `enabled` list is not consumed.
+- [ ] **Integrate 9router after owner setup** — validate the endpoint and update motor-pool configuration once the owner finishes configuring 9router.
 
 ### P1 - High
 
@@ -25,10 +34,14 @@ and `ROADMAP.md` 2027 Q1 for the condensed record._
 
 ### P2 - Medium
 
-- [ ] Add a GPU-oriented model portfolio after CUDA is enabled.
+- [ ] **First-token latency for tool-enabled experiences** — measure and stream developer/research/website tool loops with cancellation and safety behavior preserved ([#116](https://github.com/nitsuah/motor-pool/issues/116)).
+- [ ] **Dashboard decomposition follow-up** — scope a staged refactor of `dashboard/src/App.jsx`, `dashboard/src/LiminalDashboard.jsx`, and `dashboard/server.js`; keep behavior-preserving extractions separate from feature work and define tests before implementation.
+  - Context: the 2026-10-08 TIRE LOC report flagged these high-LOC files for deeper review. This TIRE-kick records the finding; it does not attempt a broad architectural rewrite.
+
+- [ ] Add a GPU-oriented model portfolio after a supported accelerator path is verified.
   - Priority: P2
-  - Context: the repo needs an explicit plan for which large and small models should live on GPU without displacing the existing CPU workflows.
-  - Acceptance Criteria: selected GPU models are documented, pulled successfully, surfaced in the dashboard, and kept within VRAM limits.
+  - Context: coordinate with cross-vendor, runtime-aware hardware profiles in [#117](https://github.com/nitsuah/motor-pool/issues/117), and choose tiers that do not displace the existing CPU workflows.
+  - Acceptance Criteria: selected GPU models are documented, pulled successfully, surfaced in the dashboard, and kept within device memory limits.
 
 - [ ] **[2027-Q2] Blackboard agent demo mode** — add a demo-mode preset that walks through a full Blackboard workflow (course discovery → assignment submission → grade check) using bb-mcp without a live Blackboard connection.
   - Priority: P2
@@ -39,6 +52,9 @@ and `ROADMAP.md` 2027 Q1 for the condensed record._
   - Priority: P2
   - Context: as the MCP container ecosystem grows, the dashboard needs a registry view so users know what tools are available and active.
   - Acceptance Criteria: a tools panel lists bb-mcp tools with status badges; clicking a tool shows its schema and last-run result.
+
+- [ ] **Cross-vendor, runtime-aware hardware profiles** — detect the GPU vendor and the accelerator Ollama can actually access before selecting a GPU-oriented model tier ([#117](https://github.com/nitsuah/motor-pool/issues/117)).
+  - Current limitation: `detect-profile.ps1` only queries `nvidia-smi`; the Compose GPU overlay is NVIDIA/CUDA-only. Ollama is CPU-bound in Windows Docker Desktop when AMD GPU passthrough is unavailable.
 
 ### P3 - Exploratory / Deferred
 
@@ -63,8 +79,8 @@ and `ROADMAP.md` 2027 Q1 for the condensed record._
   - Context: the original "reduce LLM memory usage" goal is real, but nothing has ever
     measured where Ollama's memory actually goes (model weights vs. KV cache vs.
     concurrent-request overhead). `docker stats` on the `ollama` container during a
-    sustained multi-session chat load, compared against `config/model-manifest.json`
-    sizes, would show whether the real lever is fewer concurrently-loaded models,
+    sustained multi-session chat load, compared across the installed Ollama tags,
+    would show whether the real lever is fewer concurrently-loaded models,
     quantization, or context-length limits — before reaching for any new dependency.
   - Acceptance Criteria: a documented measurement (README/METRICS.md note) of Ollama
     RSS/VRAM under a defined load profile, with a recommendation on the actual lever
