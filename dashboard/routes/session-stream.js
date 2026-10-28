@@ -3,7 +3,7 @@ import { buildSystemMessages, outputFiltersActive } from '../safety.js';
 import { preflightTurn, ensureTurnTool, finalizeReply, recordTurnError } from '../modules/session-turn.js';
 
 /**
- * POST /api/sessions/:id/stream — SSE frames: token | tool_call | done | error.
+ * POST /api/sessions/:id/stream — SSE frames: token | reset | tool_call | done | error.
  *
  * Runs the same safety pipeline as /message (modules/session-turn.js):
  * prompt handlers, input classification/blocking, output sanitization, output
@@ -96,17 +96,45 @@ export async function handleSessionStream(req, res, deps) {
 
     const experienceStreamTools = useSafeMode ? [] : getExperienceTools(session.experience);
 
-    // Tool-enabled experiences: run the agentic loop, then emit the result.
+    // Tool-enabled experiences stream model tokens and each completed tool
+    // result through the same safety/finalization path as ordinary turns.
     if (experienceStreamTools.length > 0) {
+      const upstream = new AbortController();
+      onClientGone = () => upstream.abort();
+      if (clientGone) upstream.abort();
+      let streamedContent = false;
       try {
-        const { content: loopContent, toolLog } = await runAgentLoop(msgs, apiStyle, llmUrl, streamHeaders, experienceStreamTools, session);
-        for (const entry of toolLog || []) {
-          send({ type: 'tool_call', tool: entry.name, args: entry.args, result: entry.result });
-        }
+        const { content: loopContent, toolLog } = await runAgentLoop(
+          msgs, apiStyle, llmUrl, streamHeaders, experienceStreamTools, session,
+          {
+            stream: true,
+            signal: upstream.signal,
+            onToken: buffered ? undefined : (content) => {
+              streamedContent = true;
+              send({ type: 'token', content });
+            },
+            onReset: buffered ? undefined : () => {
+              streamedContent = false;
+              send({ type: 'reset' });
+            },
+            onToolCall: (entry) => send({ type: 'tool_call', tool: entry.name, args: entry.args, result: entry.result }),
+          },
+        );
         const reply = finishReply(loopContent, { toolLog });
-        send({ type: 'token', content: reply.content });
-        send({ type: 'done', messageCount: session.messages.length, blocked: reply.blocked, redacted: reply.redacted });
+        // Truncation changes the text after it has been streamed. Replace the
+        // provisional chunks with the persisted, output-capped reply so the UI
+        // and transcript stay consistent.
+        if (reply.truncated && streamedContent) {
+          streamedContent = false;
+          send({ type: 'reset' });
+        }
+        if (buffered || !streamedContent) send({ type: 'token', content: reply.content });
+        send({ type: 'done', messageCount: session.messages.length, blocked: reply.blocked, redacted: reply.redacted, truncated: reply.truncated });
       } catch (error) {
+        if (clientGone) {
+          finishError('[Error] Client disconnected before the agent replied', error);
+          return end();
+        }
         const errMsg = `[Error] Agent loop failed: ${error.message}`;
         finishError(errMsg, error);
         send({ type: 'error', message: errMsg });
@@ -181,7 +209,7 @@ export async function handleSessionStream(req, res, deps) {
       consumeLine(lineBuf);
       lineBuf = '';
       const reply = completeReply();
-      if (reply) send({ type: 'done', messageCount: session.messages.length, blocked: reply.blocked, redacted: reply.redacted });
+      if (reply) send({ type: 'done', messageCount: session.messages.length, blocked: reply.blocked, redacted: reply.redacted, truncated: reply.truncated });
       end();
     });
 

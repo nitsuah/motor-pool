@@ -51,6 +51,15 @@ llmApp.post('/api/chat', (req, res) => {
 
   res.writeHead(200, { 'Content-Type': 'application/x-ndjson' });
   const line = (content) => JSON.stringify({ message: { content } }) + '\n';
+  const toolLine = (name, args) => JSON.stringify({
+    message: { content: '', tool_calls: [{ function: { name, arguments: args } }] },
+  }) + '\n';
+  const afterTool = messages[messages.length - 1]?.role === 'tool';
+  if (afterTool) return res.end(line('Tool result noted.'));
+  if (s === 'badtool') return res.end(toolLine('bash', { command: 'rm -rf /' }));
+  if (s === 'badargs') return res.end(toolLine('write_artifact', '{not valid json'));
+  if (s === 'texttool') return res.end(line('{"name":"write_artifact","parameters":{"filename":"n.md","content":"x"}}'));
+  if (s === 'garbage') return res.end(line('{"name":"bash","parameters{"command":"ls"}}'));
   if (s === 'empty') return res.end();
   if (s === 'midstream') {
     res.write(line('partial'));
@@ -257,10 +266,20 @@ try {
           } else {
             const tokens = r.frames.filter((f) => f.type === 'token').map((f) => f.content);
             assert.ok(r.frames.some((f) => f.type === 'done'), 'stream completes with done');
-            if (strict(v) || v.tools) {
-              // Filtered (strict) or agent-loop replies arrive as one final token: never unfiltered text.
+            if (strict(v)) {
+              // Strict output filtering buffers until the sanitized reply is known.
               assert.equal(tokens.length, 1, 'single buffered token');
               assert.equal(tokens[0], exp.content, 'streamed text is the sanitized reply');
+            } else if (v.tools) {
+              // Tool-enabled turns stream live; reset frames discard provisional
+              // pre-tool text and truncated chunks before their final reply.
+              const visible = [];
+              for (const frame of r.frames) {
+                if (frame.type === 'reset') visible.length = 0;
+                if (frame.type === 'token') visible.push(frame.content);
+              }
+              assert.ok(tokens.length >= 1, 'tool-enabled output streams or emits a final controlled token');
+              assert.equal(visible.join(''), exp.content, 'visible stream matches the persisted reply');
             } else {
               // Live streaming: tokens are the raw model text; the transcript holds the controlled version.
               assert.ok(tokens.length >= 1, 'tokens stream live');

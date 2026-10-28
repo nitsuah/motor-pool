@@ -40,42 +40,49 @@ export function createModelsRouter({
     try {
       const models = [];
       const primaryResolution = await resolvePrimaryLlmUrl();
-      for (const [key, config] of Object.entries(LLM_CONFIG)) {
+      const modelRequests = new Map();
+      const endpointModels = await Promise.all(Object.entries(LLM_CONFIG).map(async ([key, config]) => {
+        const endpointUrl = key === 'primary' ? primaryResolution.url : config.url;
+        const isOpenAi = config.apiStyle === 'openai';
+        // Multiple logical Docker Runner models use one endpoint. Share the
+        // catalog request while probing unrelated providers concurrently.
+        const path = isOpenAi
+          ? (config.backendType === 'docker-runner' ? '/models' : '/v1/models')
+          : '/api/tags';
+        const requestKey = `${endpointUrl}${path}`;
+        if (!modelRequests.has(requestKey)) {
+          modelRequests.set(requestKey, axios.get(requestKey, { timeout: 5000 }).then(response => response.data));
+        }
         try {
-          if (config.apiStyle === 'openai') {
-            // docker-runner uses /models; standard OpenAI-compat uses /v1/models
-            const modelsPath = config.backendType === 'docker-runner' ? '/models' : '/v1/models';
-            const response = await axios.get(`${config.url}${modelsPath}`, { timeout: 5000 });
-            const endpointModels = response.data.data?.map(m => ({
+          const data = await modelRequests.get(requestKey);
+          if (isOpenAi) {
+            return data.data?.map(m => ({
               id: key,
               endpoint: config.name,
-              endpointUrl: config.url,
+              endpointUrl,
               backendType: config.backendType,
               type: config.type,
               name: m.id,
               model: m.id,
               size: 'unknown',
             })) || [];
-            models.push(...endpointModels);
-          } else {
-            const endpointUrl = key === 'primary' ? primaryResolution.url : config.url;
-            const response = await axios.get(`${endpointUrl}/api/tags`, { timeout: 5000 });
-            const endpointModels = response.data.models?.map(m => ({
-              id: key,
-              endpoint: config.name,
-              endpointUrl,
-              backendType: config.backendType,
-              type: config.type,
-              name: m.name,
-              model: m.name.split(':')[0],
-              size: m.details?.parameter_size || 'unknown',
-            })) || [];
-            models.push(...endpointModels);
           }
+          return data.models?.map(m => ({
+            id: key,
+            endpoint: config.name,
+            endpointUrl,
+            backendType: config.backendType,
+            type: config.type,
+            name: m.name,
+            model: m.name.split(':')[0],
+            size: m.details?.parameter_size || 'unknown',
+          })) || [];
         } catch (error) {
           logStructured('warn', 'model_endpoint_unreachable', { endpoint: key, endpointName: config.name, error: error.message });
+          return [];
         }
-      }
+      }));
+      models.push(...endpointModels.flat());
 
       if (models.length === 0) {
         for (const [key, config] of Object.entries(LLM_CONFIG)) {

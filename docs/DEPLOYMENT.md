@@ -12,9 +12,9 @@ dedicated host (Linux server, a VPS, or a Windows machine with Docker Desktop).
 | Requirement | Minimum | Notes |
 |-------------|---------|-------|
 | Docker Engine / Docker Desktop | 24+ | Compose v2 required (`docker compose`, not `docker-compose`) |
-| RAM | 4 GB | 8 GB recommended for Ollama models |
+| RAM | 8 GB | 16 GB recommended for the default stack and larger local models |
 | Disk | 10 GB free | More if pulling large models |
-| GPU (optional) | CUDA 12+ / ROCm | Required for GPU-accelerated Ollama |
+| GPU (optional) | Depends on vendor and runtime | CPU inference works without GPU passthrough; verify the backend Ollama actually selected |
 
 ---
 
@@ -23,40 +23,37 @@ dedicated host (Linux server, a VPS, or a Windows machine with Docker Desktop).
 ```bash
 git clone https://github.com/nitsuah/motor-pool.git
 cd motor-pool
-cp .env.example config/.env
+cp .env.example .env
 ```
 
-Edit `config/.env` — at minimum set:
+Edit the repository-root `.env` — at minimum set:
 
 ```env
 POSTGRES_DB=agent_board
 POSTGRES_USER=agent
 POSTGRES_PASSWORD=<strong-random-password>
-ACTIVE_LLM_BACKEND=docker-model-runner   # or ollama
-DEVICE_PROFILE=laptop                    # minimal | laptop | desktop
+PRIMARY_LLM_MODEL=llama3.2:3b
+DEVICE_PROFILE=minimal                    # minimal | laptop | desktop
 ```
 
 ---
 
-## 2. Choose an LLM backend
+## 2. Start the Ollama-first stack
 
-### Docker Model Runner (default — lowest overhead)
-
-Uses Docker Desktop's built-in model runner. No extra container required.
+The default Compose stack starts the dashboard, Postgres, and an Ollama container. `ollama-init` pulls and warms the model selected by `PRIMARY_LLM_MODEL` (default `llama3.2:3b`).
 
 ```bash
-docker compose -f config/docker-compose.yml up -d
+docker compose --env-file .env -f config/docker-compose.yml up -d
 ```
 
-### Ollama (local container, higher RAM)
+Check that Ollama loaded the intended model and backend:
 
 ```bash
-ACTIVE_LLM_BACKEND=ollama \
-docker compose -f config/docker-compose.yml --profile llm-ollama up -d
-
-# Pull a model
-docker exec ollama ollama pull llama3.2:3b
+docker exec ollama ollama list
+docker exec ollama ollama ps
 ```
+
+Docker Model Runner is an additional endpoint. Enable it in Docker Desktop, then select it in motor-pool; there is no `ACTIVE_LLM_BACKEND` selector in the current runtime. The OpenLLM endpoint is an optional, deferred profile.
 
 ---
 
@@ -64,11 +61,11 @@ docker exec ollama ollama pull llama3.2:3b
 
 ```bash
 # MCP tool servers (content-gen, website agent)
-docker compose -f config/docker-compose.yml --profile tools up -d
+docker compose --env-file .env -f config/docker-compose.yml --profile tools up -d
 
 # Docker control UI (lets dashboard start/stop services)
 # Requires: AGENT_BOARD_ENABLE_DOCKER_CONTROL=true in .env
-docker compose -f config/docker-compose.yml -f config/docker-compose.docker-control.yml \
+docker compose --env-file .env -f config/docker-compose.yml -f config/docker-compose.docker-control.yml \
   up -d
 ```
 
@@ -76,7 +73,7 @@ docker compose -f config/docker-compose.yml -f config/docker-compose.docker-cont
 
 ## 4. Secrets handling
 
-**Never commit `config/.env` to source control.** The repository's `.gitignore`
+**Never commit `.env` to source control.** The repository's `.gitignore`
 excludes it by default.
 
 Secrets checklist:
@@ -130,7 +127,7 @@ board.example.com {
 
 ```bash
 curl http://localhost:3000/api/health
-# → {"status":"ok","timestamp":"...","server":{...},"llm":{...}}
+# → JSON with status (ok/degraded/critical), server details, and per-endpoint health
 ```
 
 Container-level health is already configured in `docker-compose.yml`
@@ -140,8 +137,13 @@ Container-level health is already configured in `docker-compose.yml`
 
 ## 7. Persistence
 
-The PostgreSQL database stores sessions, tasks, and messages. The data volume is
-named `agent-db-data` and persists across `docker compose down` restarts.
+PostgreSQL stores session metadata, messages, and tasks in the Compose volume
+`agent_db_data` (prefixed by the Compose project name). Active session snapshots,
+including full message history for restoring active sessions after a dashboard
+recreation, are also stored in `agent_session_data`. Both survive
+`docker compose down`; `docker compose down -v` removes both. A database dump
+alone does not back up the session snapshot volume; include both stores in a
+complete backup.
 
 To back up:
 
@@ -160,8 +162,8 @@ cat backup_YYYY-MM-DD.sql | docker exec -i agent-db psql -U agent agent_board
 ## 8. Updating
 
 ```bash
-git pull origin main
-docker compose -f config/docker-compose.yml up -d --build
+git pull origin master
+docker compose --env-file .env -f config/docker-compose.yml up -d --build
 ```
 
 The `--build` flag rebuilds the dashboard image. Database migrations run
@@ -173,10 +175,10 @@ automatically on server start via `db.js`.
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `ACTIVE_LLM_BACKEND` | `docker-model-runner` | `docker-model-runner`, `ollama`, `openllm` |
-| `DEVICE_PROFILE` | `minimal` | `minimal`, `laptop`, `desktop` — drives default model selection |
+| `DEVICE_PROFILE` | `minimal` | `minimal`, `laptop`, `desktop` — profile-aware endpoint/model guidance; hardware detection is currently NVIDIA-specific |
 | `PRIMARY_LLM_URL` | `http://ollama:8080` | Override Ollama endpoint |
-| `PRIMARY_LLM_MODEL` | profile-dependent | Override default model |
+| `PRIMARY_LLM_MODEL` | `llama3.2:3b` | Ollama model pulled and warmed at stack startup |
+| `OLLAMA_KEEP_ALIVE` | `30m` | Keep the startup model resident between requests |
 | `POSTGRES_DB/USER/PASSWORD` | `agent_board / agent / agent` | Database credentials |
 | `PORT` | `3000` | Dashboard HTTP port |
 | `AGENT_BOARD_ENABLE_DOCKER_CONTROL` | `false` | Enable start/stop/restart buttons in UI |

@@ -10,10 +10,10 @@
  * this file layer covers full message history in all cases.
  */
 import { readFileSync, writeFileSync, renameSync, mkdirSync, existsSync } from 'fs';
-import { join } from 'path';
+import { dirname, join } from 'path';
 
-const SNAPSHOT_DIR = join(process.cwd(), 'data');
-const SNAPSHOT_PATH = join(SNAPSHOT_DIR, 'sessions-snapshot.json');
+const SNAPSHOT_PATH = process.env.SESSION_SNAPSHOT_PATH || join(process.cwd(), 'data', 'sessions-snapshot.json');
+const SNAPSHOT_DIR = dirname(SNAPSHOT_PATH);
 const WRITE_DEBOUNCE_MS = 2000;
 
 let writeTimer = null;
@@ -59,22 +59,37 @@ export function initSessionSnapshot(sessions, logStructured) {
   }
 }
 
+function writeSnapshot(logStructured) {
+  if (!sessionsRef) return false;
+  try {
+    ensureDir();
+    const payload = {
+      savedAt: new Date().toISOString(),
+      sessions: Array.from(sessionsRef.values()).filter(s => !s.endedAt),
+    };
+    const tmp = SNAPSHOT_PATH + '.tmp';
+    writeFileSync(tmp, JSON.stringify(payload, null, 2), { encoding: 'utf8', mode: 0o600 });
+    renameSync(tmp, SNAPSHOT_PATH);
+    return true;
+  } catch (err) {
+    logStructured?.('warn', 'session_snapshot_write_failed', { error: err.message });
+    return false;
+  }
+}
+
+/** Flush a pending debounced write before the process exits. */
+export function flushSessionSnapshot(logStructured) {
+  if (writeTimer) {
+    clearTimeout(writeTimer);
+    writeTimer = null;
+  }
+  return writeSnapshot(logStructured);
+}
+
 export function scheduleSnapshotWrite(logStructured) {
   if (writeTimer) clearTimeout(writeTimer);
   writeTimer = setTimeout(() => {
     writeTimer = null;
-    if (!sessionsRef) return;
-    try {
-      ensureDir();
-      const payload = {
-        savedAt: new Date().toISOString(),
-        sessions: Array.from(sessionsRef.values()).filter(s => !s.endedAt),
-      };
-      const tmp = SNAPSHOT_PATH + '.tmp';
-      writeFileSync(tmp, JSON.stringify(payload, null, 2), { encoding: 'utf8', mode: 0o600 });
-      renameSync(tmp, SNAPSHOT_PATH);
-    } catch (err) {
-      logStructured?.('warn', 'session_snapshot_write_failed', { error: err.message });
-    }
+    writeSnapshot(logStructured);
   }, WRITE_DEBOUNCE_MS);
 }

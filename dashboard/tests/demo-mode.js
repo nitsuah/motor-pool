@@ -3,6 +3,10 @@ import axios from 'axios';
 
 process.env.AGENT_DASHBOARD_DISABLE_LISTEN = '1';
 process.env.PUBLIC_DEMO_MODE = '1';
+// This test only exercises demo-mode routing. Keep model discovery isolated so
+// host Docker/network availability cannot consume its 10s request timeout.
+process.env.PRIMARY_LLM_URL = 'http://127.0.0.1:1';
+process.env.PRIMARY_LLM_URL_CANDIDATES = 'http://127.0.0.1:1';
 
 const { app } = await import('../server.js');
 

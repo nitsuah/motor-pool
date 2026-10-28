@@ -1,8 +1,9 @@
 #!/usr/bin/env node
-import { readdirSync } from 'node:fs';
+import { mkdtempSync, readdirSync, rmSync } from 'node:fs';
 import { execFileSync } from 'node:child_process';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { tmpdir } from 'node:os';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const testsDir = join(__dirname, '..', 'tests');
@@ -24,18 +25,36 @@ const files = readdirSync(testsDir)
 
 let passed = 0;
 let failed = 0;
+const testDataDir = mkdtempSync(join(tmpdir(), 'motor-pool-unit-tests-'));
+const baseTestEnv = {
+  ...process.env,
+  // Unit tests must not write through Compose's persistent application volumes
+  // or mutate the configured Postgres database when run inside a live container.
+  DATABASE_URL: '',
+};
 
-// safety-layer.js runs without --experimental-vm-modules
-for (const f of ['safety-layer.js', ...files]) {
-  const path = join(testsDir, f);
-  const args = f === 'safety-layer.js' ? [path] : ['--experimental-vm-modules', path];
-  try {
-    execFileSync(process.execPath, args, { stdio: 'inherit' });
-    passed++;
-  } catch {
-    failed++;
-    console.error(`\n✗ FAILED: ${f}\n`);
+try {
+  // safety-layer.js runs without --experimental-vm-modules
+  for (const f of ['safety-layer.js', ...files]) {
+    const path = join(testsDir, f);
+    const args = f === 'safety-layer.js' ? [path] : ['--experimental-vm-modules', path];
+    const env = {
+      ...baseTestEnv,
+      // A separate file per test prevents cross-test state and protects the
+      // dashboard's live session snapshot and BYOK endpoint store.
+      SESSION_SNAPSHOT_PATH: join(testDataDir, `${f}.sessions.json`),
+      ENDPOINT_STORE_PATH: join(testDataDir, `${f}.endpoints.json`),
+    };
+    try {
+      execFileSync(process.execPath, args, { stdio: 'inherit', env });
+      passed++;
+    } catch {
+      failed++;
+      console.error(`\n✗ FAILED: ${f}\n`);
+    }
   }
+} finally {
+  rmSync(testDataDir, { recursive: true, force: true });
 }
 
 console.log(`\n${passed} passed, ${failed} failed out of ${passed + failed} unit tests`);

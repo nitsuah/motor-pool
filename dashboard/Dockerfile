@@ -18,8 +18,8 @@ RUN if [ "$INSTALL_DOCKER_CLI" = "true" ]; then \
     fi
 
 WORKDIR /app
-COPY package.json ./
-RUN npm install
+COPY package.json package-lock.json ./
+RUN npm ci
 
 # ---- test stage ----
 FROM base AS test

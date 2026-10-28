@@ -105,19 +105,21 @@ How the pieces fit, what happens to a task from creation to a finished result, a
 
 ## Quick Start
 
-Minimal stack (dashboard + Ollama + DB — fits a 16 GB host):
+Minimal stack (dashboard + Ollama + Postgres):
 
 ```powershell
-cd motor-pool\config   # from the folder that holds your clone (see docs/DEPLOYMENT.md)
-docker compose -f docker-compose.yml up -d
+cd motor-pool   # repository root
+if (-not (Test-Path .env)) { Copy-Item .env.example .env }
+docker compose --env-file .env -f config/docker-compose.yml up -d
 ```
 
-or for GPU:
+For NVIDIA GPU passthrough in a supported Docker runtime:
 
 ```powershell
-cd motor-pool\config   # from the folder that holds your clone (see docs/DEPLOYMENT.md)
-docker compose -f docker-compose.yml -f docker-compose.gpu.yml up -d
+docker compose --env-file .env -f config/docker-compose.yml -f config/docker-compose.gpu.yml up -d
 ```
+
+The root `.env` is used for Compose interpolation and the dashboard's `env_file`. The optional GPU overlay is NVIDIA/CUDA-only; AMD and runtime-aware selection are tracked in [issue #117](https://github.com/nitsuah/motor-pool/issues/117).
 
 Open [http://localhost:3000](http://localhost:3000) — that's it.
 
@@ -126,16 +128,16 @@ Add opt-in profiles as needed:
 ```powershell
 # Distributed tracing (Jaeger UI at :16686)
 $env:OTEL_ENABLED='true'
-docker compose -f docker-compose.yml --profile observability up -d jaeger
+docker compose --env-file .env -f config/docker-compose.yml --profile observability up -d jaeger
 
 # Blackboard MCP
-docker compose -f docker-compose.yml --profile bb-mcp up -d bb-mcp
+docker compose --env-file .env -f config/docker-compose.yml --profile bb-mcp up -d bb-mcp
 
 # MCP tool servers (Content Studio / Website Agent)
-docker compose -f docker-compose.yml --profile tools up -d tool-content-gen tool-website
+docker compose --env-file .env -f config/docker-compose.yml --profile tools up -d tool-content-gen tool-website
 
 # NemoClaw safety sandbox
-docker compose -f docker-compose.yml --profile sandbox up -d nemoclaw
+docker compose --env-file .env -f config/docker-compose.yml --profile sandbox up -d nemoclaw
 ```
 
 Default endpoints (minimal stack):
@@ -158,9 +160,9 @@ Optional endpoints (require profile flags above):
 
 ## Features
 
-- **Multi-model support**: Llama2, Qwen3-Coder (Ollama), Docker Model Runner, GLM-Flash, OpenLLM (opt-in)
+- **Multi-model support**: local Ollama models, optional Docker Model Runner endpoints, and OpenLLM (opt-in)
 - **Agent sessions**: persistent session management with full message history
-- **Safety sandbox**: NemoClaw integration for policy-enforced safe mode
+- **Safety controls**: dashboard input classification, prompt handling, output filtering, and experience-level tool restrictions; NemoClaw remains a deferred optional sandbox profile
 - **Experience modes**: server-enforced endpoint and safety rules per experience
 - **Metrics dashboard**: summary, safety, feedback, and error telemetry
 - **Web dashboard**: React UI with live Docker status monitoring
@@ -183,31 +185,26 @@ dashboard/                    # Web UI & API server (React + Express)
   Dockerfile
 config/                       # Stack config and model manifests
   docker-compose.yml          # Stack definition
-  model-manifest.json         # Model loading config
+  model-manifest.json         # Draft model portfolio (not consumed by runtime)
   connectors.json             # Connector config
 llm/                          # Model configs / Modelfiles (future)
 services/                     # Additional microservices (future)
 scripts/                      # Setup & management scripts
 ```
 
-## Models & Selective Loading
+## Models & Loading
 
-Models are loaded at startup based on the `config/model-manifest.json` file. Only models listed in the `enabled` array will be loaded. The application default is `llama3.2:3b` — `ollama-init` automatically pulls `PRIMARY_LLM_MODEL` (default: `llama3.2:3b`) on `docker compose up`, so no manual pull is needed for the default model.
+At startup, `ollama-init` pulls and preloads the single model selected by `PRIMARY_LLM_MODEL` (default: `llama3.2:3b`); the dashboard's model-management panel can pull additional models on demand. `config/model-manifest.json` is a portfolio draft and is not currently consumed by the runtime, so editing its `enabled` array does not load models.
 
-To enable additional models:
+To change the startup model, set `PRIMARY_LLM_MODEL` in the root `.env` file (or override it in the Compose environment) and restart the stack. To pull an additional model without changing startup selection, use the dashboard's Models panel or run `docker exec ollama ollama pull <model>`.
 
-1. Pull the model in your Ollama container (e.g. `docker exec ollama ollama pull qwen3-coder:latest`).
-2. Add the model name to the `enabled` array in `config/model-manifest.json`.
-3. Restart the stack.
-
-**Example `config/model-manifest.json`:**
+**Current `config/model-manifest.json` draft:**
 
 ```json
 {
-  "default": "llama3.2:3b",
+  "default": "llama3.1:8b-instruct-q4_K_M",
   "enabled": [
-    "llama3.2:3b",
-    "qwen3-coder:latest"
+    "llama3.1:8b-instruct-q4_K_M"
   ]
 }
 ```
@@ -241,7 +238,7 @@ Docker Desktop's built-in model runner is also wired up as an endpoint (`docker_
 2. Start the service:
 
    ```powershell
-   docker compose -f config/docker-compose.yml --profile openllm up -d llm_openllm
+   docker compose --env-file .env -f config/docker-compose.yml --profile openllm up -d llm_openllm
    ```
 
 3. Select "OpenLLM" in the dashboard sidebar (Developer or Research experience).
@@ -263,7 +260,7 @@ paired with a tool workbench panel that lists the server's MCP tools and execute
 Both are gated behind the `tools` compose profile:
 
 ```powershell
-docker compose -f config/docker-compose.yml --profile tools up -d --build tool-content-gen tool-website
+docker compose --env-file .env -f config/docker-compose.yml --profile tools up -d --build tool-content-gen tool-website
 ```
 
 If a tool server is offline, the workbench shows the exact start command (and a Start
@@ -280,7 +277,7 @@ host. To let the dashboard actually drive the stack, apply the
 `docker-compose.docker-control.yml` overlay:
 
 ```powershell
-docker compose -f config/docker-compose.yml -f config/docker-compose.docker-control.yml `
+docker compose --env-file .env -f config/docker-compose.yml -f config/docker-compose.docker-control.yml `
   up -d --build agent-dashboard
 ```
 
@@ -440,7 +437,7 @@ All lint, test, and quality checks run via Docker — no local Node.js required.
 **Run unit tests:**
 
 ```powershell
-docker compose -f config/docker-compose.yml --profile test run --rm test
+docker compose --env-file .env -f config/docker-compose.yml --profile test run --build --rm test
 ```
 
 **Nightly journeys:** Playwright "AI user" journeys with visual baselines (`tests/journeys/`, run nightly by `.github/workflows/journeys.yml`). Failures file `bot:journey` issues; [BUGS.md](https://github.com/nitsuah/motor-pool/blob/bot/journeys/BUGS.md) lists what is open. Baselines are Linux-only, so run them in the Playwright image (see `tests/journeys/README.md`).
@@ -448,7 +445,7 @@ docker compose -f config/docker-compose.yml --profile test run --rm test
 **Start the full stack:**
 
 ```powershell
-docker compose -f config/docker-compose.yml up -d
+docker compose --env-file .env -f config/docker-compose.yml up -d
 ```
 
 **Stack management:**
@@ -468,7 +465,10 @@ pre-commit install
 pre-commit install --hook-type pre-push
 ```
 
-**Integration tests** require a running stack (`docker compose up -d`) then:
+**Integration tests** call the dashboard at `DASHBOARD_URL` (default
+`http://localhost:3000`), create sessions, send prompts, and update metrics. Run
+them only against a disposable test stack, never against a dashboard with
+sessions you need to keep:
 
 ```powershell
 cd dashboard && npm run test:integration
@@ -493,36 +493,18 @@ cd dashboard && npm run test:integration
 - NemoClaw: `9000` → `8080`
 - Dashboard: `3000` → `3000`
 
-## GPU Acceleration (CUDA/RTX 4080)
+## NVIDIA GPU Acceleration (CUDA)
 
-To enable GPU acceleration for Ollama (recommended for RTX 4080 or similar):
+The checked-in GPU overlay is for NVIDIA GPUs in a Docker runtime that supports CUDA passthrough. Apply it with the Compose command in Quick Start; do not rely on NVIDIA environment variables alone as proof that a device is available.
 
-1. **Install NVIDIA drivers** for your GPU (latest version recommended).
-2. **Install NVIDIA Container Toolkit** on your host:
-   - https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/latest/install-guide.html
-3. **Update Docker Compose** to use the NVIDIA runtime for the Ollama service:
-   - Add to `ollama` service:
+1. Install a current NVIDIA driver and enable the supported GPU passthrough in the host's container runtime.
+2. Start Ollama with `config/docker-compose.gpu.yml` applied.
+3. Verify the selected backend with `docker exec ollama ollama ps` and check `docker logs ollama` for CUDA discovery. `ollama ps` reports the processor used by the loaded model.
+4. Set `PRIMARY_LLM_MODEL` to a model that fits in available VRAM, then restart the stack; additional models can be pulled from the dashboard's Models panel.
 
-     ```yaml
-     deploy:
-       resources:
-         reservations:
-           devices:
-             - driver: nvidia
-               count: 1
-               capabilities: [gpu]
-     runtime: nvidia
-     environment:
-       - NVIDIA_VISIBLE_DEVICES=all
-     ```
+Only select models that fit the VRAM actually available to Ollama.
 
-   - Or run with: `docker compose --gpus all up`
-4. **Verify GPU is detected**:
-   - `docker exec ollama nvidia-smi`
-   - Ollama logs should show CUDA device available.
-5. **Documented models**: After enabling GPU, add larger models to `config/model-manifest.json` as needed.
-
-**Note:** If you have an RTX 4080, you should see ~24 GB VRAM available. Only enable large models if you have sufficient VRAM.
+This overlay is NVIDIA/CUDA-only. Ollama's container can use Vulkan on Linux when the required GPU devices are passed through, but Docker Desktop on Windows documents GPU-PV for NVIDIA GPUs. On Windows with AMD, this Compose route can fall back to CPU; verify with `ollama ps` and server logs. Cross-vendor, runtime-aware detection is tracked in [issue #117](https://github.com/nitsuah/motor-pool/issues/117). See [Ollama Docker GPU guidance](https://github.com/ollama/ollama/blob/main/docs/docker.mdx) and [Docker Desktop GPU support](https://docs.docker.com/desktop/features/gpu/).
 
 ## Production Deployment
 
@@ -551,10 +533,8 @@ services:
 
 ## Safety & Security
 
-- All traffic is local — no external API calls
-- NemoClaw sandboxes agent execution with `--cap-drop=all`
-- Capability allowlist: `NET_BIND_SERVICE` only
-- `no-new-privileges` enforced on sandbox container
+- The default Ollama-first setup keeps model inference local; configuring a BYOK provider sends requests to that provider
+- NemoClaw's optional sandbox profile is currently deferred and should not be treated as the active safe-mode enforcement path
 - Safe Chat sessions are server-restricted to the primary endpoint and strict safety mode
 - Output filtering redacts detected PII and replaces blocked harmful responses before they reach the UI
 
@@ -575,6 +555,10 @@ Every committed Markdown doc in this repo (other than this README, `.github/` an
 - [TASKS](./docs/TASKS.md) — `docs/TASKS.md`
 
 **`docs/archive/`**
+
+These are historical references. Their old setup commands, model defaults, and
+architecture may not match the current stack; use this README and
+[docs/DEPLOYMENT.md](./docs/DEPLOYMENT.md) for current setup instructions.
 
 - [motor-pool 2-Minute Demo Script (Ready to Record)](./docs/archive/AGENT-BOARD-DEMO_VIDEO_SCRIPT.md) — `docs/archive/AGENT-BOARD-DEMO_VIDEO_SCRIPT.md`
 - [AI Stack Strategy](./docs/archive/AI_STACK_STRATEGY.md) — `docs/archive/AI_STACK_STRATEGY.md`

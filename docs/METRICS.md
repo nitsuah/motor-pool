@@ -8,12 +8,12 @@ This document tracks the health, performance, and quality metrics of the `motor-
 
 | Metric | Current | Target | Status |
 | :--- | :--- | :--- | :--- |
-| **Unit Test Coverage** | 81.10% statements / 71.39% branches / 89.83% functions (native run 2026-09-11 — no Docker in this cloud automation environment — `npm run test:coverage` in `dashboard/` with NODE_V8_COVERAGE + c8; 66/66 unit tests pass, 0 failures) | >80% | 🟢 |
-| **Test File Count** | 70 test files (66 unit + 4 e2e requiring a live LLM/Docker stack); 66/66 unit tests pass natively (2026-09-11) | >50 | 🟢 |
+| **Unit Test Coverage** | 81.10% statements / 71.39% branches / 89.83% functions (historical coverage run 2026-09-11 across 66 suites; coverage not remeasured for the current 70-suite set). Current isolated run: 70/70 pass, 0 failures (2026-10-28). | >80% | ⚪ |
+| **Test File Count** | 74 test files (70 unit + 4 integration requiring a live LLM/Docker stack); 70/70 unit suites pass in the isolated Docker test image (2026-10-28). | >50 | 🟢 |
 | **Critical Vulnerabilities** | 0 | 0 | 🟢 |
 | **ESLint Errors** | 0 errors / 75 warnings (mostly unused vars; `npm run lint` at the root, enforced in CI since 2026-10-22) | 0 | 🟢 |
 | **Avg. Cyclomatic Complexity** | TBD | <10 | ⚪ |
-| **Production Bundle Size** | TBD | <500KB | ⚪ |
+| **Production Bundle Size** | 249.11 KB gzipped JS (934.07 KB raw, one chunk; dashboard Docker build 2026-10-28; Vite warns the minified chunk exceeds 500 KB) | <500KB gzipped | 🟢 |
 | **CI Build Time** | TBD | <3 mins | ⚪ |
 | **CI Pipeline Success Rate** | TBD | 100% | ⚪ |
 | **Outdated Dependencies** | TBD | 0 | ⚪ |
@@ -30,20 +30,78 @@ This document tracks the health, performance, and quality metrics of the `motor-
 *   **CI Build Time:** The wall-clock time from commit trigger to successful deployment/artifact.
 *   **Outdated Dependencies:** Number of packages with available major updates.
 
+## Ollama Startup and Inference Baseline (2026-10-27)
+
+Measured against the running local Ollama container using `llama3.2:3b` on a
+Windows Docker Desktop setup. `ollama ps` reported `100% CPU`, `llamacpp`, and
+4096 context; no GPU acceleration was in use.
+
+| Probe | Wall time | Model metrics |
+| :--- | ---: | :--- |
+| First request after model was unloaded (30-token prompt, 8-token cap) | 8.16 s | 30 prompt tokens; model reported 0.455 s prompt evaluation and 0.062 s generation before stopping at 2 tokens |
+| `llama3.2:3b` warm comparison prompt (40-token prompt, 32-token cap) | 2.10 s | 0.307 s prompt evaluation; 1.709 s generation; 18.7 generated tokens/s |
+| `llama3.1:8b-instruct-q4_K_M` first request (25-token prompt, 32-token cap) | 14.38 s | 0.91 s prompt evaluation; 3.79 s generation; 8.4 generated tokens/s |
+| `llama3.1:8b-instruct-q4_K_M` warm request (same prompt/cap) | 3.76 s | 0.12 s prompt evaluation; 3.63 s generation; 8.8 generated tokens/s |
+
+The first request includes model loading, while Ollama's reported generation
+duration excludes it. This is a single short baseline, not a comparative
+benchmark. During the warm run, `docker stats` showed 2.55 GiB container memory;
+the reading is specific to this setup and should be re-measured for other model
+sizes or concurrent workloads. The result gives a baseline for comparing a
+supported GPU/runtime path under issue [#117](https://github.com/nitsuah/motor-pool/issues/117).
+
+The 8B run used the same Windows Docker Desktop Ollama service. `ollama ps`
+reported `100% CPU` for both the 8B and still-resident 3B model; the AMD GPU was
+not used. `docker stats` showed 12.35 GiB / 15.52 GiB while both models were
+resident, so this is a combined-model reading, not an 8B-only memory estimate.
+The short warm probes generated 18.7 model tokens/s for 3B and 8.8 model
+tokens/s for 8B; the tokenizers differ, so treat this as directional rather
+than a strict apples-to-apples score. Keep the 8B selection for quality
+evaluation, and prefer the 3B tier when latency is the priority until a
+verified accelerator path is available.
+
+## Tool-enabled Agent Streaming Comparison (2026-10-28)
+
+Measured in the isolated Compose test image against the running local Ollama
+container (`llama3.2:3b`, CPU-only, warm model). The benchmark ran three valid
+buffered/streamed pairs each for Developer (`read_file`), Research
+(`write_artifact`), and Website (`save_website_file`). It used temporary local
+files and an in-process website MCP stub; no external web requests or live
+dashboard/database data were involved. The reported first token is the first
+model text available to the route. In buffered mode the route cannot emit that
+final reply until the tool loop completes, so first-token time equals total
+loop time. Total time excludes the session HTTP route's preflight/finalization.
+
+| Experience | Buffered first token / total | Streamed first token | First-token reduction | Streamed total |
+| :--- | ---: | ---: | ---: | ---: |
+| Developer | 2.672 s / 2.672 s | 1.074 s | 59.8% | 2.704 s |
+| Research | 4.429 s / 4.429 s | 1.654 s | 62.6% | 3.904 s |
+| Website | 4.671 s / 4.671 s | 2.540 s | 45.6% | 4.582 s |
+
+These are three-sample medians from one local run, not a broad performance
+claim. Streaming reduced visible first-token latency in all three experiences;
+total loop latency was essentially unchanged for Developer (+32 ms), lower for
+Research (-525 ms), and lower for Website (-89 ms). The UI's main JavaScript
+bundle measured 249.11 KB gzipped and 934.07 KB minified against a 500 KB
+minified-chunk warning threshold. The gzip budget is met, though the
+single-chunk warning makes startup measurement and a possible panel split worth
+tracking separately. The LLM benchmark does not measure dashboard startup.
+Collect a browser startup baseline before changing bundle boundaries.
+
 ## How to Update
 
 Run the following commands to generate current values for this table:
 
 ### 1. Test Count
 ```bash
-# Unit + integration/e2e test run inside Docker
-docker compose run --rm agent-dashboard npm run test
+# Isolated unit tests: test image, no live data or database mounts
+docker compose --env-file .env -f config/docker-compose.yml --profile test run --build --rm test
 ```
 
 ### 2. Coverage
 ```bash
 # Coverage baseline from the dashboard image (Docker path)
-docker compose run --rm agent-dashboard npm run test:coverage
+docker compose --env-file .env -f config/docker-compose.yml --profile test run --build --rm test npm run test:coverage
 
 # Native path (no host Docker required) — run from dashboard/
 cd dashboard && npm install && npm run test:coverage
@@ -117,4 +175,4 @@ cloc . --exclude-dir=node_modules,dist
 ```
 
 ----
-*Last Updated: 2026-09-11*
+*Last Updated: 2026-10-28*

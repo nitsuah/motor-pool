@@ -398,7 +398,128 @@ export function createAgentHelpers({ WORKSPACE_ROOT, execAsync, TOOL_SERVERS, TO
     return { ...tc, function: { ...(tc.function || {}), name, arguments: args } };
   }
 
-  async function runAgentLoop(msgs, apiStyle, llmUrl, llmHeaders, tools, session) {
+  async function streamAgentReply(msgs, apiStyle, llmUrl, llmHeaders, session, tools, options) {
+    const { signal, onToken, onReset } = options;
+    const reqBody = { model: session.model, messages: msgs, stream: true };
+    if (tools.length > 0) reqBody.tools = tools;
+    const endpoint = apiStyle === 'openai' ? `${llmUrl}/chat/completions` : `${llmUrl}/api/chat`;
+    const response = await axios.post(endpoint, reqBody, {
+      headers: llmHeaders, responseType: 'stream', timeout: 120000, signal,
+    });
+
+    return new Promise((resolve, reject) => {
+      const stream = response.data;
+      let settled = false;
+      let lineBuffer = '';
+      let content = '';
+      let pendingPrefix = '';
+      let shouldStreamContent = false;
+      let sawToolCall = false;
+      let openAiToolCalls = new Map();
+      const ollamaToolCalls = [];
+
+      let stallTimer = null;
+      const resetStallTimer = () => {
+        clearTimeout(stallTimer);
+        stallTimer = setTimeout(() => stream.destroy(new Error('LLM stream stalled — no data for 30s')), 30_000);
+      };
+      const cleanUp = () => {
+        clearTimeout(stallTimer);
+        signal?.removeEventListener('abort', abortStream);
+      };
+      const finish = (error) => {
+        if (settled) return;
+        settled = true;
+        cleanUp();
+        error ? reject(error) : resolve({
+          message: { content, tool_calls: [...ollamaToolCalls, ...openAiToolCalls.values()] },
+        });
+      };
+      const abortStream = () => stream.destroy(signal.reason || new Error('Agent stream aborted'));
+      if (signal?.aborted) abortStream();
+      else signal?.addEventListener('abort', abortStream, { once: true });
+
+      const emitContent = (token) => {
+        if (!token) return;
+        content += token;
+        if (sawToolCall || !onToken) return;
+        if (shouldStreamContent) {
+          onToken(token);
+          return;
+        }
+        // A text-encoded tool call is valid only when the entire response is a
+        // JSON object. Hold a leading `{` until we can distinguish it from a
+        // normal prose answer, so tool arguments are never shown as chat text.
+        pendingPrefix += token;
+        const first = pendingPrefix.trimStart()[0];
+        if (!first) return;
+        if (first === '{') return;
+        shouldStreamContent = true;
+        onToken(pendingPrefix);
+        pendingPrefix = '';
+      };
+
+      const markToolCalls = () => {
+        if (sawToolCall) return;
+        sawToolCall = true;
+        pendingPrefix = '';
+        if (content && onReset) onReset();
+      };
+
+      const consumeLine = (line) => {
+        const trimmed = line.trim();
+        if (!trimmed) return;
+        const payloadText = trimmed.startsWith('data:') ? trimmed.slice(5).trimStart() : trimmed;
+        if (payloadText === '[DONE]') return;
+        let payload;
+        try { payload = JSON.parse(payloadText); } catch { return; }
+
+        if (apiStyle === 'openai') {
+          const choice = payload.choices?.[0];
+          const delta = choice?.delta || {};
+          emitContent(delta.content || '');
+          for (const call of delta.tool_calls || []) {
+            markToolCalls();
+            const current = openAiToolCalls.get(call.index) || {
+              id: call.id || '', type: 'function', function: { name: '', arguments: '' },
+            };
+            if (call.id) current.id = call.id;
+            if (call.function?.name) current.function.name += call.function.name;
+            if (typeof call.function?.arguments === 'string') current.function.arguments += call.function.arguments;
+            openAiToolCalls.set(call.index, current);
+          }
+          return;
+        }
+
+        const message = payload.message || {};
+        emitContent(message.content || '');
+        if (Array.isArray(message.tool_calls) && message.tool_calls.length) {
+          markToolCalls();
+          ollamaToolCalls.push(...message.tool_calls);
+        }
+      };
+
+      stream.on('data', chunk => {
+        resetStallTimer();
+        lineBuffer += chunk.toString();
+        const lines = lineBuffer.split('\n');
+        lineBuffer = lines.pop();
+        lines.forEach(consumeLine);
+      });
+      stream.on('end', () => {
+        if (lineBuffer) consumeLine(lineBuffer);
+        if (!sawToolCall && pendingPrefix) onToken?.(pendingPrefix);
+        finish();
+      });
+      stream.on('error', finish);
+      stream.on('close', () => {
+        if (!stream.readableEnded) finish(new Error('LLM stream closed before completion'));
+      });
+      resetStallTimer();
+    });
+  }
+
+  async function runAgentLoop(msgs, apiStyle, llmUrl, llmHeaders, tools, session, options = {}) {
     const MAX_ITERATIONS = 5;
     const toolLog = [];
     const localMsgs = [...msgs];
@@ -414,19 +535,28 @@ export function createAgentHelpers({ WORKSPACE_ROOT, execAsync, TOOL_SERVERS, TO
       tools.map(t => t.function?.name || t.name).filter(Boolean),
     );
 
+    const requestReply = async (requestMessages, requestTools = tools) => {
+      if (options.stream) {
+        return streamAgentReply(requestMessages, apiStyle, llmUrl, llmHeaders, session, requestTools, options);
+      }
+      const reqBody = { model: session.model, messages: requestMessages, stream: false };
+      if (requestTools.length > 0) reqBody.tools = requestTools;
+      const endpoint = apiStyle === 'openai' ? `${llmUrl}/chat/completions` : `${llmUrl}/api/chat`;
+      const response = await axios.post(endpoint, reqBody, { headers: llmHeaders, timeout: 120000 });
+      return response.data;
+    };
+
     for (let i = 0; i < MAX_ITERATIONS; i++) {
-      const reqBody = { model: session.model, messages: localMsgs, stream: false };
-      if (tools.length > 0) reqBody.tools = tools;
-
-      const response = await (apiStyle === 'openai'
-        ? axios.post(`${llmUrl}/chat/completions`, reqBody, { headers: llmHeaders, timeout: 120000 })
-        : axios.post(`${llmUrl}/api/chat`, reqBody, { headers: llmHeaders, timeout: 120000 }));
-
-      const msg = response.data.message || response.data.choices?.[0]?.message;
+      if (options.signal?.aborted) throw options.signal.reason || new Error('Agent stream aborted');
+      const response = await requestReply(localMsgs);
+      const msg = response.message || response.choices?.[0]?.message;
       let toolCalls = msg?.tool_calls || [];
       if (toolCalls.length === 0) {
         const textCall = parseTextToolCall(msg?.content, allowedToolNames);
-        if (textCall) toolCalls = [textCall];
+        if (textCall) {
+          toolCalls = [textCall];
+          options.onReset?.();
+        }
       }
 
       if (toolCalls.length === 0) {
@@ -444,6 +574,7 @@ export function createAgentHelpers({ WORKSPACE_ROOT, execAsync, TOOL_SERVERS, TO
       });
 
       for (const tc of toolCalls) {
+        if (options.signal?.aborted) throw options.signal.reason || new Error('Agent stream aborted');
         const name = tc.function?.name || tc.name;
         const rawArgs = tc.function?.arguments || tc.arguments || '{}';
         const callId = tc.id;
@@ -476,6 +607,7 @@ export function createAgentHelpers({ WORKSPACE_ROOT, execAsync, TOOL_SERVERS, TO
         }
 
         toolLog.push({ name, args, result: parsed, callId });
+        options.onToolCall?.({ name, args, result: parsed, callId });
 
         if (apiStyle === 'openai') {
           localMsgs.push({ role: 'tool', tool_call_id: callId, content: result });
@@ -485,11 +617,9 @@ export function createAgentHelpers({ WORKSPACE_ROOT, execAsync, TOOL_SERVERS, TO
       }
     }
 
-    const reqBody = { model: session.model, messages: localMsgs, stream: false };
-    const response = await (apiStyle === 'openai'
-      ? axios.post(`${llmUrl}/chat/completions`, reqBody, { headers: llmHeaders, timeout: 120000 })
-      : axios.post(`${llmUrl}/api/chat`, reqBody, { headers: llmHeaders, timeout: 120000 }));
-    const msg = response.data.message || response.data.choices?.[0]?.message;
+    if (options.signal?.aborted) throw options.signal.reason || new Error('Agent stream aborted');
+    const response = await requestReply(localMsgs, []);
+    const msg = response.message || response.choices?.[0]?.message;
     return { content: msg?.content || 'No response received', toolLog };
   }
 

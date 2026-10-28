@@ -79,7 +79,7 @@ Content-Type: application/json
 }
 ```
 
-`endpointAdjusted: true` means the requested endpoint was overridden by the experience's policy (e.g. `safe_chat` always uses `primary`).
+`endpointAdjusted: true` means the requested endpoint was overridden by the experience's policy (e.g. `safechat` always uses `primary`).
 
 **Errors:** 400 invalid experience, 400 invalid safetyMode
 
@@ -147,7 +147,7 @@ Content-Type: application/json
 | Field | Type | Required | Default | Description |
 |-------|------|----------|---------|-------------|
 | `message` | string | ✅ | | User message |
-| `useSafeMode` | boolean | | `false` | Route through NemoClaw sandbox (requires `sandbox` profile) |
+| `useSafeMode` | boolean | | `false` | Apply the dashboard safety policy and disable experience tools for this turn |
 
 **Response**
 ```json
@@ -170,7 +170,17 @@ POST /api/sessions/:id/stream
 Content-Type: application/json
 ```
 
-Same body as Send Message. Response is `text/event-stream` (SSE); each `data:` line is a token chunk. Final event is `data: [DONE]`.
+Same body as Send Message. Response is `text/event-stream` (SSE), with a JSON object in each `data:` frame:
+
+| `type` | Fields | Meaning |
+| --- | --- | --- |
+| `token` | `content` | Assistant text chunk. Tool-enabled experiences stream model output while it arrives. |
+| `reset` | — | Discard provisional text when the model switches to a tool call or output controls replace streamed text. |
+| `tool_call` | `tool`, `args`, `result` | A tool call completed. |
+| `done` | `messageCount`, optional `blocked`, `redacted`, `truncated` | The turn finished and its final response was persisted. |
+| `error` | `message` | The turn failed or the upstream stream stalled. |
+
+In strict output-filter modes, assistant text is buffered and one sanitized `token` frame is sent after the complete turn. Disconnecting aborts the active model stream and finalizes the session state.
 
 ---
 
@@ -238,7 +248,7 @@ DELETE /api/sessions/:id
 { "success": true, "deleted": true }
 ```
 
-Sessions are in-memory; they are lost on server restart. `deleted: false` if the session didn't exist.
+This ends the session and removes it from the active session map. Later snapshot writes omit the session and its message history from `data/sessions-snapshot.json`. When Postgres is enabled, the ended record and messages remain there; this is not a hard-delete or history-erasure operation. Export history you need before ending a session. `deleted` is `false` if the session did not exist.
 
 ---
 
@@ -494,7 +504,7 @@ GET /api/metrics/summary
     "totalMessages": 47,
     "avgMessagesPerSession": 3.9,
     "modelDistribution": { "llama3.2:3b": 30, "ai/qwen3-coder:latest": 17 },
-    "experienceDistribution": { "developer": 8, "research": 3, "safe_chat": 1 }
+    "experienceDistribution": { "developer": 8, "research": 3, "safechat": 1 }
   }
 }
 ```
@@ -605,7 +615,7 @@ GET /api/experiences
       "defaultSafetyMode": "standard"
     },
     {
-      "key": "safe_chat",
+      "key": "safechat",
       "name": "Safe Chat",
       "description": "Strict safety policy, primary endpoint only",
       "allowedEndpoints": ["primary"],
@@ -649,7 +659,7 @@ GET /api/tools
 }
 ```
 
-Start tool servers with `--profile tools`: `docker compose --profile tools up -d tool-content-gen tool-website`.
+Start tool servers with the repository Compose file and root environment file: `docker compose --env-file .env -f config/docker-compose.yml --profile tools up -d tool-content-gen tool-website`.
 
 ---
 
