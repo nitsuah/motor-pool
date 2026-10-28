@@ -2,11 +2,11 @@
 
 > 🧭 [motor-pool](../README.md) · [Features](./FEATURES.md) · [Roadmap](./ROADMAP.md) · **Tasks** · [Changelog](./CHANGELOG.md) · [Metrics](./METRICS.md) <!-- nav -->
 
-Last Updated: 2026-10-28
+Last Updated: 2026-10-27
 
 ## Todo
 
-### New-machine follow-up (2026-10-28)
+### New-machine follow-up (2026-10-27)
 
 - [x] **Connect Obsidian to Codex** — verified vault search/read/create operations through the native Obsidian MCP connection; a non-secret motor-pool handoff prompt is saved in the vault.
 - [x] **Set memory-sharing boundary** — keep raw/private notes local; only add sanitized project summaries to the public stash vault. Never store credentials or private transcripts in mirrored notes.

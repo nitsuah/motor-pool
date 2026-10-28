@@ -26,7 +26,7 @@ Written 2026-10-15 against `master` @ `c0864c1`. This is a dated architecture sn
 | Backend | Express 5, 19 route modules, 11 support modules, `ws`, `pg`, axios, the OpenTelemetry SDK plus auto-instrumentations |
 | Frontend | React 19 + Vite. Production bundle **923 KB JS + 72 KB CSS**, mostly three.js. METRICS target is <500 KB |
 | Stack (compose) | Default: dashboard, Postgres 16, Ollama, ollama-init, workspace-seed. Profiles add warmup, Jaeger, bb-mcp, two tool servers, NemoClaw (crash-loops), OpenLLM (deferred) |
-| Tests | 73 files (69 unit + 4 integration); 69/69 unit suites pass in the isolated Docker test image (2026-10-28). **81% statements / 71% branches** is the historical 2026-09-11 coverage measurement over 66 suites; current coverage has not been remeasured. Nightly Playwright journeys |
+| Tests | 73 files (69 unit + 4 integration); 69/69 unit suites pass in the isolated Docker test image (2026-10-27). **81% statements / 71% branches** is the historical 2026-09-11 coverage measurement over 66 suites; current coverage has not been remeasured. Nightly Playwright journeys |
 | Process | 247+ commits, every change through a PR, CI gate, docs kept current (FEATURES/ROADMAP/TASKS/CHANGELOG) |
 | Default models | `llama3.2:1b` (minimal), `llama3.2:3b` / `qwen2.5-coder:7b` (laptop), `llama3.1:8b` / `qwen2.5-coder:14b` (desktop) |
 

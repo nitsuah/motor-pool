@@ -2,7 +2,7 @@
 
 > 🧭 [motor-pool](../README.md) · [Features](./FEATURES.md) · **Roadmap** · [Tasks](./TASKS.md) · [Changelog](./CHANGELOG.md) · [Metrics](./METRICS.md) <!-- nav -->
 
-Last Updated: 2026-10-28
+Last Updated: 2026-10-27
 
 > 2027 planning reset (2026-09-24, `pmo-ff`): every completed 2026 item was removed from this file and
 > condensed into [FEATURES](./FEATURES.md) / [CHANGELOG](./CHANGELOG.md). Open 2026 items were carried

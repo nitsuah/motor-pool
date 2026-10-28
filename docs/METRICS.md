@@ -8,12 +8,12 @@ This document tracks the health, performance, and quality metrics of the `motor-
 
 | Metric | Current | Target | Status |
 | :--- | :--- | :--- | :--- |
-| **Unit Test Coverage** | 81.10% statements / 71.39% branches / 89.83% functions (historical coverage run 2026-09-11 across 66 suites; coverage not remeasured for the current 69-suite set). Current isolated run: 69/69 pass, 0 failures (2026-10-28). | >80% | ⚪ |
-| **Test File Count** | 73 test files (69 unit + 4 integration requiring a live LLM/Docker stack); 69/69 unit suites pass in the isolated Docker test image (2026-10-28). | >50 | 🟢 |
+| **Unit Test Coverage** | 81.10% statements / 71.39% branches / 89.83% functions (historical coverage run 2026-09-11 across 66 suites; coverage not remeasured for the current 69-suite set). Current isolated run: 69/69 pass, 0 failures (2026-10-27). | >80% | ⚪ |
+| **Test File Count** | 73 test files (69 unit + 4 integration requiring a live LLM/Docker stack); 69/69 unit suites pass in the isolated Docker test image (2026-10-27). | >50 | 🟢 |
 | **Critical Vulnerabilities** | 0 | 0 | 🟢 |
 | **ESLint Errors** | 0 errors / 75 warnings (mostly unused vars; `npm run lint` at the root, enforced in CI since 2026-10-22) | 0 | 🟢 |
 | **Avg. Cyclomatic Complexity** | TBD | <10 | ⚪ |
-| **Production Bundle Size** | 249.10 KB gzipped JS (934.02 KB raw, one chunk; dashboard Docker build 2026-10-28) | <500KB gzipped | 🟢 |
+| **Production Bundle Size** | 249.10 KB gzipped JS (934.02 KB raw, one chunk; dashboard Docker build 2026-10-27) | <500KB gzipped | 🟢 |
 | **CI Build Time** | TBD | <3 mins | ⚪ |
 | **CI Pipeline Success Rate** | TBD | 100% | ⚪ |
 | **Outdated Dependencies** | TBD | 0 | ⚪ |
@@ -30,7 +30,7 @@ This document tracks the health, performance, and quality metrics of the `motor-
 *   **CI Build Time:** The wall-clock time from commit trigger to successful deployment/artifact.
 *   **Outdated Dependencies:** Number of packages with available major updates.
 
-## Ollama Startup and Inference Baseline (2026-10-28)
+## Ollama Startup and Inference Baseline (2026-10-27)
 
 Measured against the running local Ollama container using `llama3.2:3b` on a
 Windows Docker Desktop setup. `ollama ps` reported `100% CPU`, `llamacpp`, and
@@ -39,7 +39,9 @@ Windows Docker Desktop setup. `ollama ps` reported `100% CPU`, `llamacpp`, and
 | Probe | Wall time | Model metrics |
 | :--- | ---: | :--- |
 | First request after model was unloaded (30-token prompt, 8-token cap) | 8.16 s | 30 prompt tokens; model reported 0.455 s prompt evaluation and 0.062 s generation before stopping at 2 tokens |
-| Warm request (40-token prompt, 32-token cap) | 2.01 s | 0.283 s prompt evaluation; 1.684 s generation; 19.0 generated tokens/s |
+| `llama3.2:3b` warm comparison prompt (40-token prompt, 32-token cap) | 2.10 s | 0.307 s prompt evaluation; 1.709 s generation; 18.7 generated tokens/s |
+| `llama3.1:8b-instruct-q4_K_M` first request (25-token prompt, 32-token cap) | 14.38 s | 0.91 s prompt evaluation; 3.79 s generation; 8.4 generated tokens/s |
+| `llama3.1:8b-instruct-q4_K_M` warm request (same prompt/cap) | 3.76 s | 0.12 s prompt evaluation; 3.63 s generation; 8.8 generated tokens/s |
 
 The first request includes model loading, while Ollama's reported generation
 duration excludes it. This is a single short baseline, not a comparative
@@ -47,6 +49,16 @@ benchmark. During the warm run, `docker stats` showed 2.55 GiB container memory;
 the reading is specific to this setup and should be re-measured for other model
 sizes or concurrent workloads. The result gives a baseline for comparing a
 supported GPU/runtime path under issue [#117](https://github.com/nitsuah/motor-pool/issues/117).
+
+The 8B run used the same Windows Docker Desktop Ollama service. `ollama ps`
+reported `100% CPU` for both the 8B and still-resident 3B model; the AMD GPU was
+not used. `docker stats` showed 12.35 GiB / 15.52 GiB while both models were
+resident, so this is a combined-model reading, not an 8B-only memory estimate.
+The short warm probes generated 18.7 model tokens/s for 3B and 8.8 model
+tokens/s for 8B; the tokenizers differ, so treat this as directional rather
+than a strict apples-to-apples score. Keep the 8B selection for quality
+evaluation, and prefer the 3B tier when latency is the priority until a
+verified accelerator path is available.
 
 ## How to Update
 
