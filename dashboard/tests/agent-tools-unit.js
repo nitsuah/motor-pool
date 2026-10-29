@@ -8,7 +8,7 @@
  */
 import assert from 'node:assert/strict';
 import express from 'express';
-import { mkdtempSync, writeFileSync, rmSync, existsSync, readFileSync, realpathSync } from 'node:fs';
+import { mkdtempSync, writeFileSync, rmSync, existsSync, readFileSync, realpathSync, symlinkSync, mkdirSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { promisify } from 'node:util';
@@ -227,6 +227,32 @@ try {
   assert.ok(out.toolLog[0].result.error, 'write_file refuses traversal');
   assert.ok(!existsSync(join(WORKSPACE, '..', 'escaped.txt')), 'nothing written outside the workspace');
   console.log('  ✅ read_file/write_file refuse path traversal and leak nothing');
+
+  // ── safety: symbolic links that point outside the workspace ────────────────
+  const OUTSIDE = realpathSync(mkdtempSync(join(tmpdir(), 'ab-outside-')));
+  writeFileSync(join(OUTSIDE, 'secret.txt'), 'outside-secret');
+  mkdirSync(join(OUTSIDE, 'dir'));
+  symlinkSync(join(OUTSIDE, 'secret.txt'), join(WORKSPACE, 'link-file'));
+  symlinkSync(join(OUTSIDE, 'dir'), join(WORKSPACE, 'link-dir'));
+  symlinkSync(join(OUTSIDE, 'new.txt'), join(WORKSPACE, 'dangling'));
+  script = [toolCall('read_file', { path: 'link-file' }), { content: 'nope' }];
+  out = await run(helpers);
+  assert.ok(out.toolLog[0].result.error, 'read_file refuses a symlink that leaves the workspace');
+  assert.ok(!String(out.toolLog[0].result.content || '').includes('outside-secret'), 'no outside content leaks through a symlink');
+  script = [toolCall('write_file', { path: 'link-dir/escaped.txt', content: 'x' }), { content: 'nope' }];
+  out = await run(helpers);
+  assert.ok(out.toolLog[0].result.error, 'write_file refuses a path through a symlinked directory');
+  assert.ok(!existsSync(join(OUTSIDE, 'dir', 'escaped.txt')), 'nothing written through the symlinked directory');
+  script = [toolCall('write_file', { path: 'dangling', content: 'x' }), { content: 'nope' }];
+  out = await run(helpers);
+  assert.ok(out.toolLog[0].result.error, 'write_file refuses a dangling symlink');
+  assert.ok(!existsSync(join(OUTSIDE, 'new.txt')), 'nothing created at the dangling link target');
+  script = [toolCall('write_file', { path: 'nested/ok.txt', content: 'fine' }), toolCall('read_file', { path: 'nested/ok.txt' }), { content: 'ok' }];
+  out = await run(helpers);
+  assert.ok(out.toolLog[0].result.success, 'ordinary nested writes still work');
+  assert.strictEqual(out.toolLog[1].result.content, 'fine', 'ordinary nested reads still work');
+  rmSync(OUTSIDE, { recursive: true, force: true });
+  console.log('  ✅ read/write refuse symlinks that escape the workspace; normal paths still work');
 
   // ── tools without a workspace ──────────────────────────────────────────────
   script = [toolCall('read_file', { path: 'hello.txt' }), { content: 'no ws' }];

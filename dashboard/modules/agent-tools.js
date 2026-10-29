@@ -1,7 +1,8 @@
 import axios from 'axios';
 import { randomUUID } from 'crypto';
 import { stat, readFile, writeFile, mkdir, readdir } from 'fs/promises';
-import { resolve as resolvePath } from 'path';
+import { lstatSync, realpathSync } from 'fs';
+import { resolve as resolvePath, dirname } from 'path';
 import { mcpRequest } from './mcp-helpers.js';
 
 export const DEVELOPER_TOOLS = [
@@ -154,7 +155,33 @@ export function createAgentHelpers({ WORKSPACE_ROOT, execAsync, TOOL_SERVERS, TO
     const safe = reqPath ? reqPath.replace(/\\/g, '/').replace(/^\/+/, '') : '';
     const abs = resolvePath(WORKSPACE_ROOT, safe);
     if (abs !== WORKSPACE_ROOT && !abs.startsWith(WORKSPACE_ROOT + '/')) return null;
-    return abs;
+    return isInsideWorkspaceReal(abs) ? abs : null;
+  }
+
+  /**
+   * The string check above cannot see symbolic links. Resolve the real location of the deepest existing
+   * path component (a dangling link counts as escaping) and require it to stay under the real workspace root.
+   */
+  function isInsideWorkspaceReal(abs) {
+    try {
+      const rootReal = realpathSync(WORKSPACE_ROOT);
+      let probe = abs;
+      for (;;) {
+        try {
+          lstatSync(probe);
+          break;
+        } catch (err) {
+          if (err.code !== 'ENOENT') return false;
+          const parent = dirname(probe);
+          if (parent === probe) return false;
+          probe = parent;
+        }
+      }
+      const real = realpathSync(probe); // throws for a dangling symlink
+      return real === rootReal || real.startsWith(rootReal + '/');
+    } catch {
+      return false;
+    }
   }
 
   /** Enabled plugin tools, shaped as OpenAI/Ollama function-call definitions. */
