@@ -302,7 +302,8 @@ services:
     container_name: agent-dashboard
     restart: unless-stopped
     ports:
-      - "3000:3000"
+      # Loopback only by default; drop the 127.0.0.1: prefix to publish on the LAN
+      - "127.0.0.1:3000:3000"
     env_file:
       - ../.env
     environment:

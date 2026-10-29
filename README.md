@@ -491,7 +491,7 @@ cd dashboard && npm run test:integration
 
 - Ollama: `8081` (host) → `8080` (container)
 - NemoClaw: `9000` → `8080`
-- Dashboard: `3000` → `3000`
+- Dashboard: `127.0.0.1:3000` → `3000` (loopback only; remove the `127.0.0.1:` prefix in `config/docker-compose.yml` to publish on your network)
 
 ## NVIDIA GPU Acceleration (CUDA)
 

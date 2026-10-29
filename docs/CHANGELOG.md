@@ -95,6 +95,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- The dashboard port is now published on loopback only (`127.0.0.1:3000`) by default in `config/docker-compose.yml`, matching the production example in the README. Remove the `127.0.0.1:` prefix to expose it on your network.
 - Docs: reconciled the ROADMAP 2026 reset note with the 2026 Q4 Imps section; qualified the Ollama concurrency and Section 508/WCAG claims in RUST-REWRITE-ASSESSMENT.md.
 - **Rebrand: agent-board → motor-pool.** Public-facing naming (README, docs,
   dashboard title/onboarding/3D hub, OTEL service name `motor-pool-dashboard`,
