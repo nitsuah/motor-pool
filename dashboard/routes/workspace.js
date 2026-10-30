@@ -1,6 +1,7 @@
 import express from 'express';
 import { readdir, readFile, writeFile, mkdir, stat, unlink, rm } from 'fs/promises';
-import { resolve as resolvePath, relative as relativePath } from 'path';
+import { resolve as resolvePath, relative as relativePath, dirname, basename, sep } from 'path';
+import { realpathSync, lstatSync } from 'fs';
 import { exec, execFile } from 'child_process';
 import { promisify } from 'util';
 
@@ -8,6 +9,37 @@ const execAsync = promisify(exec);
 const execFileAsync = promisify(execFile);
 
 const BASH_BLOCKLIST = ['rm -rf /', 'dd if=', ':(){ :|:& };:', '> /dev/sd', 'mkfs'];
+
+// Resolves symlinks on the deepest existing ancestor of abs and checks that the
+// real location is the root or below it. A dangling symlink is refused because
+// its target cannot be checked.
+function isRealPathInside(root, abs) {
+  let rootReal;
+  try {
+    rootReal = realpathSync(root);
+  } catch {
+    return false;
+  }
+  const rootPrefix = rootReal.endsWith(sep) ? rootReal : rootReal + sep;
+  let probe = abs;
+  const tail = [];
+  for (;;) {
+    try {
+      const real = realpathSync(probe);
+      const full = tail.length ? resolvePath(real, ...tail) : real;
+      return full === rootReal || full.startsWith(rootPrefix);
+    } catch {
+      try {
+        lstatSync(probe);
+        return false;
+      } catch { /* does not exist: check the parent */ }
+      const parent = dirname(probe);
+      if (parent === probe) return false;
+      tail.unshift(basename(probe));
+      probe = parent;
+    }
+  }
+}
 
 export function createWorkspaceRouter(WORKSPACE_ROOT) {
   const router = express.Router();
@@ -17,6 +49,7 @@ export function createWorkspaceRouter(WORKSPACE_ROOT) {
     const safe = reqPath ? reqPath.replace(/\\/g, '/').replace(/^\/+/, '') : '';
     const abs = resolvePath(WORKSPACE_ROOT, safe);
     if (abs !== WORKSPACE_ROOT && !abs.startsWith(WORKSPACE_ROOT + '/')) return null;
+    if (!isRealPathInside(WORKSPACE_ROOT, abs)) return null;
     return abs;
   }
 
