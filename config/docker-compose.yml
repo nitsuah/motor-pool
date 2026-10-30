@@ -41,6 +41,9 @@ services:
       # hosts reloading a 7B model from disk can exceed the dashboard's chat
       # timeout. Keep it resident for 30m of inactivity instead.
       - OLLAMA_KEEP_ALIVE=${OLLAMA_KEEP_ALIVE:-30m}
+      # Ollama's default context is 4096 tokens on hosts with less than 24 GiB VRAM (including CPU-only); a coding agent's prompt (system prompt + tool definitions + brief) is 5k+, so the
+      # model silently loses the tools and answers with meta-chatter (confirmed: 'truncating input prompt limit=2050'). 16k costs ~1.5 GiB of KV cache.
+      - OLLAMA_CONTEXT_LENGTH=${OLLAMA_CONTEXT_LENGTH:-16384}
     volumes:
       - ollama_data:/root/.ollama
     networks:
