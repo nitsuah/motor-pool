@@ -46,7 +46,7 @@ try {
     $hostGpus = @(Get-CimInstance Win32_VideoController -ErrorAction Stop | ForEach-Object {
         $name = [string]$_.Name
         $vendor = if ($name -match 'NVIDIA|GeForce|Quadro|Tesla') { 'NVIDIA' }
-                  elseif ($name -match 'AMD|Radeon|ATI|Advanced Micro Devices') { 'AMD' }
+                  elseif ($name -match 'AMD|Radeon|\bATI\b|Advanced Micro Devices') { 'AMD' }
                   elseif ($name -match 'Intel') { 'Intel' }
                   else { 'Other' }
         [pscustomobject]@{ Name = $name; Vendor = $vendor }
@@ -70,7 +70,7 @@ $envLine = "DEVICE_PROFILE=$profile"
 
 Write-Host ""
 Write-Host "Detected hardware:"
-Write-Host "  GPU  : $gpuName (VRAM: ${vramMB} MB)"
+Write-Host "  NVIDIA GPU: $gpuName (VRAM: ${vramMB} MB)"
 Write-Host "  RAM  : ${ramGB} GB"
 Write-Host "  Host GPUs (not necessarily usable by containers):"
 if ($hostGpus.Count -eq 0) {
