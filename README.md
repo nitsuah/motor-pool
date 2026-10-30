@@ -194,7 +194,7 @@ scripts/                      # Setup & management scripts
 
 ## Models & Loading
 
-At startup, `ollama-init` pulls and preloads the single model selected by `PRIMARY_LLM_MODEL` (default: `llama3.2:3b`); the dashboard's model-management panel can pull additional models on demand. `config/model-manifest.json` is a portfolio draft and is not currently consumed by the runtime, so editing its `enabled` array does not load models.
+At startup, `ollama-init` pulls and preloads the single model selected by `PRIMARY_LLM_MODEL` (default: `llama3.1:8b-instruct-q4_K_M`); the dashboard's model-management panel can pull additional models on demand. `config/model-manifest.json` is a portfolio draft and is not currently consumed by the runtime, so editing its `enabled` array does not load models.
 
 To change the startup model, set `PRIMARY_LLM_MODEL` in the root `.env` file (or override it in the Compose environment) and restart the stack. To pull an additional model without changing startup selection, use the dashboard's Models panel or run `docker exec ollama ollama pull <model>`.
 
@@ -211,8 +211,9 @@ To change the startup model, set `PRIMARY_LLM_MODEL` in the root `.env` file (or
 
 | Model | Size | Use |
 | --- | --- | --- |
-| `llama3.2:3b` | 2 GB | **Default** — modern, fast on CPU, fits in RAM |
-| `llama2:latest` | 3.8 GB | Legacy baseline; superseded by llama3.2:3b |
+| `llama3.1:8b-instruct-q4_K_M` | 4.9 GB | **Default** — tool calls verified; ~11–14 s for 200 tokens on CPU |
+| `llama3.2:3b` | 2 GB | Smaller, faster option |
+| `llama2:latest` | 3.8 GB | Legacy baseline; superseded by the 8B default |
 | `qwen3-coder:latest` | 18 GB | Code generation (requires ~18 GB free RAM) |
 | `qwen3:latest` | 5.2 GB | General (MoE, loads as 17.7 GB at runtime) |
 
@@ -480,7 +481,7 @@ cd dashboard && npm run test:integration
 
 - Check Ollama has models: `docker exec ollama ollama list`
 - Check memory — large models (qwen3-coder 18 GB) need enough free RAM
-- Default model is `llama3.2:3b` which is safe for ~8 GB+ systems
+- Default model is `llama3.1:8b-instruct-q4_K_M`; on smaller hosts set `PRIMARY_LLM_MODEL=llama3.2:3b`
 
 > **Container unhealthy**
 

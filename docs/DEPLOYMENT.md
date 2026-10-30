@@ -32,7 +32,7 @@ Edit the repository-root `.env` — at minimum set:
 POSTGRES_DB=agent_board
 POSTGRES_USER=agent
 POSTGRES_PASSWORD=<strong-random-password>
-PRIMARY_LLM_MODEL=llama3.2:3b
+PRIMARY_LLM_MODEL=llama3.1:8b-instruct-q4_K_M
 DEVICE_PROFILE=minimal                    # minimal | laptop | desktop
 ```
 
@@ -40,7 +40,7 @@ DEVICE_PROFILE=minimal                    # minimal | laptop | desktop
 
 ## 2. Start the Ollama-first stack
 
-The default Compose stack starts the dashboard, Postgres, and an Ollama container. `ollama-init` pulls and warms the model selected by `PRIMARY_LLM_MODEL` (default `llama3.2:3b`).
+The default Compose stack starts the dashboard, Postgres, and an Ollama container. `ollama-init` pulls and warms the model selected by `PRIMARY_LLM_MODEL` (default `llama3.1:8b-instruct-q4_K_M`).
 
 ```bash
 docker compose --env-file .env -f config/docker-compose.yml up -d
@@ -177,7 +177,7 @@ automatically on server start via `db.js`.
 |----------|---------|-------------|
 | `DEVICE_PROFILE` | `minimal` | `minimal`, `laptop`, `desktop` — profile-aware endpoint/model guidance; hardware detection is currently NVIDIA-specific |
 | `PRIMARY_LLM_URL` | `http://ollama:8080` | Override Ollama endpoint |
-| `PRIMARY_LLM_MODEL` | `llama3.2:3b` | Ollama model pulled and warmed at stack startup |
+| `PRIMARY_LLM_MODEL` | `llama3.1:8b-instruct-q4_K_M` | Ollama model pulled and warmed at stack startup |
 | `OLLAMA_KEEP_ALIVE` | `30m` | Keep the startup model resident between requests |
 | `POSTGRES_DB/USER/PASSWORD` | `agent_board / agent / agent` | Database credentials |
 | `PORT` | `3000` | Dashboard HTTP port |
