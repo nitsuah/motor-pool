@@ -5,7 +5,8 @@
 #   .\scripts\detect-profile.ps1 -Write       # append DEVICE_PROFILE= to .env
 #
 # The profile name is written to stdout. Pipe it or use -Write to persist it.
-# Requires: PowerShell 5.1+ on Windows. nvidia-smi must be on PATH for GPU detection.
+# Requires: PowerShell 5.1+ on Windows. nvidia-smi must be on PATH for NVIDIA VRAM detection.
+# Host GPU inventory uses CIM for any vendor; only NVIDIA VRAM counts toward the profile today.
 
 param(
     [switch]$Write,
@@ -38,6 +39,22 @@ try {
     } catch { }
 }
 
+# ── Host GPU inventory (any vendor) ──────────────────────────────────────────
+# Host hardware is separate from what Ollama's container can access.
+$hostGpus = @()
+try {
+    $hostGpus = @(Get-CimInstance Win32_VideoController -ErrorAction Stop | ForEach-Object {
+        $name = [string]$_.Name
+        $vendor = if ($name -match 'NVIDIA|GeForce|Quadro|Tesla') { 'NVIDIA' }
+                  elseif ($name -match 'AMD|Radeon|\bATI\b|Advanced Micro Devices') { 'AMD' }
+                  elseif ($name -match 'Intel') { 'Intel' }
+                  else { 'Other' }
+        [pscustomobject]@{ Name = $name; Vendor = $vendor }
+    })
+} catch {
+    # CIM is unavailable on non-Windows hosts; keep the inventory empty.
+}
+
 # ── Profile selection ────────────────────────────────────────────────────────
 # Profiles are ordered from most capable to least; first threshold that fits wins.
 $profile = "minimal"
@@ -53,8 +70,14 @@ $envLine = "DEVICE_PROFILE=$profile"
 
 Write-Host ""
 Write-Host "Detected hardware:"
-Write-Host "  GPU  : $gpuName (VRAM: ${vramMB} MB)"
+Write-Host "  NVIDIA GPU: $gpuName (VRAM: ${vramMB} MB)"
 Write-Host "  RAM  : ${ramGB} GB"
+Write-Host "  Host GPUs (not necessarily usable by containers):"
+if ($hostGpus.Count -eq 0) {
+    Write-Host "    none detected"
+} else {
+    foreach ($g in $hostGpus) { Write-Host "    $($g.Vendor): $($g.Name)" }
+}
 Write-Host ""
 Write-Host "Recommended profile: $profile"
 Write-Host ""

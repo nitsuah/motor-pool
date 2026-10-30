@@ -11,6 +11,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- `detect-profile.ps1` now lists every host GPU (NVIDIA, AMD, Intel, or other) and distinguishes host inventory from container GPU access (#117).
 - Agent workspace file tools (`read_file`, `write_file`, `list_files`) now resolve symbolic links and refuse any path whose real location is outside the workspace, including dangling links.
 - **Fixed:** workspace path resolution follows links before checking the root
 - Dashboard session snapshots now live in a dedicated persistent volume, so active sessions and message history survive container recreation. The dashboard also restarts unless explicitly stopped.
