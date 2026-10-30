@@ -231,7 +231,7 @@ services:
           var c=JSON.parse(raw);
           var inf=c.models&&c.models.providers&&c.models.providers.inference;
           if(inf){inf.baseUrl='http://ollama:8080/v1';inf.apiKey='ollama';}
-          var m='llama3.1:8b-instruct-q4_K_M';
+          var m=process.env.PRIMARY_LLM_MODEL||'llama3.1:8b-instruct-q4_K_M';
           if(c.agents&&c.agents.defaults&&c.agents.defaults.model) c.agents.defaults.model.primary=m;
           if(inf&&inf.models) inf.models=[{id:m,name:m,reasoning:false,input:['text'],
             cost:{input:0,output:0,cacheRead:0,cacheWrite:0},contextWindow:32768,maxTokens:4096}];
@@ -257,6 +257,7 @@ services:
     environment:
       - NEMOCLAW_HOME=/workspace
       - NEMOCLAW_DASHBOARD_PORT=8080
+      - PRIMARY_LLM_MODEL=${PRIMARY_LLM_MODEL:-llama3.1:8b-instruct-q4_K_M}
       - CHAT_UI_URL=http://agent-dashboard:3000
     security_opt:
       - no-new-privileges:false
