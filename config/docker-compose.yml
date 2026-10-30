@@ -241,7 +241,7 @@ services:
           if(!Array.isArray(ao)) c.gateway.controlUi.allowedOrigins=['http://localhost:3000'];
           else if(!ao.includes('http://localhost:3000')) ao.push('http://localhost:3000');
           fs.writeFileSync(f,JSON.stringify(c,null,2));
-          process.stderr.write('[setup] openclaw.json patched: inference → Ollama llama3.1:8b-instruct-q4_K_M + allowedOrigins\n');
+          process.stderr.write('[setup] openclaw.json patched: inference → Ollama '+m+' + allowedOrigins\n');
         " 2>&1 || echo '[setup] WARNING: openclaw.json patch failed'
 
         # 7. Save patched config as the new backup baseline
