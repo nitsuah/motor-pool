@@ -1,6 +1,13 @@
 # GPU overlay for Ollama — apply on top of the base docker-compose.yml when
 # NVIDIA GPU passthrough is available (requires NVIDIA Container Toolkit on the
-# host and the NVIDIA runtime registered with Docker).
+# host and the NVIDIA runtime registered with Docker). This overlay is NVIDIA-only.
+#
+# Detector contract: `verified` means nvidia-smi succeeded and Docker lists the
+# `nvidia` runtime; `unverified` means NVIDIA host hardware exists but access could
+# not be verified; `none` means no NVIDIA host GPU was detected. Only `verified`
+# access lets NVIDIA VRAM count toward an accelerated profile; otherwise use CPU-only
+# `minimal`. AMD Radeon RX 470 is CPU-only in the current Docker Desktop setup unless
+# a supported alternative is proven. No AMD/Vulkan overlay is provided here.
 #
 # Usage:
 #   docker compose \
