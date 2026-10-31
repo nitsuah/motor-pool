@@ -10,58 +10,120 @@
 
 param(
     [switch]$Write,
-    [string]$EnvFile = ".env"
+    [string]$EnvFile = ".env",
+    [string]$Fixture
 )
 
 Set-StrictMode -Off
 $ErrorActionPreference = "SilentlyContinue"
 
-# ── GPU detection ────────────────────────────────────────────────────────────
-$vramMB  = 0
-$gpuName = "none"
+# ── Fixture support ───────────────────────────────────────────────────────────
+if ($Fixture) {
+    $fixtureData = $Fixture | ConvertFrom-Json
 
-$smiOut = nvidia-smi --query-gpu=name,memory.total --format=csv,noheader,nounits 2>$null
-if ($LASTEXITCODE -eq 0 -and $smiOut) {
-    $firstGpu = ($smiOut -split "`n")[0].Trim()
-    $parts    = $firstGpu -split ",\s*"
-    $gpuName  = $parts[0].Trim()
-    $vramMB   = [int]($parts[1].Trim())
-}
+    # Derive values from raw probe results (same logic as live mode)
+    $vramMB  = 0
+    $gpuName = "none"
+    $nvidiaSmiWorks = $false
 
-# ── RAM detection ────────────────────────────────────────────────────────────
-$ramGB = 0
-try {
-    $cs    = Get-WmiObject -Class Win32_ComputerSystem -ErrorAction Stop
-    $ramGB = [math]::Floor($cs.TotalPhysicalMemory / 1GB)
-} catch {
+    if ($fixtureData.nvidiaSmiOutput) {
+        $smiOut = $fixtureData.nvidiaSmiOutput
+        $firstGpu = ($smiOut -split "`n")[0].Trim()
+        $parts    = $firstGpu -split ",\s*"
+        if ($parts.Count -ge 2) {
+            $gpuName  = $parts[0].Trim()
+            $vramMB   = [int]($parts[1].Trim())
+            $nvidiaSmiWorks = $true
+        }
+    }
+
+    $ramGB = $fixtureData.ramGB
+
+    $hostGpus = @()
+    if ($fixtureData.hostGpuNames) {
+        $hostGpus = @($fixtureData.hostGpuNames | ForEach-Object {
+            $name = [string]$_
+            $vendor = if ($name -match 'NVIDIA|GeForce|Quadro|Tesla') { 'NVIDIA' }
+                      elseif ($name -match 'AMD|Radeon|\bATI\b|Advanced Micro Devices') { 'AMD' }
+                      elseif ($name -match 'Intel') { 'Intel' }
+                      else { 'Other' }
+            [pscustomobject]@{ Name = $name; Vendor = $vendor }
+        })
+    }
+
+    $containerGpuAccess = "none"
+    if ($nvidiaSmiWorks -and $fixtureData.dockerRuntimesJson) {
+        if ($fixtureData.dockerRuntimesJson -match '"nvidia"') {
+            $containerGpuAccess = "verified"
+        } else {
+            $containerGpuAccess = "unverified"
+        }
+    }
+} else {
+    # ── GPU detection ────────────────────────────────────────────────────────────
+    $vramMB  = 0
+    $gpuName = "none"
+
+    $smiOut = nvidia-smi --query-gpu=name,memory.total --format=csv,noheader,nounits 2>$null
+    $nvidiaSmiWorks = $false
+    if ($LASTEXITCODE -eq 0 -and $smiOut) {
+        $firstGpu = ($smiOut -split "`n")[0].Trim()
+        $parts    = $firstGpu -split ",\s*"
+        $gpuName  = $parts[0].Trim()
+        $vramMB   = [int]($parts[1].Trim())
+        $nvidiaSmiWorks = $true
+    }
+
+    # ── RAM detection ────────────────────────────────────────────────────────────
+    $ramGB = 0
     try {
-        $ramGB = [math]::Floor((Get-CimInstance Win32_ComputerSystem).TotalPhysicalMemory / 1GB)
-    } catch { }
-}
+        $cs    = Get-WmiObject -Class Win32_ComputerSystem -ErrorAction Stop
+        $ramGB = [math]::Floor($cs.TotalPhysicalMemory / 1GB)
+    } catch {
+        try {
+            $ramGB = [math]::Floor((Get-CimInstance Win32_ComputerSystem).TotalPhysicalMemory / 1GB)
+        } catch { }
+    }
 
-# ── Host GPU inventory (any vendor) ──────────────────────────────────────────
-# Host hardware is separate from what Ollama's container can access.
-$hostGpus = @()
-try {
-    $hostGpus = @(Get-CimInstance Win32_VideoController -ErrorAction Stop | ForEach-Object {
-        $name = [string]$_.Name
-        $vendor = if ($name -match 'NVIDIA|GeForce|Quadro|Tesla') { 'NVIDIA' }
-                  elseif ($name -match 'AMD|Radeon|\bATI\b|Advanced Micro Devices') { 'AMD' }
-                  elseif ($name -match 'Intel') { 'Intel' }
-                  else { 'Other' }
-        [pscustomobject]@{ Name = $name; Vendor = $vendor }
-    })
-} catch {
-    # CIM is unavailable on non-Windows hosts; keep the inventory empty.
+    # ── Host GPU inventory (any vendor) ──────────────────────────────────────────
+    # Host hardware is separate from what Ollama's container can access.
+    $hostGpus = @()
+    try {
+        $hostGpus = @(Get-CimInstance Win32_VideoController -ErrorAction Stop | ForEach-Object {
+            $name = [string]$_.Name
+            $vendor = if ($name -match 'NVIDIA|GeForce|Quadro|Tesla') { 'NVIDIA' }
+                      elseif ($name -match 'AMD|Radeon|\bATI\b|Advanced Micro Devices') { 'AMD' }
+                      elseif ($name -match 'Intel') { 'Intel' }
+                      else { 'Other' }
+            [pscustomobject]@{ Name = $name; Vendor = $vendor }
+        })
+    } catch {
+        # CIM is unavailable on non-Windows hosts; keep the inventory empty.
+    }
+
+    # ── Container GPU access verification ────────────────────────────────────────
+    # NVIDIA: verified only when nvidia-smi works AND docker info lists nvidia runtime
+    $containerGpuAccess = "none"
+    if ($nvidiaSmiWorks) {
+        $dockerInfo = docker info --format '{{json .Runtimes}}' 2>$null
+        if ($LASTEXITCODE -eq 0 -and $dockerInfo -match '"nvidia"') {
+            $containerGpuAccess = "verified"
+        } else {
+            $containerGpuAccess = "unverified"
+        }
+    }
 }
 
 # ── Profile selection ────────────────────────────────────────────────────────
 # Profiles are ordered from most capable to least; first threshold that fits wins.
+# VRAM only counts toward a tier when container GPU access is verified.
 $profile = "minimal"
 
-if ($vramMB -ge 16000 -and $ramGB -ge 24) {
+$vramForProfile = if ($containerGpuAccess -eq "verified") { $vramMB } else { 0 }
+
+if ($vramForProfile -ge 16000 -and $ramGB -ge 24) {
     $profile = "desktop"
-} elseif ($vramMB -ge 4000 -and $ramGB -ge 12) {
+} elseif ($vramForProfile -ge 4000 -and $ramGB -ge 12) {
     $profile = "laptop"
 }
 
@@ -78,6 +140,7 @@ if ($hostGpus.Count -eq 0) {
 } else {
     foreach ($g in $hostGpus) { Write-Host "    $($g.Vendor): $($g.Name)" }
 }
+Write-Host "  Container GPU access: $containerGpuAccess"
 Write-Host ""
 Write-Host "Recommended profile: $profile"
 Write-Host ""
