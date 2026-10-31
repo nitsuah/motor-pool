@@ -133,12 +133,12 @@ const WELL_KNOWN_PROVIDERS = [
   {
     key:          'wk_9router',
     name:         '9router (host)',
-    url:          'http://host.docker.internal:20128',
+    url:          process.env.NINEROUTER_URL || 'http://host.docker.internal:20128',
     apiStyle:     'openai',
     requiresKey:  true,
     keyHint:      'NINEROUTER_API_KEY',
     docsUrl:      'https://9router.com/docs',
-    defaultModel: 'MAX',
+    defaultModel: process.env.NINEROUTER_MODEL || 'MAX',
   },
 ];
 
