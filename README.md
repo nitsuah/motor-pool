@@ -261,13 +261,43 @@ paired with a tool workbench panel that lists the server's MCP tools and execute
 Both are gated behind the `tools` compose profile:
 
 ```powershell
-docker compose --env-file .env -f config/docker-compose.yml --profile tools up -d --build tool-content-gen tool-website
+docker compose --env-file .env -f config/docker-compose.yml --profile tools up -d --build tool-content-gen tool-website tool-tokeneconomizer
 ```
 
 If a tool server is offline, the workbench shows the exact start command (and a Start
 button when `AGENT_BOARD_ENABLE_DOCKER_CONTROL=true`). The dashboard talks to the
 servers via `POST /api/tools/:toolKey/call`, which proxies MCP `tools/call` over
 Streamable HTTP — no MCP client is needed in the browser.
+
+### TokenEconomizer (optional)
+
+Microsoft TokenEconomizer reduces coding agent costs by learning from past sessions in
+a repository. It provides three mechanisms:
+
+1. **Micro-skills** — remembers repo-specific facts (commands, env vars, build steps)
+   from repeated failures and a model proposer run every *k* sessions (default 3).
+2. **Tool pruning** — removes unused tools/capability packages after *p* unused prompts
+   across *m* sessions (default 10/2) or *s* sessions (default 5).
+3. **Failure-loop intervention** — a judge model detects stuck turns (confidence ≥ *c*,
+   default 0.7) and injects a redirect, up to *r* times per turn (default 1).
+
+Enable TokenEconomizer via the `tools` compose profile (same as other tools):
+
+```powershell
+docker compose --env-file .env -f config/docker-compose.yml --profile tools up -d --build tool-tokeneconomizer
+```
+
+**Prerequisites:**
+- Install TokenEconomizer locally: `git clone https://github.com/microsoft/TokenEconomizer`
+- Set `TE_PYTHON` in `.env` to your python3 path (e.g., `TE_PYTHON=python3`)
+- The container mounts `tokeneconomizer_data` volume for learned data persistence
+
+TokenEconomizer runs model calls through your existing agent on the same plan/login —
+no API keys needed. All data stays in the `tokeneconomizer_data` volume.
+
+The plugin exposes CLI commands as HTTP tools: `status`, `microskills`, `toolprune`,
+`config`, `repomap`, `repos`, `doctor`. See the plugin manifest at
+`dashboard/config/plugins/tokeneconomizer.plugin.json`.
 
 ### Docker control & model pulls (opt-in)
 
