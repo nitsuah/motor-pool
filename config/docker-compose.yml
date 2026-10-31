@@ -305,6 +305,10 @@ services:
       dockerfile: Dockerfile
     container_name: agent-dashboard
     restart: unless-stopped
+    # Make the host alias work on Linux as well as Docker Desktop; the dashboard
+    # uses it for host-run local LLM endpoints such as 9router.
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     ports:
       # Loopback only by default; drop the 127.0.0.1: prefix to publish on the LAN
       - "127.0.0.1:3000:3000"
