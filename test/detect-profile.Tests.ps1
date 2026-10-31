@@ -2,39 +2,73 @@ param(
     [string]$ScriptPath = (Join-Path $PSScriptRoot "..\scripts\detect-profile.ps1")
 )
 
+# Verified NVIDIA (nvidia-smi + docker nvidia runtime)
 $fixtureJson = @{
-    vramMB    = 16384
-    gpuName   = "NVIDIA GeForce RTX 4090"
-    ramGB     = 32
-    hostGpus  = @(
-        @{ Name = "NVIDIA GeForce RTX 4090"; Vendor = "NVIDIA" }
-        @{ Name = "AMD Radeon RX 7900 XTX"; Vendor = "AMD" }
+    nvidiaSmiOutput   = "NVIDIA GeForce RTX 4090, 24576"
+    dockerRuntimesJson = '{"nvidia": {"path": "nvidia-container-runtime"}, "runc": {"path": "runc"}}'
+    ramGB             = 32
+    hostGpuNames      = @(
+        "NVIDIA GeForce RTX 4090"
+        "AMD Radeon RX 7900 XTX"
     )
 } | ConvertTo-Json -Depth 3
 
+# Laptop tier - verified
 $laptopFixture = @{
-    vramMB    = 8192
-    gpuName   = "NVIDIA GeForce RTX 3070 Laptop"
-    ramGB     = 16
-    hostGpus  = @(
-        @{ Name = "NVIDIA GeForce RTX 3070 Laptop"; Vendor = "NVIDIA" }
+    nvidiaSmiOutput   = "NVIDIA GeForce RTX 3070 Laptop, 8192"
+    dockerRuntimesJson = '{"nvidia": {"path": "nvidia-container-runtime"}, "runc": {"path": "runc"}}'
+    ramGB             = 16
+    hostGpuNames      = @(
+        "NVIDIA GeForce RTX 3070 Laptop"
     )
 } | ConvertTo-Json -Depth 3
 
+# Minimal - no NVIDIA VRAM
 $minimalFixture = @{
-    vramMB    = 2048
-    gpuName   = "Intel UHD Graphics"
-    ramGB     = 8
-    hostGpus  = @(
-        @{ Name = "Intel UHD Graphics"; Vendor = "Intel" }
+    nvidiaSmiOutput   = ""
+    dockerRuntimesJson = '{"runc": {"path": "runc"}}'
+    ramGB             = 8
+    hostGpuNames      = @(
+        "Intel UHD Graphics"
     )
 } | ConvertTo-Json -Depth 3
 
+# Empty GPU
 $emptyGpuFixture = @{
-    vramMB    = 0
-    gpuName   = "none"
-    ramGB     = 4
-    hostGpus  = @()
+    nvidiaSmiOutput   = ""
+    dockerRuntimesJson = '{"runc": {"path": "runc"}}'
+    ramGB             = 4
+    hostGpuNames      = @()
+} | ConvertTo-Json -Depth 3
+
+# AMD-only fixture (no NVIDIA GPU)
+$amdOnlyFixture = @{
+    nvidiaSmiOutput   = ""
+    dockerRuntimesJson = '{"runc": {"path": "runc"}}'
+    ramGB             = 32
+    hostGpuNames      = @(
+        "AMD Radeon RX 7900 XTX"
+    )
+} | ConvertTo-Json -Depth 3
+
+# NVIDIA GPU but no docker nvidia runtime (unverified)
+$nvidiaUnverifiedFixture = @{
+    nvidiaSmiOutput   = "NVIDIA GeForce RTX 3070, 8192"
+    dockerRuntimesJson = '{"runc": {"path": "runc"}}'
+    ramGB             = 16
+    hostGpuNames      = @(
+        "NVIDIA GeForce RTX 3070"
+    )
+} | ConvertTo-Json -Depth 3
+
+# NVIDIA GPU with sufficient VRAM/RAM but no docker runtime - should be minimal
+$nvidiaNoRuntimeFixture = @{
+    nvidiaSmiOutput   = "NVIDIA GeForce RTX 4090, 24576"
+    dockerRuntimesJson = '{"runc": {"path": "runc"}}'
+    ramGB             = 32
+    hostGpuNames      = @(
+        "NVIDIA GeForce RTX 4090"
+    )
 } | ConvertTo-Json -Depth 3
 
 $script:passed = 0
@@ -52,15 +86,21 @@ function Assert-Match($actual, $expected, $message) {
     }
 }
 
-function RunTest($fixture, $expectedProfile, $testName) {
+function RunTest($fixture, $expectedProfile, $expectedAccess, $expectedReason, $testName) {
     $output = & $ScriptPath -Fixture $fixture *>&1 | Out-String
     Assert-Match $output "Recommended profile: $expectedProfile" "$testName - profile is $expectedProfile"
+    Assert-Match $output "Container GPU access: $expectedAccess" "$testName - access is $expectedAccess"
+    # Check that no live probes were invoked in fixture mode (nvidia-smi/docker info not called)
+    Assert-Match $output "Detected hardware:" "$testName - output shows detected hardware header"
 }
 
-RunTest $fixtureJson "desktop" "Desktop tier fixture"
-RunTest $laptopFixture "laptop" "Laptop tier fixture"
-RunTest $minimalFixture "minimal" "Minimal tier fixture"
-RunTest $emptyGpuFixture "minimal" "Empty GPU fixture"
+RunTest $fixtureJson "desktop" "verified" "verified" "Desktop tier fixture (verified NVIDIA)"
+RunTest $laptopFixture "laptop" "verified" "verified" "Laptop tier fixture (verified NVIDIA)"
+RunTest $minimalFixture "minimal" "none" "none" "Minimal tier fixture (no NVIDIA VRAM)"
+RunTest $emptyGpuFixture "minimal" "none" "none" "Empty GPU fixture"
+RunTest $amdOnlyFixture "minimal" "none" "none" "AMD-only fixture (no NVIDIA)"
+RunTest $nvidiaUnverifiedFixture "minimal" "unverified" "unverified" "NVIDIA unverified fixture (no docker runtime)"
+RunTest $nvidiaNoRuntimeFixture "minimal" "unverified" "unverified" "NVIDIA high VRAM but no docker runtime (should be minimal)"
 
 # Test host GPU inventory output
 $output = & $ScriptPath -Fixture $fixtureJson *>&1 | Out-String
@@ -69,6 +109,19 @@ Assert-Match $output "AMD Radeon RX 7900 XTX" "Desktop fixture - AMD GPU in outp
 
 $output = & $ScriptPath -Fixture $emptyGpuFixture *>&1 | Out-String
 Assert-Match $output "none detected" "Empty GPU fixture - 'none detected' shown"
+
+# Test container GPU access output
+$output = & $ScriptPath -Fixture $fixtureJson *>&1 | Out-String
+Assert-Match $output "Container GPU access: verified" "Desktop fixture - container access verified"
+
+$output = & $ScriptPath -Fixture $amdOnlyFixture *>&1 | Out-String
+Assert-Match $output "Container GPU access: none" "AMD-only fixture - container access none"
+
+$output = & $ScriptPath -Fixture $nvidiaUnverifiedFixture *>&1 | Out-String
+Assert-Match $output "Container GPU access: unverified" "NVIDIA unverified fixture - container access unverified"
+
+$output = & $ScriptPath -Fixture $nvidiaNoRuntimeFixture *>&1 | Out-String
+Assert-Match $output "Container GPU access: unverified" "NVIDIA no runtime fixture - container access unverified"
 
 Write-Host ""
 Write-Host "Results: $passed passed, $failed failed"
