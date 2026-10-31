@@ -4,8 +4,19 @@
  * and returns the expected shape even when nothing is found.
  */
 import assert from 'assert';
+import { getKnownEndpointUrls } from '../routes/discover.js';
 
-import { BASE, closeTestServer } from './helpers/test-server.js';
+process.env.NINEROUTER_API_KEY = '';
+const { BASE, closeTestServer } = await import('./helpers/test-server.js');
+
+const knownUrls = getKnownEndpointUrls({
+  keylessLocal: { url: 'http://localhost:11434', requiresKey: false, apiKey: '' },
+  unconfiguredCloud: { url: 'https://cloud.example/v1', requiresKey: true, apiKey: '' },
+  configuredCloud: { url: 'https://configured.example/v1', requiresKey: true, apiKey: 'test-only-key' },
+});
+assert.ok(knownUrls.has('http://localhost:11434'), 'keyless local endpoint remains registered');
+assert.equal(knownUrls.has('https://cloud.example/v1'), false, 'unconfigured required-key endpoint is not registered');
+assert.ok(knownUrls.has('https://configured.example/v1'), 'configured required-key endpoint remains registered');
 
 // 1. Route exists and returns success shape
 const res = await fetch(`${BASE}/api/discover/endpoints`);
@@ -14,6 +25,9 @@ const data = await res.json();
 assert.ok(data.success === true, 'success flag is true');
 assert.ok(Array.isArray(data.discovered), 'discovered is an array');
 assert.ok(typeof data.scanned === 'number' && data.scanned > 0, 'scanned count > 0');
+const ninerouter = data.knownProviders.find(provider => provider.key === 'wk_9router');
+assert.ok(ninerouter, '9router is surfaced as a well-known provider');
+assert.equal(ninerouter.alreadyRegistered, false, 'unconfigured 9router is not marked as added');
 
 // 2. Custom port override narrows the scan
 const resPort = await fetch(`${BASE}/api/discover/endpoints?ports=9`);
