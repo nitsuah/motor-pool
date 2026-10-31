@@ -60,6 +60,7 @@ export const LLM_CONFIG = {
     name: '9router (host)',
     backendType: 'ninerouter',
     type: 'cloud',
+    requiresKey: true,
     apiStyle: 'openai',
     defaultModel: process.env.NINEROUTER_MODEL || 'MAX',
     apiKey: process.env.NINEROUTER_API_KEY || '',
