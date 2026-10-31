@@ -190,6 +190,15 @@ async function probeEndpoint(host, port) {
   return null;
 }
 
+export function getKnownEndpointUrls(configs) {
+  return new Set(
+    Object.values(configs)
+      .filter(config => !config.requiresKey || Boolean(config.apiKey))
+      .map(config => config.url?.replace(/\/$/, ''))
+      .filter(Boolean)
+  );
+}
+
 export function createDiscoverRouter({ LLM_CONFIG, logStructured }) {
   const router = express.Router();
 
