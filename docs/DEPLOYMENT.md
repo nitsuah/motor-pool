@@ -55,6 +55,16 @@ docker exec ollama ollama ps
 
 Docker Model Runner is an additional endpoint. Enable it in Docker Desktop, then select it in motor-pool; there is no `ACTIVE_LLM_BACKEND` selector in the current runtime. The OpenLLM endpoint is an optional, deferred profile.
 
+### GPU access and profile selection
+
+The detector reports host GPU inventory separately from the GPU access available to Ollama's container. A host GPU name alone does not prove that the container can use it.
+
+- `Container GPU access: verified` means the host `nvidia-smi` probe succeeded and `docker info --format '{{json .Runtimes}}'` lists the `nvidia` runtime. Only verified container access allows NVIDIA VRAM to count toward the `laptop` or `desktop` profile.
+- `Container GPU access: unverified` means NVIDIA host hardware was detected but the NVIDIA probe or Docker runtime could not be verified. The detector selects the CPU-safe `minimal` profile and prints the fallback reason.
+- `Container GPU access: none` means no NVIDIA host GPU was detected. AMD/Intel devices may still appear in the host inventory; the current Compose GPU overlay is NVIDIA-only.
+
+The AMD Radeon RX 470 is CPU-only in the current Docker Desktop configuration unless a supported alternative is proven. Do not assume that setting `NVIDIA_VISIBLE_DEVICES=all` enables AMD/Vulkan passthrough. Use CPU-only inference until a supported AMD path is verified; this repository does not currently provide an AMD/Vulkan overlay.
+
 ---
 
 ## 3. Enable optional profiles
@@ -175,7 +185,7 @@ automatically on server start via `db.js`.
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `DEVICE_PROFILE` | `minimal` | `minimal`, `laptop`, `desktop` — profile-aware endpoint/model guidance; hardware detection is currently NVIDIA-specific |
+| `DEVICE_PROFILE` | `minimal` | `minimal`, `laptop`, `desktop` — profile-aware endpoint/model guidance; accelerated profiles require verified NVIDIA container access; host inventory may also report AMD/Intel |
 | `PRIMARY_LLM_URL` | `http://ollama:8080` | Override Ollama endpoint |
 | `PRIMARY_LLM_MODEL` | `llama3.1:8b-instruct-q4_K_M` | Ollama model pulled and warmed at stack startup |
 | `OLLAMA_KEEP_ALIVE` | `30m` | Keep the startup model resident between requests |
