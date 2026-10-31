@@ -10,49 +10,59 @@
 
 param(
     [switch]$Write,
-    [string]$EnvFile = ".env"
+    [string]$EnvFile = ".env",
+    [string]$Fixture
 )
 
 Set-StrictMode -Off
 $ErrorActionPreference = "SilentlyContinue"
 
-# ── GPU detection ────────────────────────────────────────────────────────────
-$vramMB  = 0
-$gpuName = "none"
+# ── Fixture support ───────────────────────────────────────────────────────────
+if ($Fixture) {
+    $fixtureData = $Fixture | ConvertFrom-Json
+    $vramMB  = $fixtureData.vramMB
+    $gpuName = $fixtureData.gpuName
+    $ramGB   = $fixtureData.ramGB
+    $hostGpus = $fixtureData.hostGpus | ForEach-Object { [pscustomobject]@{ Name = $_.Name; Vendor = $_.Vendor } }
+} else {
+    # ── GPU detection ────────────────────────────────────────────────────────────
+    $vramMB  = 0
+    $gpuName = "none"
 
-$smiOut = nvidia-smi --query-gpu=name,memory.total --format=csv,noheader,nounits 2>$null
-if ($LASTEXITCODE -eq 0 -and $smiOut) {
-    $firstGpu = ($smiOut -split "`n")[0].Trim()
-    $parts    = $firstGpu -split ",\s*"
-    $gpuName  = $parts[0].Trim()
-    $vramMB   = [int]($parts[1].Trim())
-}
+    $smiOut = nvidia-smi --query-gpu=name,memory.total --format=csv,noheader,nounits 2>$null
+    if ($LASTEXITCODE -eq 0 -and $smiOut) {
+        $firstGpu = ($smiOut -split "`n")[0].Trim()
+        $parts    = $firstGpu -split ",\s*"
+        $gpuName  = $parts[0].Trim()
+        $vramMB   = [int]($parts[1].Trim())
+    }
 
-# ── RAM detection ────────────────────────────────────────────────────────────
-$ramGB = 0
-try {
-    $cs    = Get-WmiObject -Class Win32_ComputerSystem -ErrorAction Stop
-    $ramGB = [math]::Floor($cs.TotalPhysicalMemory / 1GB)
-} catch {
+    # ── RAM detection ────────────────────────────────────────────────────────────
+    $ramGB = 0
     try {
-        $ramGB = [math]::Floor((Get-CimInstance Win32_ComputerSystem).TotalPhysicalMemory / 1GB)
-    } catch { }
-}
+        $cs    = Get-WmiObject -Class Win32_ComputerSystem -ErrorAction Stop
+        $ramGB = [math]::Floor($cs.TotalPhysicalMemory / 1GB)
+    } catch {
+        try {
+            $ramGB = [math]::Floor((Get-CimInstance Win32_ComputerSystem).TotalPhysicalMemory / 1GB)
+        } catch { }
+    }
 
-# ── Host GPU inventory (any vendor) ──────────────────────────────────────────
-# Host hardware is separate from what Ollama's container can access.
-$hostGpus = @()
-try {
-    $hostGpus = @(Get-CimInstance Win32_VideoController -ErrorAction Stop | ForEach-Object {
-        $name = [string]$_.Name
-        $vendor = if ($name -match 'NVIDIA|GeForce|Quadro|Tesla') { 'NVIDIA' }
-                  elseif ($name -match 'AMD|Radeon|\bATI\b|Advanced Micro Devices') { 'AMD' }
-                  elseif ($name -match 'Intel') { 'Intel' }
-                  else { 'Other' }
-        [pscustomobject]@{ Name = $name; Vendor = $vendor }
-    })
-} catch {
-    # CIM is unavailable on non-Windows hosts; keep the inventory empty.
+    # ── Host GPU inventory (any vendor) ──────────────────────────────────────────
+    # Host hardware is separate from what Ollama's container can access.
+    $hostGpus = @()
+    try {
+        $hostGpus = @(Get-CimInstance Win32_VideoController -ErrorAction Stop | ForEach-Object {
+            $name = [string]$_.Name
+            $vendor = if ($name -match 'NVIDIA|GeForce|Quadro|Tesla') { 'NVIDIA' }
+                      elseif ($name -match 'AMD|Radeon|\bATI\b|Advanced Micro Devices') { 'AMD' }
+                      elseif ($name -match 'Intel') { 'Intel' }
+                      else { 'Other' }
+            [pscustomobject]@{ Name = $name; Vendor = $vendor }
+        })
+    } catch {
+        # CIM is unavailable on non-Windows hosts; keep the inventory empty.
+    }
 }
 
 # ── Profile selection ────────────────────────────────────────────────────────
