@@ -39,6 +39,7 @@ import { createChannelsRouter } from './routes/channels.js';
 import { createMcpRegistryRouter } from './routes/mcp-registry.js';
 import { createPluginsRouter } from './routes/plugins.js';
 import { createWorktreesRouter } from './routes/worktrees.js';
+import { createTokenEconomizerRouter } from './routes/token-economizer.js';
 import { createPluginRegistry } from './modules/plugin-loader.js';
 import { startTaskRunner } from './task-runner.js';
 import outputsRouter from './routes/outputs.js';
@@ -576,6 +577,10 @@ app.use('/api', createWorktreesRouter({
   TMUX_ENABLED, TMUX_SESSION, ALLOWED_COMMANDS: TMUX_ALLOWED_COMMANDS,
   EXEC_TIMEOUT_MS: process.env.AGENT_BOARD_TMUX_EXEC_TIMEOUT_MS,
   eventBus, logStructured,
+}));
+app.use('/api/tokeneconomizer', createTokenEconomizerRouter({
+  TokenEconomizer: (await import('./modules/token-economizer.js')).TokenEconomizer,
+  logStructured
 }));
 
 app.get('/api/health', async (req, res) => {

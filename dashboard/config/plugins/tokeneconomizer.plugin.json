@@ -1,0 +1,104 @@
+{
+  "_comment": "TokenEconomizer plugin. Wraps Microsoft's TokenEconomizer CLI as HTTP tools. Operators must install TokenEconomizer locally (install via git clone + sign-in) and expose Python path. Ships disabled so operators opt in. See docs/API.md#plugins.",
+  "manifestVersion": 1,
+  "name": "tokeneconomizer",
+  "version": "1.0.0",
+  "description": "Token cost optimization plugin using Microsoft TokenEconomizer. Learns from past sessions, prunes unused tools, detects stuck loops. Requires local TokenEconomizer installation via https://github.com/microsoft/TokenEconomizer.",
+  "enabled": true,
+  "baseUrl": "${TOKEN_ECONOMIZER_URL:-http://tool-tokeneconomizer:3202}",
+  "tools": [
+    {
+      "name": "status",
+      "description": "Show TokenEconomizer status: learned facts, actions, costs.",
+      "transport": "http",
+      "method": "POST",
+      "path": "/status",
+      "timeoutMs": 30000,
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "scope": { "type": "string", "description": "repo, global, or none" }
+        }
+      }
+    },
+    {
+      "name": "microskills",
+      "description": "List injected and forming facts from micro-skills.",
+      "transport": "http",
+      "method": "POST",
+      "path": "/microskills",
+      "timeoutMs": 30000,
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "format": { "type": "string", "description": "json or text" }
+        }
+      }
+    },
+    {
+      "name": "toolprune",
+      "description": "Tool pruning: show denied tools and evidence, or apply/prune/restore.",
+      "transport": "http",
+      "method": "POST",
+      "path": "/toolprune",
+      "timeoutMs": 30000,
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "action": { "type": "string", "enum": ["measure", "apply", "restore", "refresh-catalog"], "description": "tool pruning action" },
+          "measure": { "type": "object", "description": "measure options" }
+        }
+      }
+    },
+    {
+      "name": "config",
+      "description": "View or set TokenEconomizer config.",
+      "transport": "http",
+      "method": "POST",
+      "path": "/config",
+      "timeoutMs": 30000,
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "operation": { "type": "string", "enum": ["list", "set", "unset"], "description": "config action" },
+          "key": { "type": "string", "description": "config key" },
+          "value": { "type": "string", "description": "config value (for set)" }
+        }
+      }
+    },
+    {
+      "name": "repomap",
+      "description": "Show representation map for current repository.",
+      "transport": "http",
+      "method": "POST",
+      "path": "/repomap",
+      "timeoutMs": 60000
+    },
+    {
+      "name": "repos",
+      "description": "List managed repositories or migrate/merge them.",
+      "transport": "http",
+      "method": "POST",
+      "path": "/repos",
+      "timeoutMs": 60000,
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "operation": { "type": "string", "enum": ["list", "migrate", "merge"], "description": "repo operation" }
+        }
+      }
+    },
+    {
+      "name": "doctor",
+      "description": "Run diagnostics on TokenEconomizer installation.",
+      "transport": "http",
+      "method": "POST",
+      "path": "/doctor",
+      "timeoutMs": 60000
+    }
+  ],
+  "events": {
+    "channel": "plugins",
+    "emits": ["tokeneconomizer.invoked", "tokeneconomizer.failed", "tokeneconomizer.toolprune-applied"]
+  }
+}

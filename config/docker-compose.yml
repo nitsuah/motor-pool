@@ -327,6 +327,7 @@ services:
       # (profile `tools` — see tool-content-gen / tool-website below)
       - TOOL_CONTENT_GEN_URL=http://tool-content-gen:3200
       - TOOL_WEBSITE_URL=http://tool-website:3201
+      - TOKEN_ECONOMIZER_URL=http://tool-tokeneconomizer:3202
       - AGENT_BOARD_ENABLE_DOCKER_CONTROL=${AGENT_BOARD_ENABLE_DOCKER_CONTROL:-false}
       - PORT=3000
       - DATABASE_URL=postgresql://agent:agent@agent-db:5432/agent_board
@@ -507,6 +508,42 @@ services:
     networks:
       - agent-network
 
+  # ===== TOOL: TOKENECONOMIZER (profile: tools) =====
+  # Microsoft TokenEconomizer HTTP wrapper. Reduces coding agent costs by learning
+  # from past sessions (micro-skills), pruning unused tools, detecting stuck loops.
+  # See https://github.com/microsoft/TokenEconomizer
+  # Enable with: docker compose --profile tools up tool-tokeneconomizer
+  # Requires local TokenEconomizer install: git clone https://github.com/microsoft/TokenEconomizer
+  # Then set TE_PYTHON to python3 path and mount ~/.tokeneconomizer volume.
+  tool-tokeneconomizer:
+    build:
+      context: ../tools/tokeneconomizer
+      dockerfile: Dockerfile
+    container_name: tool-tokeneconomizer
+    restart: unless-stopped
+    profiles:
+      - tools
+      - prebuild
+    ports:
+      - "3202:3202"
+    # TokenEconomizer runs model calls through your existing agent on same plan/login.
+    # No API keys needed. Data stays in ~/.tokeneconomizer volume.
+    environment:
+      - TOKEN_ECONOMIZER_PORT=3202
+      - TE_PYTHON=${TE_PYTHON:-python3}
+      - TOKEN_ECONOMIZER_DATA_DIR=${TOKEN_ECONOMIZER_DATA_DIR:-/home/nodeapp/.tokeneconomizer}
+    volumes:
+      # TokenEconomizer learned data (microskills, toolprune state, configs)
+      - tokeneconomizer_data:/home/nodeapp/.tokeneconomizer
+    healthcheck:
+      test: ["CMD", "node", "-e", "require('http').get('http://localhost:3202/health',(r)=>{r.resume();r.on('end',()=>process.exit(r.statusCode===200?0:1))}).on('error',()=>process.exit(1))"]
+      interval: 30s
+      timeout: 5s
+      start_period: 10s
+      retries: 3
+    networks:
+      - agent-network
+
   # ===== TEST (unit — no stack required) =====
   test:
     build:
@@ -534,6 +571,7 @@ volumes:
   agent_endpoint_data:  # Encrypted custom endpoint store (survives restarts)
   agent_session_data:  # Active-session snapshots including message history
   agent_workspace:  # Agent sandbox checkout — reset with: docker volume rm <project>_agent_workspace
+  tokeneconomizer_data:  # TokenEconomizer learned data (microskills, toolprune state, configs)
 
 networks:
   agent-network:

@@ -14,6 +14,7 @@ function SystemPanel({
   onRunServiceAction, onPullModel,
   runningServices, totalServices, knownModels,
   showMetricsPanel, onToggleMetrics,
+  showTokenEconomizerPanel, onToggleTokenEconomizer,
   onEndpointAdded,
 }) {
   const [diagResults, setDiagResults] = useState(null);
@@ -118,6 +119,7 @@ function SystemPanel({
           {darkMode ? '☀️' : '🌙'}
         </button>
         <button className={`icon-btn ${showMetricsPanel ? 'active' : ''}`} onClick={onToggleMetrics} title="Metrics">📊</button>
+        <button className={`icon-btn ${showTokenEconomizerPanel ? 'active' : ''}`} onClick={onToggleTokenEconomizer} title="TokenEconomizer">💰</button>
         <button className="icon-btn" onClick={onClose} title="Close">✕</button>
       </div>
 

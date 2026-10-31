@@ -2,6 +2,19 @@ import React, { useState } from 'react';
 import { EXPERIENCE_META } from '../constants/app-config.js';
 import WorktreeLauncher from './WorktreeLauncher.jsx';
 
+export function TokenEconomizerIndicator({ onClick }) {
+  return (
+    <button
+      className="topbar-te-btn"
+      onClick={onClick}
+      title="TokenEconomizer - Token optimization & cost savings"
+    >
+      <span className="topbar-te-icon">💰</span>
+      <span className="topbar-te-tooltip">TokenEconomizer</span>
+    </button>
+  );
+}
+
 function SessionDot({ sessionId, loadingSessions, sessionPendingReply, sessionErrors, wsConnected }) {
   const isWorking = loadingSessions.has(sessionId);
   const isPending = sessionPendingReply.has(sessionId);
@@ -28,6 +41,7 @@ export default function TopBar({
   loadingSessions = new Set(),
   sessionPendingReply = new Set(),
   sessionErrors = new Set(),
+  onToggleTokenEconomizer = () => {},
 }) {
   const [sessionSearch, setSessionSearch] = useState('');
   const filteredSessions = sessionSearch.trim()
@@ -130,6 +144,11 @@ export default function TopBar({
           <svg viewBox="0 0 16 16" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="1.5"><rect x="1" y="1" width="14" height="6" rx="1"/><rect x="1" y="9" width="14" height="6" rx="1"/></svg>
         </button>
       </div>
+
+      <div className="topbar-divider" />
+
+      {/* ── TokenEconomizer indicator ── */}
+      <TokenEconomizerIndicator onClick={onToggleTokenEconomizer} />
 
       <div className="topbar-divider" />
 
