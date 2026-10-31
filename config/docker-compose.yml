@@ -361,6 +361,7 @@ services:
         condition: service_completed_successfully
     networks:
       - agent-network
+      - tokeneconomizer-network
 
   # One-shot: seeds the agent sandbox volume from a read-only mount of the repo
   # (git clone + current working tree, never .env files), then exits. It is the
@@ -535,8 +536,9 @@ services:
       timeout: 5s
       start_period: 10s
       retries: 3
+    # Only the dashboard shares this dedicated bridge; other agent-network containers cannot reach the unauthenticated service.
     networks:
-      - agent-network
+      - tokeneconomizer-network
 
   # ===== TEST (unit — no stack required) =====
   test:
@@ -572,3 +574,8 @@ networks:
     name: agent-network
     driver: bridge
     external: false
+  # Dedicated bridge isolates the unauthenticated TokenEconomizer HTTP wrapper from other services.
+  # Keep ordinary bridge egress so explicit catalog refreshes/upstream CLI operations are not broken.
+  tokeneconomizer-network:
+    name: tokeneconomizer-network
+    driver: bridge
