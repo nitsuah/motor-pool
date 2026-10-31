@@ -520,17 +520,15 @@ services:
     profiles:
       - tools
       - prebuild
-    ports:
-      - "3202:3202"
-    # TokenEconomizer runs model calls through your existing agent on same plan/login.
-    # No API keys needed. Data stays in ~/.tokeneconomizer volume.
+    # No host-published port: only containers on the Docker network can reach this service.
+    # TokenEconomizer learned data stays in its dedicated named volume.
     environment:
       - TOKEN_ECONOMIZER_PORT=3202
       - TE_PYTHON=${TE_PYTHON:-python3}
-      - TOKEN_ECONOMIZER_DATA_DIR=${TOKEN_ECONOMIZER_DATA_DIR:-/home/nodeapp/.tokeneconomizer}
+      - TOKENECONOMIZER_HOME=/home/node/.tokeneconomizer
     volumes:
       # TokenEconomizer learned data (microskills, toolprune state, configs)
-      - tokeneconomizer_data:/home/nodeapp/.tokeneconomizer
+      - tokeneconomizer_data:/home/node/.tokeneconomizer
     healthcheck:
       test: ["CMD", "node", "-e", "require('http').get('http://localhost:3202/health',(r)=>{r.resume();r.on('end',()=>process.exit(r.statusCode===200?0:1))}).on('error',()=>process.exit(1))"]
       interval: 30s

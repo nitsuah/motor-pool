@@ -17,7 +17,7 @@
       "parameters": {
         "type": "object",
         "properties": {
-          "scope": { "type": "string", "description": "repo, global, or none" }
+          "json": { "type": "boolean", "description": "Return machine-readable JSON output" }
         }
       }
     },
@@ -31,13 +31,13 @@
       "parameters": {
         "type": "object",
         "properties": {
-          "format": { "type": "string", "description": "json or text" }
+          
         }
       }
     },
     {
       "name": "toolprune",
-      "description": "Tool pruning: show denied tools and evidence, or apply/prune/restore.",
+      "description": "Show tool-pruning evidence or explicitly apply/restore a proposal. Mutating actions are passed only when named.",
       "transport": "http",
       "method": "POST",
       "path": "/toolprune",
@@ -45,14 +45,14 @@
       "parameters": {
         "type": "object",
         "properties": {
-          "action": { "type": "string", "enum": ["measure", "apply", "restore", "refresh-catalog"], "description": "tool pruning action" },
+          "action": { "type": "string", "enum": ["show", "measure", "apply", "restore", "refresh-catalog", "apply-pending"], "description": "explicit toolprune action" },
           "measure": { "type": "object", "description": "measure options" }
         }
       }
     },
     {
       "name": "config",
-      "description": "View or set TokenEconomizer config.",
+      "description": "Show configuration or set/unset one repository-level setting. Global configuration is not exposed.",
       "transport": "http",
       "method": "POST",
       "path": "/config",
@@ -60,7 +60,7 @@
       "parameters": {
         "type": "object",
         "properties": {
-          "operation": { "type": "string", "enum": ["list", "set", "unset"], "description": "config action" },
+          "operation": { "type": "string", "enum": ["show", "set", "unset"], "description": "config action; defaults to show" },
           "key": { "type": "string", "description": "config key" },
           "value": { "type": "string", "description": "config value (for set)" }
         }
@@ -68,15 +68,21 @@
     },
     {
       "name": "repomap",
-      "description": "Show representation map for current repository.",
+      "description": "Show the cached repository map or refresh it.",
       "transport": "http",
       "method": "POST",
       "path": "/repomap",
-      "timeoutMs": 60000
+      "timeoutMs": 60000,
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "action": { "type": "string", "enum": ["show", "refresh"], "description": "map action; defaults to show" }
+        }
+      }
     },
     {
       "name": "repos",
-      "description": "List managed repositories or migrate/merge them.",
+      "description": "List managed repositories. State migration and merge are intentionally not exposed over HTTP.",
       "transport": "http",
       "method": "POST",
       "path": "/repos",
@@ -84,7 +90,7 @@
       "parameters": {
         "type": "object",
         "properties": {
-          "operation": { "type": "string", "enum": ["list", "migrate", "merge"], "description": "repo operation" }
+          "operation": { "type": "string", "enum": ["list"], "description": "read-only list; state migration/merge is not exposed" }
         }
       }
     },

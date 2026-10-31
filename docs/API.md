@@ -1025,13 +1025,16 @@ All endpoints: `POST /api/plugins/tokeneconomizer/tools/<tool>/invoke`
 
 | Tool | Description | Parameters |
 |------|-------------|------------|
-| `status` | Show TE status: learned facts, actions, costs | `{ scope?: "repo" \| "global" \| "none" }` |
-| `microskills` | List injected and forming micro-skill facts | `{ format?: "json" \| "text" }` |
-| `toolprune` | Tool pruning: denied tools, apply/restore/refresh | `{ action?: "measure" \| "apply" \| "restore" \| "refresh-catalog", measure?: object }` |
-| `config` | View or set TE config | `{ operation?: "list" \| "set" \| "unset", key?: string, value?: string }` |
-| `repomap` | Show representation map for current repo | `{}` |
-| `repos` | List managed repos or migrate/merge | `{ operation?: "list" \| "migrate" \| "merge" }` |
-| `doctor` | Run diagnostics on TE installation | `{}` |
+| `status` | Show TokenEconomizer status | `{ json?: boolean }` |
+| `microskills` | List injected and forming micro-skill facts | `{}` |
+| `toolprune` | Show evidence, measure, or explicitly apply/restore a proposal | `{ action?: "show" \| "measure" \| "apply" \| "restore" \| "refresh-catalog" \| "apply-pending" }` |
+| `config` | Show or change one repository-level setting | `{ operation?: "show" \| "set" \| "unset", key?: string, value?: string }` |
+| `repomap` | Show the cached map or refresh it | `{ action?: "show" \| "refresh" }` |
+| `repos` | List managed repositories (read-only; migration/merge are not exposed) | `{ operation?: "list" }` |
+| `doctor` | Run diagnostics on TokenEconomizer installation | `{}` |
+
+The wrapper exposes only fixed command routes; it does not provide arbitrary `/exec`.
+Global config and repository-state migration/merge are intentionally excluded.
 
 ### Example Usage
 
@@ -1044,7 +1047,7 @@ curl -X POST http://localhost:3000/api/plugins/tokeneconomizer/tools/status/invo
 # List micro-skills
 curl -X POST http://localhost:3000/api/plugins/tokeneconomizer/tools/microskills/invoke \
   -H 'Content-Type: application/json' \
-  -d '{"arguments": {"format": "json"}}'
+  -d '{"arguments": {}}'
 
 # Apply tool pruning
 curl -X POST http://localhost:3000/api/plugins/tokeneconomizer/tools/toolprune/invoke \
