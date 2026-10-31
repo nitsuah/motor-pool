@@ -68,7 +68,7 @@ export const EXPERIENCE_CONFIGS = {
     description: 'Full model access, standard safety, workspace bash/file access.',
     icon: '💻',
     safetyMode: 'standard',
-    availableEndpoints: ['primary', 'docker_runner', 'glm_flash', 'openllm'],
+    availableEndpoints: ['primary', 'docker_runner', 'glm_flash', 'openllm', 'ninerouter'],
     systemPromptSuffix:
       'You are a developer assistant with workspace tool access. ' +
       'You have four tools: bash (run shell commands), read_file, write_file, and list_files — all sandboxed to the mounted workspace. ' +
@@ -84,7 +84,7 @@ export const EXPERIENCE_CONFIGS = {
     description: 'Long-form reasoning with web search and workspace artifact creation.',
     icon: '🔬',
     safetyMode: 'research',
-    availableEndpoints: ['primary', 'docker_runner', 'glm_flash', 'openllm'],
+    availableEndpoints: ['primary', 'docker_runner', 'glm_flash', 'openllm', 'ninerouter'],
     systemPromptSuffix:
       'You are a research assistant. You have two tools: web_search (DuckDuckGo) and write_artifact (saves notes to workspace/artifacts/). ' +
       'Use web_search when the question needs current information. ' +
@@ -111,7 +111,7 @@ export const EXPERIENCE_CONFIGS = {
     description: 'Generate AI short videos via the content-gen tool server (MoneyPrinterTurbo).',
     icon: '🎬',
     safetyMode: 'standard',
-    availableEndpoints: ['primary', 'docker_runner', 'glm_flash', 'openllm'],
+    availableEndpoints: ['primary', 'docker_runner', 'glm_flash', 'openllm', 'ninerouter'],
     systemPromptSuffix:
       'You are a short-form video production assistant powered by the Content Studio tools. ' +
       'Help the user brainstorm viral video topics, attention-grabbing hooks, and tight scripts (30-60s). ' +
@@ -126,7 +126,7 @@ export const EXPERIENCE_CONFIGS = {
     description: 'Lead discovery and B2B site generation with safe workspace build space.',
     icon: '🌐',
     safetyMode: 'standard',
-    availableEndpoints: ['primary', 'docker_runner', 'glm_flash', 'openllm'],
+    availableEndpoints: ['primary', 'docker_runner', 'glm_flash', 'openllm', 'ninerouter'],
     systemPromptSuffix:
       'You are a B2B website agency assistant. You have three tools: discover_leads, save_website_file, and list_website_files. ' +
       'CRITICAL RULE: never paste raw HTML or large code blocks directly into chat — always save them with save_website_file. ' +
