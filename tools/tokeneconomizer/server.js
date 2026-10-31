@@ -19,6 +19,9 @@ const __dirname = dirname(__filename);
 const PORT = parseInt(process.env.TOKEN_ECONOMIZER_PORT || '3202', 10);
 const TE_PYTHON = process.env.TE_PYTHON || process.env.TOKEN_ECONOMIZER_PYTHON || '';
 
+// te CLI installed via pip3 at /usr/local/bin/te
+const TE_CMD = '/usr/local/bin/te';
+
 const app = express();
 app.use(express.json({ limit: '1MB' }));
 
@@ -31,93 +34,79 @@ app.get('/health', (req, res) => {
   });
 });
 
-// Proxy to te CLI
-app.post('/exec', async (req, res) => {
-  const { command, args = [] } = req.body;
+// Internal function to execute te CLI
+async function runTeCommand(teArgs) {
+  return new Promise((resolve, reject) => {
+    const proc = spawn(TE_CMD, teArgs, {
+      stdio: 'pipe',
+      cwd: __dirname,
+    });
 
-  if (!command || typeof command !== 'string') {
-    return res.status(400).json({ error: 'command required' });
-  }
+    let stdout = '';
+    let stderr = '';
+    let timedOut = false;
 
-  // Build te command: te <command> [args...]
-  const teArgs = [command, ...args];
+    const timeoutMs = parseInt(process.env.TOKEN_ECONOMIZER_TIMEOUT_MS || '60000', 10);
 
-  // Find Python
-  let python;
-  if (TE_PYTHON) {
-    python = TE_PYTHON;
-  } else {
-    // Try common names in order
-    const candidates = ['python3', 'python', 'py'];
-    for (const p of candidates) {
-      try {
-        await spawn(p, ['--version'], { detached: true });
-        python = p;
-        break;
-      } catch {
-        continue;
+    const timeout = setTimeout(() => {
+      proc.kill('SIGTERM');
+      timedOut = true;
+    }, timeoutMs);
+
+    proc.stdout.on('data', (data) => {
+      stdout += data.toString();
+    });
+
+    proc.stderr.on('data', (data) => {
+      stderr += data.toString();
+    });
+
+    proc.on('close', (code) => {
+      clearTimeout(timeout);
+      if (timedOut) {
+        return reject({
+          status: 504,
+          error: `te command timed out after ${timeoutMs}ms`,
+        });
       }
-    }
-    if (!python) {
-      return res.status(500).json({ error: 'No Python found; set TE_PYTHON' });
-    }
-  }
 
-  // Run te command
-  const proc = spawn(python, ['te'].concat(teArgs), {
-    stdio: 'pipe',
-    cwd: __dirname,
-  });
+      if (code !== 0) {
+        return reject({
+          status: 500,
+          error: `te ${teArgs.join(' ')} failed:`,
+          output: stdout || stderr,
+        });
+      }
 
-  let stdout = '';
-  let stderr = '';
-  let timedOut = false;
-
-  const timeoutMs = parseInt(process.env.TOKEN_ECONOMIZER_TIMEOUT_MS || '60000', 10);
-
-  const timeout = setTimeout(() => {
-    proc.kill('SIGTERM');
-    timedOut = true;
-  }, timeoutMs);
-
-  proc.stdout.on('data', (data) => {
-    stdout += data.toString();
-  });
-
-  proc.stderr.on('data', (data) => {
-    stderr += data.toString();
-  });
-
-  proc.on('close', (code) => {
-    clearTimeout(timeout);
-    if (timedOut) {
-      return res.status(504).json({
-        error: `te command timed out after ${timeoutMs}ms`,
-      });
-    }
-
-    if (code !== 0) {
-      return res.status(500).json({
-        error: `te ${command} failed:`,
+      resolve({
+        success: true,
+        command: teArgs.join(' '),
         output: stdout || stderr,
       });
-    }
+    });
 
-    res.json({
-      success: true,
-      command,
-      args,
-      output: stdout || stderr,
+    proc.on('error', (err) => {
+      clearTimeout(timeout);
+      reject({
+        status: 500,
+        error: 'Failed to spawn te process',
+        details: err.message,
+      });
     });
   });
+}
 
-  proc.on('error', (err) => {
-    clearTimeout(timeout);
-    res.status(500).json({
-      error: 'Failed to spawn te process',
-      details: err.message,
-    });
-  });
+// Proxy to te CLI
+app.post('/exec', async (req, res) => {
+  try {
+    const { args = [] } = req.body;
+    const teArgs = Array.isArray(args) ? args : [args];
+    const result = await runTeCommand(teArgs);
+    res.json(result);
+  } catch (err) {
+    const status = err.status || 500;
+    res.status(status).json(err);
+  }
 });
 
 // TokenEconomizer commands
@@ -138,35 +127,29 @@ const TE_COMMANDS = [
   'doctor',
 ];
 
-// Map high-level commands to /exec endpoints
+// Map high-level commands to runTeCommand directly
 TE_COMMANDS.forEach((cmd) => {
   const parts = cmd.split(' ');
   const subCmd = parts[0];
   const arg = parts[1];
 
   app.post(`/${subCmd}`, async (req, res) => {
-    const execArgs = arg ? [arg] : [];
-    if (req.body?.arguments) {
-      execArgs.push(...Object.values(req.body.arguments));
-    }
-
-    // Execute with custom prompt if provided
-    if (req.body?.prompt) {
-      execArgs.unshift(req.body.prompt);
-    }
-
     try {
-      const response = await fetch(`${req.protocol}://${req.get('host')}/exec`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ command: 'te', args: execArgs }),
-      });
-      res.status(response.status).json(await response.json());
+      const execArgs = [subCmd, ...(arg ? [arg] : [])];
+      if (req.body?.arguments) {
+        execArgs.push(...Object.values(req.body.arguments));
+      }
+
+      // Execute with custom prompt if provided
+      if (req.body?.prompt) {
+        execArgs.unshift(req.body.prompt);
+      }
+
+      const result = await runTeCommand(execArgs);
+      res.json(result);
     } catch (err) {
-      res.status(500).json({
-        error: 'Request to /exec failed',
-        details: err.message,
-      });
+      const status = err.status || 500;
+      res.status(status).json(err);
     }
   });
 });

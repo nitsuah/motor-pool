@@ -4,8 +4,9 @@ FROM node:20-slim
 
 WORKDIR /app
 
-# Install Python 3 for te CLI
-RUN apt-get update && apt-get install -y --no-install-recommends python3 python3-pip && \
+# Install Python 3 + TokenEconomizer CLI
+RUN apt-get update && apt-get install -y --no-install-recommends python3 python3-pip git && \
+    pip3 install --break-system-packages --no-cache-dir git+https://github.com/microsoft/TokenEconomizer.git && \
     rm -rf /var/lib/apt/lists/*
 
 # Copy package files
