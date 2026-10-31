@@ -105,7 +105,13 @@ app.post('/exec', async (req, res) => {
     res.json(result);
   } catch (err) {
     const status = err.status || 500;
-    res.status(status).json(err);
+    // Sanitize error - don't expose stack traces
+    const safeError = {
+      error: err.error || 'Internal server error',
+      ...(err.output && { output: err.output }),
+      ...(err.details && { details: err.details }),
+    };
+    res.status(status).json(safeError);
   }
 });
 
@@ -149,7 +155,13 @@ TE_COMMANDS.forEach((cmd) => {
       res.json(result);
     } catch (err) {
       const status = err.status || 500;
-      res.status(status).json(err);
+      // Sanitize error - don't expose stack traces
+      const safeError = {
+        error: err.error || 'Internal server error',
+        ...(err.output && { output: err.output }),
+        ...(err.details && { details: err.details }),
+      };
+      res.status(status).json(safeError);
     }
   });
 });

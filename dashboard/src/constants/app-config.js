@@ -4,7 +4,7 @@ export function getOrCreateUserId() {
   if (!id) {
     id = typeof crypto !== 'undefined' && crypto.randomUUID
       ? 'anon_' + crypto.randomUUID()
-      : 'anon_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2, 11);
+      : 'anon_' + Date.now().toString(36) + '_' + crypto.getRandomValues(new Uint32Array(2)).join('_').slice(2, 11);
     localStorage.setItem(key, id);
   }
   return id;
