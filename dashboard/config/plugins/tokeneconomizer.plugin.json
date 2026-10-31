@@ -27,13 +27,7 @@
       "transport": "http",
       "method": "POST",
       "path": "/microskills",
-      "timeoutMs": 30000,
-      "parameters": {
-        "type": "object",
-        "properties": {
-          
-        }
-      }
+      "timeoutMs": 30000
     },
     {
       "name": "toolprune",
@@ -45,8 +39,7 @@
       "parameters": {
         "type": "object",
         "properties": {
-          "action": { "type": "string", "enum": ["show", "measure", "apply", "restore", "refresh-catalog", "apply-pending"], "description": "explicit toolprune action" },
-          "measure": { "type": "object", "description": "measure options" }
+          "action": { "type": "string", "enum": ["show", "measure", "apply", "restore", "refresh-catalog", "apply-pending"], "description": "explicit toolprune action" }
         }
       }
     },
