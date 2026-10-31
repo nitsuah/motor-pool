@@ -525,7 +525,8 @@ services:
       - tools
       - prebuild
     ports:
-      - "3202:3202"
+      # Bind to loopback only: this service has no independent authentication.
+      - "127.0.0.1:3202:3202"
     # TokenEconomizer runs model calls through your existing agent on same plan/login.
     # No API keys needed. Data stays in ~/.tokeneconomizer volume.
     environment:
