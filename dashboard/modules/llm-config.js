@@ -53,6 +53,18 @@ export const LLM_CONFIG = {
     apiStyle: 'openai',
     defaultModel: process.env.OPENLLM_MODEL || '',
   },
+  // 9router - OpenAI-compatible router for Anthropic/Claude models
+  // Connects to 9router running on host (port 20128) via host.docker.internal
+  ninerouter: {
+    url: process.env.NINEROUTER_URL || 'http://host.docker.internal:20128',
+    name: '9router (host)',
+    backendType: 'ninerouter',
+    type: 'cloud',
+    requiresKey: true,
+    apiStyle: 'openai',
+    defaultModel: process.env.NINEROUTER_MODEL || 'MAX',
+    apiKey: process.env.NINEROUTER_API_KEY || '',
+  },
 };
 
 // ── Custom endpoint registry ──────────────────────────────────────────────────

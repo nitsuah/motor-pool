@@ -130,6 +130,16 @@ const WELL_KNOWN_PROVIDERS = [
     docsUrl:      'https://docs.perplexity.ai',
     defaultModel: 'llama-3.1-sonar-large-128k-online',
   },
+  {
+    key:          'wk_9router',
+    name:         '9router (host)',
+    url:          process.env.NINEROUTER_URL || 'http://host.docker.internal:20128',
+    apiStyle:     'openai',
+    requiresKey:  true,
+    keyHint:      'NINEROUTER_API_KEY',
+    docsUrl:      'https://9router.com/docs',
+    defaultModel: process.env.NINEROUTER_MODEL || 'MAX',
+  },
 ];
 
 async function probeEndpoint(host, port) {
@@ -180,6 +190,15 @@ async function probeEndpoint(host, port) {
   return null;
 }
 
+export function getKnownEndpointUrls(configs) {
+  return new Set(
+    Object.values(configs)
+      .filter(config => !config.requiresKey || Boolean(config.apiKey))
+      .map(config => config.url?.replace(/\/$/, ''))
+      .filter(Boolean)
+  );
+}
+
 export function createDiscoverRouter({ LLM_CONFIG, logStructured }) {
   const router = express.Router();
 
@@ -196,7 +215,7 @@ export function createDiscoverRouter({ LLM_CONFIG, logStructured }) {
     const hosts = requestedHost ? [requestedHost] : HOSTS;
 
     // Build the set of URLs already registered so we can flag them
-    const knownUrls = new Set(Object.values(LLM_CONFIG).map(c => c.url?.replace(/\/$/, '')));
+    const knownUrls = getKnownEndpointUrls(LLM_CONFIG);
 
     // Ports that are our own webserver (3000) or already registered as default builtins —
     // discovering ourselves serves no purpose

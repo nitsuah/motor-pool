@@ -25,6 +25,12 @@ function testExperienceRestrictions() {
   assert.equal(resolveSessionEndpoint('safechat', 'docker_runner'), 'primary');
   assert.equal(isEndpointAllowed('safechat', 'docker_runner'), false);
   assert.equal(isEndpointAllowed('safechat', 'primary'), true);
+  for (const experience of ['developer', 'research', 'content_gen', 'website']) {
+    assert.equal(isEndpointAllowed(experience, 'ninerouter'), true);
+    assert.equal(resolveSessionEndpoint(experience, 'ninerouter'), 'ninerouter');
+  }
+  assert.equal(isEndpointAllowed('safechat', 'ninerouter'), false);
+  assert.equal(resolveSessionEndpoint('safechat', 'ninerouter'), 'primary');
 }
 
 function testSafetyModeResolution() {

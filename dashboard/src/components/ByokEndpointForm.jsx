@@ -9,6 +9,7 @@ const PROVIDER_PRESETS = [
   { label: 'Mistral', key: 'mistral', name: 'Mistral AI', url: import.meta.env.VITE_BYOK_MISTRAL_URL || 'https://api.mistral.ai', apiStyle: 'openai', defaultModel: import.meta.env.VITE_BYOK_MISTRAL_MODEL || 'mistral-large-latest', keyHint: '' },
   { label: 'Together', key: 'together', name: 'Together AI', url: import.meta.env.VITE_BYOK_TOGETHER_URL || 'https://api.together.xyz', apiStyle: 'openai', defaultModel: import.meta.env.VITE_BYOK_TOGETHER_MODEL || 'meta-llama/Llama-3-70b-chat-hf', keyHint: '' },
   { label: 'Perplexity', key: 'perplexity', name: 'Perplexity', url: import.meta.env.VITE_BYOK_PERPLEXITY_URL || 'https://api.perplexity.ai', apiStyle: 'openai', defaultModel: import.meta.env.VITE_BYOK_PERPLEXITY_MODEL || 'llama-3.1-sonar-large-128k-online', keyHint: 'pplx-...' },
+  { label: '9router', key: '9router', name: '9router (host)', url: import.meta.env.VITE_BYOK_9ROUTER_URL || 'http://host.docker.internal:20128', apiStyle: 'openai', defaultModel: import.meta.env.VITE_BYOK_9ROUTER_MODEL || 'MAX', keyHint: 'NINEROUTER_API_KEY' },
 ];
 
 const EMPTY_FORM = { key: '', name: '', url: '', apiStyle: 'openai', defaultModel: '', apiKey: '' };
