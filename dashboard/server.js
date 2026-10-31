@@ -602,7 +602,7 @@ app.get('/api/health', async (req, res) => {
   const probeEndpoint = async ([key, config]) => {
     // Optional cloud providers should not degrade the dashboard health while
     // they are not configured. They become probeable once an API key is set.
-    if (config.type === 'cloud' && !config.apiKey) return [key, 'unconfigured'];
+    if (config.requiresKey && !config.apiKey) return [key, 'unconfigured'];
     try {
       if (config.apiStyle === 'openai') {
         // Docker Runner endpoints share one model catalog. Reuse the same
