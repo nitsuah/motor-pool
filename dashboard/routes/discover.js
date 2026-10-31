@@ -130,6 +130,16 @@ const WELL_KNOWN_PROVIDERS = [
     docsUrl:      'https://docs.perplexity.ai',
     defaultModel: 'llama-3.1-sonar-large-128k-online',
   },
+  {
+    key:          'wk_9router',
+    name:         '9router (host)',
+    url:          'http://host.docker.internal:20128',
+    apiStyle:     'openai',
+    requiresKey:  true,
+    keyHint:      'NINEROUTER_API_KEY',
+    docsUrl:      'https://9router.com/docs',
+    defaultModel: 'MAX',
+  },
 ];
 
 async function probeEndpoint(host, port) {
