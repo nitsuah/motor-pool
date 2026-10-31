@@ -72,14 +72,15 @@ async function runTeCommand(teArgs) {
       if (code !== 0) {
         return reject({
           status: 500,
-          error: `te ${teArgs.join(' ')} failed:`,
+          error: `te ${teArgs[0]} failed:`,
+          // Do not include argv in errors: config.set may carry a sensitive value.
           output: stdout || stderr,
         });
       }
 
       resolve({
         success: true,
-        command: teArgs.join(' '),
+        command: teArgs[0], // Return the fixed command name only; never echo arguments.
         output: stdout || stderr,
       });
     });
@@ -172,7 +173,8 @@ for (const [route, definition] of Object.entries(COMMANDS)) {
       if (err?.status === 400) {
         return res.status(400).json({ error: err.message });
       }
-      console.error('TokenEconomizer command failed', route, err?.error || err?.message || 'unknown error');
+      // Do not log argv or raw CLI errors; config.set values may be sensitive.
+      console.error('TokenEconomizer command failed', route, err?.status || 500);
       res.status(err?.status || 500).json({ error: 'TokenEconomizer command failed' });
     }
   });
