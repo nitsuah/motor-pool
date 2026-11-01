@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { describe, it } from 'vitest';
 import { safeTeError } from '../tools/tokeneconomizer/safe-error.mjs';
 
 describe('safeTeError', () => {
