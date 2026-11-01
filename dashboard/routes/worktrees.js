@@ -49,7 +49,7 @@ export function resolveExecTimeout(raw, fallback = DEFAULT_EXEC_TIMEOUT_MS) {
 export function slugifyWorktreeName(raw) {
   const slug = String(raw || '')
     .toLowerCase()
-    .replace(/[^a-z0-9-]+/g, '-') // Simplified regex to avoid ReDoS
+    .replace(/[^a-z0-9]+/g, '-')
     .replace(/^-+|-+$/g, '')
     .slice(0, 40)
     .replace(/-+$/g, '');
