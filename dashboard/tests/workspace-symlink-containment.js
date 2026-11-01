@@ -64,7 +64,7 @@ try {
   const slashHeavyPath = '/'.repeat(1000) + 'sub/ok.txt';
   const slashHeavy = await get(`/workspace/read?path=${encodeURIComponent(slashHeavyPath)}`);
   assert.strictEqual(slashHeavy.status, 200, 'slash-heavy relative path remains readable');
-  assert.strictEqual((await slashHeavy.json()).content, 'inside\\n');
+  assert.strictEqual((await slashHeavy.json()).content, 'inside\n');
   console.log('  ✅ long leading slash runs normalize without changing path containment');
 
   // ── ordinary nested paths still work ──────────────────────────────────────
