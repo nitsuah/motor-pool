@@ -45,15 +45,26 @@ export function resolveExecTimeout(raw, fallback = DEFAULT_EXEC_TIMEOUT_MS) {
   return Math.max(1_000, Math.min(Math.floor(n), 600_000));
 }
 
-/** Lowercase, collapse to [a-z0-9-], trim dashes, cap at 40 chars. */
+/** Lowercase, collapse to [a-z0-9-], trim dashes, cap at 40 chars. Linear-time, no regex ReDoS. */
 export function slugifyWorktreeName(raw) {
-  const slug = String(raw || '')
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, '-')
-    .replace(/^-+|-+$/g, '')
-    .slice(0, 40)
-    .replace(/-+$/g, '');
-  return SLUG_RE.test(slug) ? slug : null;
+  const s = String(raw || '').toLowerCase();
+  let out = '';
+  let lastWasDash = false;
+  for (let i = 0; i < s.length && out.length < 40; i++) {
+    const ch = s[i];
+    if (ch >= 'a' && ch <= 'z' || ch >= '0' && ch <= '9') {
+      out += ch;
+      lastWasDash = false;
+    } else if (!lastWasDash) {
+      out += '-';
+      lastWasDash = true;
+    }
+  }
+  // Trim trailing dashes
+  while (out.endsWith('-')) out = out.slice(0, -1);
+  // Trim leading dashes (only needed if string started with non-alnum)
+  while (out.startsWith('-')) out = out.slice(1);
+  return SLUG_RE.test(out) ? out : null;
 }
 
 /** Compare filesystem paths tolerating separator and trailing-slash differences. */

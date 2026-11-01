@@ -40,6 +40,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Visual docs now regenerate screenshots: the workflow ran a Playwright step guarded on a `playwright.visual-docs.config.ts` that never existed, so it only rendered diagrams. A new `npm run capture:screenshots` reuses the journeys (steps tagged `{ docs: '<feature-id>' }`) to write `docs/screenshots/<feature-id>.png` (9 new captures), and the README's visual-docs block now lists the screenshots, replacing the hand-written Screenshots section with its absolute `blob/master` links.
 - Dashboard top bar no longer clips its second row at phone width, so session tabs and the workspace button are reachable (#96).
 - Chat header session name is styled as a heading button on the dark theme instead of a default white button (#97).
+- **Fixed:** slugifyWorktreeName now uses a linear-time character loop instead of regex replace chains.
 
 ### Added
 
