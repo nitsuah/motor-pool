@@ -86,7 +86,6 @@ const TMUX_ALLOWED_COMMANDS = String(process.env.AGENT_BOARD_TMUX_ALLOWED_COMMAN
 const WEBSITE_OUTPUT_DIR = process.env.WEBSITE_OUTPUT_DIR || join(__dirname, '..', 'tools', 'website', 'output');
 
 // CORS allowed origins (comma-separated). Empty = no cross-origin requests allowed.
-const CORS_ALLOWED_ORIGINS = parseUrlListEnv(process.env.CORS_ALLOWED_ORIGINS);
 
 function parseUrlListEnv(rawValue, fallback = []) {
   const fromEnv = String(rawValue || '').split(',').map(s => s.trim()).filter(Boolean);
