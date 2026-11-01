@@ -41,16 +41,28 @@ function isRealPathInside(root, abs) {
   }
 }
 
+function stripLeadingSlashes(value) {
+  let start = 0;
+  while (start < value.length && value[start] === '/') start++;
+  return value.slice(start);
+}
+
+function stripTrailingSlashes(value) {
+  let end = value.length;
+  while (end > 0 && value[end - 1] === '/') end--;
+  return value.slice(0, end);
+}
+
 export function createWorkspaceRouter(WORKSPACE_ROOT) {
   const router = express.Router();
 
   function resolveWorkspacePath(reqPath) {
     if (!WORKSPACE_ROOT) return null;
-    const safe = reqPath ? reqPath.replaceAll('\\', '/').replace(/^\/+/, '') : '';
+    const safe = reqPath ? stripLeadingSlashes(reqPath.replaceAll('\\', '/')) : '';
     const abs = resolvePath(WORKSPACE_ROOT, safe);
     // Use normalized paths for comparison to prevent path traversal
-    const normalizedRoot = WORKSPACE_ROOT.replaceAll('\\', '/').replace(/\/+$/, '');
-    const normalizedAbs = abs.replaceAll('\\', '/').replace(/\/+$/, '');
+    const normalizedRoot = stripTrailingSlashes(WORKSPACE_ROOT.replaceAll('\\', '/'));
+    const normalizedAbs = stripTrailingSlashes(abs.replaceAll('\\', '/'));
     if (normalizedAbs !== normalizedRoot && !normalizedAbs.startsWith(normalizedRoot + '/')) return null;
     if (!isRealPathInside(WORKSPACE_ROOT, abs)) return null;
     return abs;
