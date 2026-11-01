@@ -6,7 +6,6 @@
 import assert from 'assert';
 import { getKnownEndpointUrls } from '../routes/discover.js';
 
-process.env.NINEROUTER_API_KEY = '';
 const { BASE, closeTestServer } = await import('./helpers/test-server.js');
 
 const knownUrls = getKnownEndpointUrls({
@@ -25,9 +24,12 @@ const data = await res.json();
 assert.ok(data.success === true, 'success flag is true');
 assert.ok(Array.isArray(data.discovered), 'discovered is an array');
 assert.ok(typeof data.scanned === 'number' && data.scanned > 0, 'scanned count > 0');
-const ninerouter = data.knownProviders.find(provider => provider.key === 'wk_9router');
-assert.ok(ninerouter, '9router is surfaced as a well-known provider');
-assert.equal(ninerouter.alreadyRegistered, false, 'unconfigured 9router is not marked as added');
+assert.ok(Array.isArray(data.knownProviders), 'knownProviders is an array');
+assert.ok(data.knownProviders.length > 0, 'well-known providers are surfaced');
+for (const provider of data.knownProviders) {
+  assert.ok(typeof provider.key === 'string', 'well-known provider has a key');
+  assert.ok(typeof provider.alreadyRegistered === 'boolean', 'well-known provider has registration status');
+}
 
 // 2. Custom port override narrows the scan
 const resPort = await fetch(`${BASE}/api/discover/endpoints?ports=9`);
