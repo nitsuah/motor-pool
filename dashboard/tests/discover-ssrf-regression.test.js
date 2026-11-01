@@ -9,7 +9,7 @@
  */
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import http from 'node:http';
-import { BASE, closeTestServer } from '../dashboard/tests/helpers/test-server.js';
+import { BASE, closeTestServer } from './helpers/test-server.js';
 
 const testServers = [];
 

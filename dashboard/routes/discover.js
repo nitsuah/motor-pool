@@ -182,7 +182,8 @@ const WELL_KNOWN_PROVIDERS = [
 ];
 
 async function probeEndpoint(host, port) {
-  const baseUrl = `http://${host}:${port}`;
+  const authority = host.includes(':') ? `[${host}]` : host;
+  const baseUrl = `http://${authority}:${port}`;
 
   // fetch with redirect: 'manual' to prevent redirect-following SSRF
   const fetchOpts = {
