@@ -473,6 +473,35 @@ app.use(cors({
   credentials: true,
   allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With'],
 }));
+// Rate limiting middleware (in-memory, per-IP). Register it before body readers so
+// rejected requests do not spend CPU/memory parsing JSON or webhook payloads.
+const rateLimitMap = new Map();
+const RATE_LIMIT_WINDOW_MS = 60_000; // 1 minute
+const RATE_LIMIT_MAX_REQUESTS = 120; // 120 req/min per IP
+const rateLimitCleanupTimer = setInterval(() => {
+  const now = Date.now();
+  for (const [ip, timestamps] of rateLimitMap.entries()) {
+    const recent = timestamps.filter(ts => now - ts < RATE_LIMIT_WINDOW_MS);
+    if (recent.length === 0) rateLimitMap.delete(ip);
+    else rateLimitMap.set(ip, recent);
+  }
+}, RATE_LIMIT_WINDOW_MS);
+rateLimitCleanupTimer.unref?.();
+
+function rateLimit(req, res, next) {
+  const ip = req.ip || req.socket.remoteAddress || 'unknown';
+  const now = Date.now();
+  const timestamps = rateLimitMap.get(ip) || [];
+  const recent = timestamps.filter(ts => now - ts < RATE_LIMIT_WINDOW_MS);
+  if (recent.length >= RATE_LIMIT_MAX_REQUESTS) {
+    return res.status(429).json({ success: false, error: 'Too many requests, please slow down' });
+  }
+  recent.push(now);
+  rateLimitMap.set(ip, recent);
+  next();
+}
+app.use(rateLimit);
+
 // Capture raw body on the webhook trigger path before JSON parsing (needed for HMAC verification)
 // Sets req._rawBodyBuffer for HMAC verification; sets req._body = true so express.json() skips it.
 app.use('/api/webhooks/trigger', (req, _res, next) => {
@@ -493,33 +522,6 @@ app.use('/api/webhooks/trigger', (req, _res, next) => {
   });
 });
 app.use(express.json());
-
-// Rate limiting middleware (in-memory, per-IP)
-const rateLimitMap = new Map();
-const RATE_LIMIT_WINDOW_MS = 60_000; // 1 minute
-const RATE_LIMIT_MAX_REQUESTS = 120; // 120 req/min per IP
-setInterval(() => {
-  const now = Date.now();
-  for (const [ip, timestamps] of rateLimitMap.entries()) {
-    const recent = timestamps.filter(ts => now - ts < RATE_LIMIT_WINDOW_MS);
-    if (recent.length === 0) rateLimitMap.delete(ip);
-    else rateLimitMap.set(ip, recent);
-  }
-}, RATE_LIMIT_WINDOW_MS);
-
-function rateLimit(req, res, next) {
-  const ip = req.ip || req.socket.remoteAddress || 'unknown';
-  const now = Date.now();
-  const timestamps = rateLimitMap.get(ip) || [];
-  const recent = timestamps.filter(ts => now - ts < RATE_LIMIT_WINDOW_MS);
-  if (recent.length >= RATE_LIMIT_MAX_REQUESTS) {
-    return res.status(429).json({ success: false, error: 'Too many requests, please slow down' });
-  }
-  recent.push(now);
-  rateLimitMap.set(ip, recent);
-  next();
-}
-app.use(rateLimit);
 
 app.use((req, res, next) => {
   const start = Date.now();
