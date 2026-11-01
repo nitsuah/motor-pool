@@ -477,7 +477,11 @@ app.use(cors({
 // rejected requests do not spend CPU/memory parsing JSON or webhook payloads.
 const rateLimitMap = new Map();
 const RATE_LIMIT_WINDOW_MS = 60_000; // 1 minute
-const RATE_LIMIT_MAX_REQUESTS = 120; // 120 req/min per IP
+const configuredRateLimit = Number(process.env.AGENT_DASHBOARD_RATE_LIMIT_MAX_REQUESTS);
+const RATE_LIMIT_MAX_REQUESTS =
+  Number.isInteger(configuredRateLimit) && configuredRateLimit > 0
+    ? configuredRateLimit
+    : 120; // 120 req/min per IP by default
 const rateLimitCleanupTimer = setInterval(() => {
   const now = Date.now();
   for (const [ip, timestamps] of rateLimitMap.entries()) {
