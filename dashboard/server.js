@@ -498,13 +498,6 @@ function rateLimit(req, res, next) {
 }
 app.use(rateLimit);
 
-// Reject disallowed Origin requests explicitly before either body reader. CORS
-// headers alone are a browser policy, not an HTTP rejection contract.
-app.use((req, res, next) => {
-  const origin = req.headers.origin;
-  if (!origin || isAllowedCorsOrigin(origin)) return next();
-  return res.status(403).json({ error: 'Origin not allowed' });
-});
 
 // Capture raw body on the webhook trigger path before JSON parsing (needed for HMAC verification)
 // Sets req._rawBodyBuffer for HMAC verification; sets req._body = true so express.json() skips it.
