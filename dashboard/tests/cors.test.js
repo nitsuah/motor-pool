@@ -1,8 +1,7 @@
 /**
- * CORS security tests.
- *
- * Verifies that the CORS middleware rejects requests from unauthorized origins.
- * This test should FAIL on current code (which allows any origin) and PASS after fix.
+ * CORS policy tests. Unauthorized cross-origin requests must not receive
+ * Access-Control-Allow-Origin. This is browser enforcement, not server-side
+ * authorization; routes still require their own auth.
  */
 import axios from 'axios';
 import assert from 'node:assert/strict';
