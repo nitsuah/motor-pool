@@ -24,6 +24,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **Fixed:** prepareSessionForLlmCall no longer returns apiKey in the prepared session object. Callers now fetch apiKey directly from LLM_CONFIG.
 - `detect-profile.ps1` now lists every host GPU (NVIDIA, AMD, Intel, or other) and distinguishes host inventory from container GPU access (#117).
 - Agent workspace file tools (`read_file`, `write_file`, `list_files`) now resolve symbolic links and refuse any path whose real location is outside the workspace, including dangling links.
 - **Fixed:** workspace path resolution follows links before checking the root
@@ -32,6 +33,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Docker builds now use the dashboard lockfile, and refreshed tool dependency floors/lockfiles resolve the current npm audit findings. The demo-mode routing test uses an isolated unreachable model URL so endpoint discovery cannot consume its timeout.
 - `/api/health` and `/api/models` now probe independent model providers concurrently and share the runner catalog request between runner-backed models, so unavailable providers do not stack their timeouts.
 - Health checks now use the OpenAI-compatible `/v1/models` path for OpenLLM and custom endpoints, while Docker Model Runner keeps `/models`; pending session snapshots flush at shutdown so the debounce window does not discard the latest state.
+- **Fixed:** prepareSessionForLlmCall no longer returns apiKey in the prepared session object. Callers now fetch apiKey directly from LLM_CONFIG.
 - `OLLAMA_KEEP_ALIVE` is now configurable through the Compose environment, retaining the 30-minute default.
 - Tool-enabled developer, research, and website turns now stream Ollama/OpenAI-compatible model text and completed tool results during the turn; disconnects abort the active model stream, and strict output-filter modes still send only the sanitized final reply.
 - Recorded a three-pair local CPU Ollama comparison for each tool-enabled experience: median visible first-token latency fell 59.8% for Developer, 62.6% for Research, and 45.6% for Website; total-loop results and methodology are in `docs/METRICS.md`.

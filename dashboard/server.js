@@ -342,8 +342,7 @@ async function prepareSessionForLlmCall(session) {
       metadata: { reason: modelResolution.reason, resolvedModel: modelResolution.model },
     });
   }
-  const apiKey = LLM_CONFIG[session.endpoint]?.apiKey || null;
-  return { llmUrl, apiStyle, modelResolution, apiKey };
+  return { llmUrl, apiStyle, modelResolution };
 }
 
 function coerceModelForEndpoint(endpoint, requestedModel) {
@@ -660,6 +659,7 @@ export {
   normalizeOllamaModelName,
   normalizeTaskPriority,
   parseMcpRpcResponse,
+  prepareSessionForLlmCall,
   TOOL_SERVERS,
   normalizeTaskStatus,
   redactSensitiveText,
@@ -731,7 +731,8 @@ if (process.env.AGENT_DASHBOARD_DISABLE_LISTEN !== '1') {
 
     session.messages.push({ role: 'user', content: task.title, timestamp: new Date() });
     const prepared = await prepareSessionForLlmCall(session);
-    const { llmUrl, apiStyle, apiKey } = prepared;
+    const { llmUrl, apiStyle } = prepared;
+    const apiKey = LLM_CONFIG[session.endpoint]?.apiKey || null;
     const streamHeaders = apiKey ? { Authorization: `Bearer ${apiKey}` } : {};
     const { buildSystemMessages } = await import('./safety.js');
     const systemMessages = buildSystemMessages({ ...session, safetyMode: null });
