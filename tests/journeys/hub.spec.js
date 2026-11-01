@@ -26,6 +26,7 @@ test('operator opens motor-pool and sees the hub with their sessions', {
         await expect(page.getByRole('button', { name: /New Session/ })).toBeVisible();
         await expect(page.locator('.session-tab')).toHaveCount(2);
         await expect(page.locator('.session-tab').first()).toContainText('Fix login bug');
+        await page.getByTitle('Go to hub').click();
         await expect(page.locator('.liminal-canvas-mount canvas').first()).toBeVisible();
         await expect
             .poll(() =>
