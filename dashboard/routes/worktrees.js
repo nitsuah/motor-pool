@@ -50,20 +50,19 @@ export function slugifyWorktreeName(raw) {
   const s = String(raw || '').toLowerCase();
   let out = '';
   let lastWasDash = false;
-  for (let i = 0; i < s.length && out.length < 40; i++) {
+  for (let i = 0; i < s.length; i++) {
     const ch = s[i];
     if (ch >= 'a' && ch <= 'z' || ch >= '0' && ch <= '9') {
+      if (out.length === 40) break;
       out += ch;
       lastWasDash = false;
-    } else if (!lastWasDash) {
+    } else if (out.length > 0 && !lastWasDash && out.length < 40) {
       out += '-';
       lastWasDash = true;
     }
   }
-  // Trim trailing dashes
+  // Trim a trailing separator left at the cap.
   while (out.endsWith('-')) out = out.slice(0, -1);
-  // Trim leading dashes (only needed if string started with non-alnum)
-  while (out.startsWith('-')) out = out.slice(1);
   return SLUG_RE.test(out) ? out : null;
 }
 

@@ -25,6 +25,7 @@ const cases = [
   ['  leading/trailing  ', 'leading-trailing'],
   ['UPPERCASE', 'uppercase'],
   ['special!@#chars', 'special-chars'],
+  ['!'.repeat(50000) + 'a', 'a'], // leading separators do not consume the 40-character cap
   ['multiple---dashes', 'multiple-dashes'],
   ['a'.repeat(50), 'a'.repeat(40)], // caps at 40
   ['valid-slug-123', 'valid-slug-123'],
