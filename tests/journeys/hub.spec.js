@@ -4,6 +4,19 @@ const { test, expect, step, mockDashboard, settle } = require('./motor-pool');
 test('operator opens motor-pool and sees the hub with their sessions', {
     tag: ['@feature:3d-liminaldashboard-home', '@feature:topbar-command-bar'],
 }, async ({ page }) => {
+    await page.addInitScript(() => {
+        const labels = [];
+        Object.defineProperty(window, '__motorPoolCanvasLabels', {
+            value: labels,
+            configurable: false,
+        });
+        const originalFillText = CanvasRenderingContext2D.prototype.fillText;
+        CanvasRenderingContext2D.prototype.fillText = function (text, ...args) {
+            labels.push(String(text));
+            return originalFillText.call(this, text, ...args);
+        };
+    });
+
     await mockDashboard(page);
     await page.goto('/');
     await settle(page);
@@ -13,7 +26,14 @@ test('operator opens motor-pool and sees the hub with their sessions', {
         await expect(page.getByRole('button', { name: /New Session/ })).toBeVisible();
         await expect(page.locator('.session-tab')).toHaveCount(2);
         await expect(page.locator('.session-tab').first()).toContainText('Fix login bug');
-        await expect(page.getByText('Llama 3.2 3B')).toBeVisible();
+        await expect(page.locator('.liminal-canvas-mount canvas')).toBeVisible();
+        await expect
+            .poll(() =>
+                page.evaluate(() =>
+                    window.__motorPoolCanvasLabels?.includes('llama3.2') ?? false,
+                ),
+            )
+            .toBe(true);
     }, { docs: '3d-liminaldashboard-home' });
 });
 
