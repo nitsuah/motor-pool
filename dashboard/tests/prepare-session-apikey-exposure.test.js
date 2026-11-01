@@ -28,7 +28,7 @@ const prepared = await prepareSessionForLlmCall(mockSession);
 
 // This test should FAIL on current code because apiKey is in the response
 assert.ok(!('apiKey' in prepared), 'apiKey should NOT be in prepareSessionForLlmCall return value');
-assert.ok(!prepared.hasOwnProperty('apiKey'), 'apiKey should NOT be a property of returned object');
+assert.ok(!Object.prototype.hasOwnProperty.call(prepared, 'apiKey'), 'apiKey should NOT be a property of returned object');
 
 // The apiKey should only be used internally, not returned
 console.log('Test passed: prepareSessionForLlmCall does not expose apiKey');
