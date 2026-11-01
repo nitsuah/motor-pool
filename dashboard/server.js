@@ -453,12 +453,12 @@ function isAllowedCorsOrigin(origin) {
 // CORS middleware - reads allowed origins dynamically at request time
 app.use(cors({
   origin: (origin, callback) => {
-    // Allow requests with no origin (like from same-origin requests)
+    // Requests without Origin are not subject to CORS.
     if (!origin) return callback(null, true);
 
     if (isAllowedCorsOrigin(origin)) return callback(null, true);
 
-    // The origin gate below returns 403; this callback also withholds CORS headers.
+    // Withhold CORS headers for disallowed origins; CORS is browser policy, not auth.
     return callback(null, false);
   },
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
