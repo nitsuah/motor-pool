@@ -2,9 +2,17 @@ export function getOrCreateUserId() {
   const key = 'agent_board_user_id';
   let id = localStorage.getItem(key);
   if (!id) {
-    id = typeof crypto !== 'undefined' && crypto.randomUUID
-      ? 'anon_' + crypto.randomUUID()
-      : 'anon_' + Date.now().toString(36) + '_' + crypto.getRandomValues(new Uint32Array(2)).join('_').slice(2, 11);
+    const cryptoApi = typeof globalThis !== 'undefined' ? globalThis.crypto : undefined;
+    if (cryptoApi?.randomUUID) {
+      id = 'anon_' + cryptoApi.randomUUID();
+    } else {
+      // This identifier is local UI identity, not an auth/session credential.
+      // Prefer Web Crypto, but preserve operation in runtimes without that API.
+      const suffix = cryptoApi?.getRandomValues
+        ? cryptoApi.getRandomValues(new Uint32Array(2)).join('_').slice(2, 11)
+        : Math.random().toString(36).slice(2, 11);
+      id = 'anon_' + Date.now().toString(36) + '_' + suffix;
+    }
     localStorage.setItem(key, id);
   }
   return id;
