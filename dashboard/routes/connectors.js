@@ -3,6 +3,7 @@ import axios from 'axios';
 import { fileURLToPath } from 'url';
 import { dirname, join } from 'path';
 import { existsSync, readFileSync } from 'fs';
+import { randomBytes } from 'crypto';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -104,7 +105,8 @@ export function createConnectorsRouter({ BB_MCP_ENABLED, BB_MCP_URL, logStructur
     send('start', { tool, demo: true });
     for (const line of lines) {
       if (closed) break;
-      await new Promise(r => setTimeout(r, 220 + Math.random() * 180));
+      const jitter = randomBytes(1)[0] / 255;
+      await new Promise(r => setTimeout(r, 220 + jitter * 180));
       send('token', { text: line });
     }
     if (!closed) send('done', { tool, demo: true });

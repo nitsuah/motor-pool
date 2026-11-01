@@ -5,6 +5,7 @@ import dotenv from 'dotenv';
 import { fileURLToPath } from 'url';
 import { dirname, join } from 'path';
 import { existsSync } from 'fs';
+import { randomBytes } from 'crypto';
 import { flushSessionSnapshot, initSessionSnapshot, scheduleSnapshotWrite } from './modules/session-snapshot.js';
 import { exec, execFile } from 'child_process';
 import { promisify } from 'util';
@@ -492,6 +493,34 @@ app.use('/api/webhooks/trigger', (req, _res, next) => {
   });
 });
 app.use(express.json());
+
+// Rate limiting middleware (in-memory, per-IP)
+const rateLimitMap = new Map();
+const RATE_LIMIT_WINDOW_MS = 60_000; // 1 minute
+const RATE_LIMIT_MAX_REQUESTS = 120; // 120 req/min per IP
+setInterval(() => {
+  const now = Date.now();
+  for (const [ip, timestamps] of rateLimitMap.entries()) {
+    const recent = timestamps.filter(ts => now - ts < RATE_LIMIT_WINDOW_MS);
+    if (recent.length === 0) rateLimitMap.delete(ip);
+    else rateLimitMap.set(ip, recent);
+  }
+}, RATE_LIMIT_WINDOW_MS);
+
+function rateLimit(req, res, next) {
+  const ip = req.ip || req.socket.remoteAddress || 'unknown';
+  const now = Date.now();
+  const timestamps = rateLimitMap.get(ip) || [];
+  const recent = timestamps.filter(ts => now - ts < RATE_LIMIT_WINDOW_MS);
+  if (recent.length >= RATE_LIMIT_MAX_REQUESTS) {
+    return res.status(429).json({ success: false, error: 'Too many requests, please slow down' });
+  }
+  recent.push(now);
+  rateLimitMap.set(ip, recent);
+  next();
+}
+app.use(rateLimit);
+
 app.use((req, res, next) => {
   const start = Date.now();
   res.on('finish', () => {
@@ -739,7 +768,7 @@ if (process.env.AGENT_DASHBOARD_DISABLE_LISTEN !== '1') {
   // Start the background task auto-runner (picks up pending tasks by priority)
   // dispatchMessage: creates or reuses a session, then runs the agent loop non-streaming
   const dispatchTaskMessage = async (task) => {
-    const sessionId = `sess_task_${Date.now()}_${Math.random().toString(36).substr(2, 6)}`;
+    const sessionId = `sess_task_${Date.now()}_${randomBytes(3).toString('hex')}`;
     const endpoint = 'primary';
     const resolvedLlmUrl = await resolveEndpointUrl(endpoint);
     const experience = task.experience || 'developer';
