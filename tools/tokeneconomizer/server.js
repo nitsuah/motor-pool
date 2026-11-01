@@ -12,6 +12,7 @@ import express from 'express';
 import { fileURLToPath } from 'url';
 import { dirname, join } from 'path';
 import { readFileSync } from 'fs';
+import { safeTeError } from './safe-error.mjs';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -105,13 +106,8 @@ app.post('/exec', async (req, res) => {
     res.json(result);
   } catch (err) {
     const status = err.status || 500;
-    // Sanitize error - don't expose stack traces
-    const safeError = {
-      error: err.error || 'Internal server error',
-      ...(err.output && { output: err.output }),
-      ...(err.details && { details: err.details }),
-    };
-    res.status(status).json(safeError);
+    // Keep command arguments and CLI output server-side; errors may contain secrets.
+    res.status(status).json({ success: false, ...safeTeError(err) });
   }
 });
 
@@ -155,13 +151,8 @@ TE_COMMANDS.forEach((cmd) => {
       res.json(result);
     } catch (err) {
       const status = err.status || 500;
-      // Sanitize error - don't expose stack traces
-      const safeError = {
-        error: err.error || 'Internal server error',
-        ...(err.output && { output: err.output }),
-        ...(err.details && { details: err.details }),
-      };
-      res.status(status).json(safeError);
+      // Keep command arguments and CLI output server-side; errors may contain secrets.
+      res.status(status).json({ success: false, ...safeTeError(err) });
     }
   });
 });
