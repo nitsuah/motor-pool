@@ -600,6 +600,9 @@ app.get('/api/health', async (req, res) => {
   };
   const modelCatalogRequests = new Map();
   const probeEndpoint = async ([key, config]) => {
+    // Optional cloud providers should not degrade the dashboard health while
+    // they are not configured. They become probeable once an API key is set.
+    if (config.requiresKey && !config.apiKey) return [key, 'unconfigured'];
     try {
       if (config.apiStyle === 'openai') {
         // Docker Runner endpoints share one model catalog. Reuse the same
@@ -624,7 +627,7 @@ app.get('/api/health', async (req, res) => {
   const endpointStatuses = await Promise.all(Object.entries(LLM_CONFIG).map(probeEndpoint));
   for (const [key, status] of endpointStatuses) {
     health.endpoints[key] = status;
-    if (status !== 'healthy') {
+    if (status !== 'healthy' && status !== 'unconfigured') {
       if (key === 'primary') health.status = 'critical';
       else if (health.status === 'ok') health.status = 'degraded';
     }
