@@ -5,6 +5,9 @@
  */
 import assert from 'node:assert/strict';
 
+// Clear DATABASE_URL so standalone test runs cannot write synthetic events to configured database
+delete process.env.DATABASE_URL;
+
 process.env.AGENT_DASHBOARD_DISABLE_LISTEN = '1';
 process.env.PRIMARY_LLM_URL = 'http://localhost:11434';
 
@@ -28,7 +31,6 @@ const prepared = await prepareSessionForLlmCall(mockSession);
 
 // This test should FAIL on current code because apiKey is in the response
 assert.ok(!('apiKey' in prepared), 'apiKey should NOT be in prepareSessionForLlmCall return value');
-assert.ok(!Object.prototype.hasOwnProperty.call(prepared, 'apiKey'), 'apiKey should NOT be a property of returned object');
 
 // The apiKey should only be used internally, not returned
 console.log('Test passed: prepareSessionForLlmCall does not expose apiKey');
