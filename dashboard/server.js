@@ -447,26 +447,19 @@ const tasksRouter = createTasksRouter({ tasks, sessions, eventBus, logStructured
 const workspaceRouter = createWorkspaceRouter(WORKSPACE_ROOT);
 
 // Middleware
+function isAllowedCorsOrigin(origin) {
+  return parseUrlListEnv(process.env.CORS_ALLOWED_ORIGINS).includes(origin);
+}
+
 // CORS middleware - reads allowed origins dynamically at request time
 app.use(cors({
   origin: (origin, callback) => {
     // Allow requests with no origin (like from same-origin requests)
     if (!origin) return callback(null, true);
 
-    // Parse allowed origins from env at request time (supports dynamic config)
-    const allowedOrigins = parseUrlListEnv(process.env.CORS_ALLOWED_ORIGINS);
+    if (isAllowedCorsOrigin(origin)) return callback(null, true);
 
-    // Check if the origin is in the allowed list
-    if (Array.isArray(allowedOrigins)) {
-      if (allowedOrigins.includes(origin)) {
-        return callback(null, true);
-      }
-    } else if (allowedOrigins === '*') {
-      return callback(null, true);
-    }
-
-    // Not allowed - use callback(null, false) to properly reject without 500
-    // and without setting Access-Control-Allow-Origin header
+    // The origin gate below returns 403; this callback also withholds CORS headers.
     return callback(null, false);
   },
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
@@ -505,6 +498,14 @@ function rateLimit(req, res, next) {
   next();
 }
 app.use(rateLimit);
+
+// Reject disallowed Origin requests explicitly before either body reader. CORS
+// headers alone are a browser policy, not an HTTP rejection contract.
+app.use((req, res, next) => {
+  const origin = req.headers.origin;
+  if (!origin || isAllowedCorsOrigin(origin)) return next();
+  return res.status(403).json({ error: 'Origin not allowed' });
+});
 
 // Capture raw body on the webhook trigger path before JSON parsing (needed for HMAC verification)
 // Sets req._rawBodyBuffer for HMAC verification; sets req._body = true so express.json() skips it.
