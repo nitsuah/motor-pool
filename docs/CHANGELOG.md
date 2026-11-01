@@ -9,6 +9,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **TokenEconomizer integration** — Microsoft TokenEconomizer plugin for motor-pool.
+  TokenEconomizer reduces coding agent costs by learning from past sessions in a
+  repository. Provides three mechanisms: micro-skills (repo-specific facts from
+  repeated failures), tool pruning (removes unused tools/capability packages),
+  and failure-loop intervention (judge model detects stuck turns and injects
+  redirects). Runs as a composable tool service (`tool-tokeneconomizer` under
+  `--profile tools`) and exposes CLI commands via the plugin system:
+  `status`, `microskills`, `toolprune`, `config`, `repomap`, `repos`, `doctor`.
+  Data persists in `tokeneconomizer_data` volume. See
+  https://github.com/microsoft/TokenEconomizer.
+
 ### Fixed
 
 - `detect-profile.ps1` now lists every host GPU (NVIDIA, AMD, Intel, or other) and distinguishes host inventory from container GPU access (#117).

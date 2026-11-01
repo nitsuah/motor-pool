@@ -9,7 +9,6 @@ import WorkspaceView from './components/WorkspaceView.jsx';
 import StatusBar from './components/StatusBar.jsx';
 import OnboardingStrip from './components/OnboardingStrip.jsx';
 import KeyboardShortcutsModal from './components/KeyboardShortcutsModal.jsx';
-import TokenEconomizerPanel from './components/TokenEconomizerPanel.jsx';
 import { useWebSocket } from './hooks/useWebSocket.js';
 import { useSessionStreaming } from './hooks/useSessionStreaming.js';
 import { useServiceActions } from './hooks/useServiceActions.js';
@@ -40,7 +39,6 @@ function App() {
   const [showNewSessionMenu, setShowNewSessionMenu] = useState(false);
   const [showShortcuts, setShowShortcuts] = useState(false);
   const [showMetricsPanel, setShowMetricsPanel] = useState(false);
-  const [showTokenEconomizerPanel, setShowTokenEconomizerPanel] = useState(false);
   const [demoMode, setDemoMode] = useState({ enabled: false, enforcedExperience: null, allowedEndpoints: [] });
   const [selectedExperience, setSelectedExperience] = useState('developer');
   const [taskExperience, setTaskExperience] = useState('research');
@@ -530,7 +528,6 @@ function App() {
         loadingSessions={loadingSessions}
         sessionPendingReply={sessionPendingReply}
         sessionErrors={sessionErrors}
-        onToggleTokenEconomizer={() => setShowTokenEconomizerPanel(p => !p)}
       />
 
       {showOnboarding && activeSession && (
@@ -622,8 +619,6 @@ function App() {
               setShowSystemPanel={setShowSystemPanel}
               showMetricsPanel={showMetricsPanel}
               setShowMetricsPanel={setShowMetricsPanel}
-              showTokenEconomizerPanel={showTokenEconomizerPanel}
-              setShowTokenEconomizerPanel={setShowTokenEconomizerPanel}
               browseWorkspace={wsOps.browseWorkspace}
               refreshWorkspaceGit={wsOps.refreshWorkspaceGit}
               fetchContentClients={fetchContentClients}
@@ -653,12 +648,6 @@ function App() {
           />
         )}
 
-        {showTokenEconomizerPanel && (
-          <TokenEconomizerPanel
-            onClose={() => setShowTokenEconomizerPanel(false)}
-          />
-        )}
-
         {showSystemPanel && (
           <SystemPanel
             dockerStatus={dockerStatus}
@@ -678,8 +667,6 @@ function App() {
             knownModels={knownModels}
             showMetricsPanel={showMetricsPanel}
             onToggleMetrics={() => setShowMetricsPanel(p => !p)}
-            showTokenEconomizerPanel={showTokenEconomizerPanel}
-            onToggleTokenEconomizer={() => setShowTokenEconomizerPanel(p => !p)}
             onEndpointAdded={fetchDockerStatus}
           />
         )}
@@ -699,12 +686,10 @@ function App() {
           setShowSystemPanel(next);
           if (next) {
             setShowMetricsPanel(false);
-            setShowTokenEconomizerPanel(false);
             if (dockerStatus?.workspace?.configured) { wsOps.browseWorkspace(''); wsOps.refreshWorkspaceGit(); }
             fetchContentClients();
           }
         }}
-        onToggleTokenEconomizer={() => setShowTokenEconomizerPanel(p => !p)}
       />
     </div>
   );

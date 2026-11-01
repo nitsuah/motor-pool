@@ -1,0 +1,17 @@
+{
+  "name": "tokeneconomizer-wrapper",
+  "version": "1.0.0",
+  "description": "HTTP wrapper for Microsoft TokenEconomizer CLI",
+  "main": "server.js",
+  "type": "module",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "node --watch server.js"
+  },
+  "dependencies": {
+    "express": "^4.19.2"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}
