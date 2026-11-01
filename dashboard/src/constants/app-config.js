@@ -1,3 +1,5 @@
+let anonymousIdFallbackCounter = 0;
+
 export function getOrCreateUserId() {
   const key = 'agent_board_user_id';
   let id = localStorage.getItem(key);
@@ -10,7 +12,7 @@ export function getOrCreateUserId() {
       // Prefer Web Crypto, but preserve operation in runtimes without that API.
       const suffix = cryptoApi?.getRandomValues
         ? cryptoApi.getRandomValues(new Uint32Array(2)).join('_').slice(2, 11)
-        : Math.random().toString(36).slice(2, 11);
+        : `${Date.now().toString(36)}_${(++anonymousIdFallbackCounter).toString(36)}`;
       id = 'anon_' + Date.now().toString(36) + '_' + suffix;
     }
     localStorage.setItem(key, id);
