@@ -28,6 +28,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Agent workspace file tools (`read_file`, `write_file`, `list_files`) now resolve symbolic links and refuse any path whose real location is outside the workspace, including dangling links.
 - **Fixed:** workspace path resolution follows links before checking the root
 - Dashboard session snapshots now live in a dedicated persistent volume, so active sessions and message history survive container recreation. The dashboard also restarts unless explicitly stopped.
+- **Fixed:** CORS middleware now validates Origin header against CORS_ALLOWED_ORIGINS allowlist. Unauthorized origins receive 403 Forbidden instead of being allowed.
 - Ollama remains the primary LLM service rather than being advertised as an MCP connector. The selected 8B Q4 model tag is valid in the Ollama library; the model manifest is still an unconsumed portfolio draft, and runtime startup selection comes from `PRIMARY_LLM_MODEL`.
 - Docker builds now use the dashboard lockfile, and refreshed tool dependency floors/lockfiles resolve the current npm audit findings. The demo-mode routing test uses an isolated unreachable model URL so endpoint discovery cannot consume its timeout.
 - `/api/health` and `/api/models` now probe independent model providers concurrently and share the runner catalog request between runner-backed models, so unavailable providers do not stack their timeouts.

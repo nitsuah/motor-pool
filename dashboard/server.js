@@ -84,6 +84,9 @@ const TMUX_ALLOWED_COMMANDS = String(process.env.AGENT_BOARD_TMUX_ALLOWED_COMMAN
   .split(',').map(s => s.trim()).filter(Boolean);
 const WEBSITE_OUTPUT_DIR = process.env.WEBSITE_OUTPUT_DIR || join(__dirname, '..', 'tools', 'website', 'output');
 
+// CORS allowed origins (comma-separated). Empty = no cross-origin requests allowed.
+const CORS_ALLOWED_ORIGINS = parseUrlListEnv(process.env.CORS_ALLOWED_ORIGINS);
+
 function parseUrlListEnv(rawValue, fallback = []) {
   const fromEnv = String(rawValue || '').split(',').map(s => s.trim()).filter(Boolean);
   const merged = [...fromEnv, ...fallback].map(s => String(s || '').trim().replace(/\/+$/, '')).filter(Boolean);
@@ -444,7 +447,32 @@ const tasksRouter = createTasksRouter({ tasks, sessions, eventBus, logStructured
 const workspaceRouter = createWorkspaceRouter(WORKSPACE_ROOT);
 
 // Middleware
-app.use(cors());
+// CORS middleware - reads allowed origins dynamically at request time
+app.use(cors({
+  origin: (origin, callback) => {
+    // Allow requests with no origin (like from same-origin requests)
+    if (!origin) return callback(null, true);
+
+    // Parse allowed origins from env at request time (supports dynamic config)
+    const allowedOrigins = parseUrlListEnv(process.env.CORS_ALLOWED_ORIGINS);
+
+    // Check if the origin is in the allowed list
+    if (Array.isArray(allowedOrigins)) {
+      if (allowedOrigins.includes(origin)) {
+        return callback(null, true);
+      }
+    } else if (allowedOrigins === '*') {
+      return callback(null, true);
+    }
+
+    // Not allowed - use callback(null, false) to properly reject without 500
+    // and without setting Access-Control-Allow-Origin header
+    return callback(null, false);
+  },
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+  credentials: true,
+  allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With'],
+}));
 // Capture raw body on the webhook trigger path before JSON parsing (needed for HMAC verification)
 // Sets req._rawBodyBuffer for HMAC verification; sets req._body = true so express.json() skips it.
 app.use('/api/webhooks/trigger', (req, _res, next) => {
