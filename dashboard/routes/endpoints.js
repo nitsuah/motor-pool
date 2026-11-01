@@ -9,8 +9,8 @@
  */
 import express from 'express';
 import { saveEndpoints } from '../modules/endpoint-store.js';
+import { isBuiltinEndpointKey } from '../modules/llm-config.js';
 
-const BUILTIN_KEYS = new Set(['primary', 'docker_runner', 'glm_flash', 'openllm']);
 const RESERVED_KEYS = new Set(['__proto__', 'constructor', 'prototype']);
 const VALID_API_STYLES = new Set(['openai', 'ollama', 'anthropic', 'gemini']);
 
@@ -40,7 +40,7 @@ export function createEndpointsRouter({ LLM_CONFIG, logStructured }) {
       apiStyle: cfg.apiStyle || 'openai',
       defaultModel: cfg.defaultModel || '',
       hasApiKey: !!(cfg.apiKey),
-      builtin: BUILTIN_KEYS.has(key),
+      builtin: isBuiltinEndpointKey(key),
     }));
     res.json({ success: true, endpoints: list });
   });
@@ -53,7 +53,7 @@ export function createEndpointsRouter({ LLM_CONFIG, logStructured }) {
     if (!/^[a-zA-Z0-9_-]+$/.test(key)) {
       return res.status(400).json({ success: false, error: 'key must be alphanumeric/underscore/dash only' });
     }
-    if (RESERVED_KEYS.has(key) || BUILTIN_KEYS.has(key)) {
+    if (RESERVED_KEYS.has(key) || isBuiltinEndpointKey(key)) {
       return res.status(400).json({ success: false, error: `"${key}" is a reserved or built-in key` });
     }
     const urlError = validateUrl(url);
@@ -102,7 +102,7 @@ export function createEndpointsRouter({ LLM_CONFIG, logStructured }) {
 
   router.delete('/config/endpoints/:key', (req, res) => {
     const { key } = req.params;
-    if (BUILTIN_KEYS.has(key)) {
+    if (isBuiltinEndpointKey(key)) {
       return res.status(400).json({ success: false, error: `"${key}" is a built-in endpoint and cannot be removed` });
     }
     if (!Object.hasOwn(LLM_CONFIG, key)) {
