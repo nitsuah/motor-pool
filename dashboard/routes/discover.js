@@ -180,6 +180,17 @@ async function probeEndpoint(host, port) {
   return null;
 }
 
+export function getKnownEndpointUrls(configs = {}) {
+  return new Set(
+    Object.values(configs)
+      .filter((config) =>
+        config?.url &&
+        (!config.requiresKey || String(config.apiKey || '').trim()),
+      )
+      .map((config) => config.url.replace(/\/$/, '')),
+  );
+}
+
 export function createDiscoverRouter({ LLM_CONFIG, logStructured }) {
   const router = express.Router();
 
@@ -196,7 +207,7 @@ export function createDiscoverRouter({ LLM_CONFIG, logStructured }) {
     const hosts = requestedHost ? [requestedHost] : HOSTS;
 
     // Build the set of URLs already registered so we can flag them
-    const knownUrls = new Set(Object.values(LLM_CONFIG).map(c => c.url?.replace(/\/$/, '')));
+    const knownUrls = getKnownEndpointUrls(LLM_CONFIG);
 
     // Ports that are our own webserver (3000) or already registered as default builtins —
     // discovering ourselves serves no purpose
