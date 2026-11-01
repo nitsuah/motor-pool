@@ -14,39 +14,21 @@ const TIMEOUT = 5000;
 async function testCorsRejectsUnauthorizedOrigin() {
   console.log('  Testing CORS rejects unauthorized origin...');
 
-  // Test with a malicious/unknown origin
   const unauthorizedOrigin = 'https://evil.com';
-
-  // Set the allowed origin for the test
   process.env.CORS_ALLOWED_ORIGINS = 'http://localhost:3000';
 
   try {
     const res = await axios.get(`${BASE}/api/health`, {
       timeout: TIMEOUT,
-      headers: {
-        'Origin': unauthorizedOrigin,
-      },
-      validateStatus: (status) => true, // Don't throw on any status
+      headers: { Origin: unauthorizedOrigin },
+      validateStatus: () => true,
     });
-
-    // CORS should reject - either 403 status or no Access-Control-Allow-Origin header
     const allowOrigin = res.headers['access-control-allow-origin'];
-    const isRejected = res.status === 403 || res.status === 500 || !allowOrigin || allowOrigin === 'null';
-
-    assert.ok(
-      isRejected,
-      `CORS should reject unauthorized origin. Status: ${res.status}, Access-Control-Allow-Origin: ${allowOrigin}`
-    );
-
-    console.log(`  ✅ CORS correctly rejects unauthorized origin (${unauthorizedOrigin}) - status: ${res.status}`);
+    assert.equal(res.status, 403, `CORS should return 403 for unauthorized origin; got ${res.status}`);
+    assert.ok(!allowOrigin || allowOrigin === 'null', `Unauthorized origin must not receive CORS headers: ${allowOrigin}`);
   } catch (err) {
     if (err.code === 'ECONNREFUSED') {
       console.log('  ⚠️  Server not reachable, skipping CORS test');
-      return;
-    }
-    // If axios throws due to network error from CORS rejection, that's also a pass
-    if (err.message && err.message.includes('CORS')) {
-      console.log(`  ✅ CORS correctly rejects unauthorized origin (${unauthorizedOrigin}) - network error: ${err.message}`);
       return;
     }
     throw err;
@@ -93,29 +75,23 @@ async function testCorsPreflightRejectsUnauthorized() {
   console.log('  Testing CORS preflight rejects unauthorized origin...');
 
   const unauthorizedOrigin = 'https://evil.com';
-
-  // Set the allowed origin for the test
   process.env.CORS_ALLOWED_ORIGINS = 'http://localhost:3000';
 
   try {
-    await axios.options(`${BASE}/api/health`, {
+    const res = await axios.options(`${BASE}/api/health`, {
       timeout: TIMEOUT,
       headers: {
-        'Origin': unauthorizedOrigin,
+        Origin: unauthorizedOrigin,
         'Access-Control-Request-Method': 'GET',
       },
-      validateStatus: (status) => true,
+      validateStatus: () => true,
     });
-
-    // If we get here, no error was thrown - this is a FAIL
-    assert.fail('CORS preflight should reject unauthorized origin but request succeeded');
+    const allowOrigin = res.headers['access-control-allow-origin'];
+    assert.equal(res.status, 403, `CORS preflight should return 403; got ${res.status}`);
+    assert.ok(!allowOrigin || allowOrigin === 'null', `Unauthorized preflight must not receive CORS headers: ${allowOrigin}`);
   } catch (err) {
     if (err.code === 'ECONNREFUSED') {
       console.log('  ⚠️  Server not reachable, skipping CORS preflight test');
-      return;
-    }
-    if (err.message && err.message.includes('CORS')) {
-      console.log(`  ✅ CORS preflight correctly rejects unauthorized origin`);
       return;
     }
     throw err;
