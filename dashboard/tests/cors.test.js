@@ -65,7 +65,7 @@ async function testCorsAllowsAuthorizedOrigin() {
     // Should allow the authorized origin
     assert.ok(
       allowOrigin === allowedOrigin,
-      `CORS should allow authorized origin. Got Access-Control-Allow-Origin: ${allowOrigin}`
+      `CORS should allow authorized origin. Got Access-Control-Allow-Origin: ${allowOrigin}`,
     );
 
     console.log(`  ✅ CORS correctly allows authorized origin (${allowedOrigin})`);
@@ -88,11 +88,11 @@ async function testCorsPreflightRejectsUnauthorized() {
     const res = await axios.options(
       `${BASE}/api/health`,
       {
-      timeout: TIMEOUT,
-      headers: {
-        Origin: unauthorizedOrigin,
-        'Access-Control-Request-Method': 'GET',
-      },
+        timeout: TIMEOUT,
+        headers: {
+          Origin: unauthorizedOrigin,
+          'Access-Control-Request-Method': 'GET',
+        },
         validateStatus: () => true,
       },
     );
