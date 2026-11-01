@@ -274,29 +274,48 @@ export function getKnownEndpointUrls(configs) {
   );
 }
 
-// Simple in-memory rate limiter (per IP, sliding window)
-const rateLimitMap = new Map();
+// Bounded in-memory rate limiter (per IP, sliding window).
 const RATE_LIMIT_WINDOW_MS = 60000; // 1 minute
 const RATE_LIMIT_MAX_REQUESTS = 10; // 10 requests per minute per IP
+const RATE_LIMIT_MAX_CLIENTS = 4096;
 
-function checkRateLimit(ip) {
-  const now = Date.now();
-  const windowStart = now - RATE_LIMIT_WINDOW_MS;
+export function createRateLimiter({
+  windowMs = RATE_LIMIT_WINDOW_MS,
+  maxRequests = RATE_LIMIT_MAX_REQUESTS,
+  maxClients = RATE_LIMIT_MAX_CLIENTS,
+} = {}) {
+  const clients = new Map();
+  let lastCleanup = 0;
 
-  if (!rateLimitMap.has(ip)) {
-    rateLimitMap.set(ip, []);
-  }
+  const pruneExpired = (windowStart) => {
+    for (const [key, timestamps] of clients) {
+      const recent = timestamps.filter(ts => ts > windowStart);
+      if (recent.length) clients.set(key, recent);
+      else clients.delete(key);
+    }
+  };
 
-  const requests = rateLimitMap.get(ip).filter(ts => ts > windowStart);
+  return function checkRateLimit(ip, now = Date.now()) {
+    const windowStart = now - windowMs;
+    if (now - lastCleanup >= windowMs) {
+      pruneExpired(windowStart);
+      lastCleanup = now;
+    }
 
-  if (requests.length >= RATE_LIMIT_MAX_REQUESTS) {
-    return false; // Rate limited
-  }
+    if (!clients.has(ip)) {
+      if (clients.size >= maxClients) return false;
+      clients.set(ip, []);
+    }
 
-  requests.push(now);
-  rateLimitMap.set(ip, requests);
-  return true;
+    const requests = clients.get(ip).filter(ts => ts > windowStart);
+    if (requests.length >= maxRequests) return false;
+    requests.push(now);
+    clients.set(ip, requests);
+    return true;
+  };
 }
+
+const checkRateLimit = createRateLimiter();
 
 export function createDiscoverRouter({ LLM_CONFIG, logStructured }) {
   const router = express.Router();

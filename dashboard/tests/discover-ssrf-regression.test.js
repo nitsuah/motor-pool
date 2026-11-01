@@ -10,6 +10,7 @@
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import http from 'node:http';
 import { BASE, closeTestServer } from './helpers/test-server.js';
+import { createRateLimiter } from '../routes/discover.js';
 
 const testServers = [];
 
@@ -25,6 +26,15 @@ async function startTestServer(handler) {
 }
 
 describe('SSRF protection in /api/discover/endpoints', () => {
+  it('bounds per-IP rate-limit state and expires old client entries', () => {
+    const limit = createRateLimiter({ windowMs: 1000, maxRequests: 1, maxClients: 2 });
+    expect(limit('a', 100)).toBe(true);
+    expect(limit('a', 200)).toBe(false);
+    expect(limit('b', 200)).toBe(true);
+    expect(limit('c', 200)).toBe(false);
+    expect(limit('c', 1201)).toBe(true);
+  });
+
   beforeAll(async () => {
     // wait for test server to be ready
     await new Promise(resolve => setTimeout(resolve, 100));
