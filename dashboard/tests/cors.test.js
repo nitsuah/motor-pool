@@ -24,8 +24,15 @@ async function testCorsRejectsUnauthorizedOrigin() {
       validateStatus: () => true,
     });
     const allowOrigin = res.headers['access-control-allow-origin'];
-    assert.equal(res.status, 403, `CORS should return 403 for unauthorized origin; got ${res.status}`);
-    assert.ok(!allowOrigin || allowOrigin === 'null', `Unauthorized origin must not receive CORS headers: ${allowOrigin}`);
+    assert.equal(
+      res.status,
+      403,
+      `CORS should return 403 for unauthorized origin; got ${res.status}`,
+    );
+    assert.ok(
+      !allowOrigin || allowOrigin === 'null',
+      `Unauthorized origin must not receive CORS headers: ${allowOrigin}`,
+    );
   } catch (err) {
     if (err.code === 'ECONNREFUSED') {
       console.log('  ⚠️  Server not reachable, skipping CORS test');
@@ -78,17 +85,27 @@ async function testCorsPreflightRejectsUnauthorized() {
   process.env.CORS_ALLOWED_ORIGINS = 'http://localhost:3000';
 
   try {
-    const res = await axios.options(`${BASE}/api/health`, {
+    const res = await axios.options(
+      `${BASE}/api/health`,
+      {
       timeout: TIMEOUT,
       headers: {
         Origin: unauthorizedOrigin,
         'Access-Control-Request-Method': 'GET',
       },
-      validateStatus: () => true,
-    });
+        validateStatus: () => true,
+      },
+    );
     const allowOrigin = res.headers['access-control-allow-origin'];
-    assert.equal(res.status, 403, `CORS preflight should return 403; got ${res.status}`);
-    assert.ok(!allowOrigin || allowOrigin === 'null', `Unauthorized preflight must not receive CORS headers: ${allowOrigin}`);
+    assert.equal(
+      res.status,
+      403,
+      `CORS preflight should return 403; got ${res.status}`,
+    );
+    assert.ok(
+      !allowOrigin || allowOrigin === 'null',
+      `Unauthorized preflight must not receive CORS headers: ${allowOrigin}`,
+    );
   } catch (err) {
     if (err.code === 'ECONNREFUSED') {
       console.log('  ⚠️  Server not reachable, skipping CORS preflight test');
