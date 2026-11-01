@@ -30,8 +30,6 @@ COPY config ./config
 COPY src ./src
 COPY scripts ./scripts
 COPY tests ./tests
-RUN mkdir -p /tools/tokeneconomizer
-COPY tools/tokeneconomizer/safe-error.mjs /tools/tokeneconomizer/safe-error.mjs
 ENV AGENT_DASHBOARD_DISABLE_LISTEN=1
 CMD ["npm", "run", "test:unit"]
 
