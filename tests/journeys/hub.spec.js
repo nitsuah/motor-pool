@@ -8,7 +8,7 @@ test('operator opens motor-pool and sees the hub with their sessions', {
     await page.goto('/');
     await settle(page);
 
-    await step(page, 'see the hub, the session tabs and the current model endpoint', async () => {
+    await step(page, 'see the hub, the session tabs and the live model', async () => {
         await expect(page.getByText('Your AI ops cockpit', { exact: false })).toBeVisible();
         await expect(page.getByRole('button', { name: /New Session/ })).toBeVisible();
         await expect(page.locator('.session-tab')).toHaveCount(2);
