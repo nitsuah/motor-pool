@@ -13,7 +13,9 @@ test('operator opens motor-pool and sees the hub with their sessions', {
         await expect(page.getByRole('button', { name: /New Session/ })).toBeVisible();
         await expect(page.locator('.session-tab')).toHaveCount(2);
         await expect(page.locator('.session-tab').first()).toContainText('Fix login bug');
-        await expect(page.getByText('Llama 3.2 3B')).toBeVisible();
+        // The 3D canvas is not a DOM text surface and can be hidden when WebGL is unavailable in CI.
+        // The current endpoint label is the accessible, user-visible model indicator.
+        await expect(page.getByTitle('Model: Llama 3.1 8B')).toBeVisible();
     }, { docs: '3d-liminaldashboard-home' });
 });
 
