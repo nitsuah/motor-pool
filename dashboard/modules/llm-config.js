@@ -20,6 +20,19 @@ export const DEVICE_PROFILES = {
 export const DEVICE_PROFILE = (process.env.DEVICE_PROFILE || 'minimal').toLowerCase();
 export const activeProfile = DEVICE_PROFILES[DEVICE_PROFILE] || DEVICE_PROFILES.minimal;
 
+const BUILTIN_ENDPOINT_KEYS = new Set([
+  'primary',
+  'docker_runner',
+  'glm_flash',
+  'openllm',
+  'ninerouter',
+]);
+const RESERVED_ENDPOINT_KEYS = new Set(['__proto__', 'constructor', 'prototype']);
+
+export function isBuiltinEndpointKey(key) {
+  return BUILTIN_ENDPOINT_KEYS.has(key);
+}
+
 export const LLM_CONFIG = {
   primary: {
     url: process.env.PRIMARY_LLM_URL || 'http://ollama:8080',
@@ -69,6 +82,10 @@ export const LLM_CONFIG = {
 
 // ── Custom endpoint registry ──────────────────────────────────────────────────
 function applyCustomEndpoint(ep) {
+  if (BUILTIN_ENDPOINT_KEYS.has(ep.key) || RESERVED_ENDPOINT_KEYS.has(ep.key)) {
+    console.warn('[config] Skipping custom endpoint that would override a protected key:', ep.key);
+    return;
+  }
   if (!ep.key || !ep.url) {
     console.warn('[config] Skipping custom endpoint missing key or url:', ep);
     return;

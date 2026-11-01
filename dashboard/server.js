@@ -5,6 +5,7 @@ import dotenv from 'dotenv';
 import { fileURLToPath } from 'url';
 import { dirname, join } from 'path';
 import { existsSync } from 'fs';
+import { randomBytes } from 'crypto';
 import { flushSessionSnapshot, initSessionSnapshot, scheduleSnapshotWrite } from './modules/session-snapshot.js';
 import { exec, execFile } from 'child_process';
 import { promisify } from 'util';
@@ -85,7 +86,6 @@ const TMUX_ALLOWED_COMMANDS = String(process.env.AGENT_BOARD_TMUX_ALLOWED_COMMAN
 const WEBSITE_OUTPUT_DIR = process.env.WEBSITE_OUTPUT_DIR || join(__dirname, '..', 'tools', 'website', 'output');
 
 // CORS allowed origins (comma-separated). Empty = no cross-origin requests allowed.
-const CORS_ALLOWED_ORIGINS = parseUrlListEnv(process.env.CORS_ALLOWED_ORIGINS);
 
 function parseUrlListEnv(rawValue, fallback = []) {
   const fromEnv = String(rawValue || '').split(',').map(s => s.trim()).filter(Boolean);
@@ -446,32 +446,59 @@ const tasksRouter = createTasksRouter({ tasks, sessions, eventBus, logStructured
 const workspaceRouter = createWorkspaceRouter(WORKSPACE_ROOT);
 
 // Middleware
+function isAllowedCorsOrigin(origin) {
+  return parseUrlListEnv(process.env.CORS_ALLOWED_ORIGINS).includes(origin);
+}
+
 // CORS middleware - reads allowed origins dynamically at request time
 app.use(cors({
   origin: (origin, callback) => {
-    // Allow requests with no origin (like from same-origin requests)
+    // Requests without Origin are not subject to CORS.
     if (!origin) return callback(null, true);
 
-    // Parse allowed origins from env at request time (supports dynamic config)
-    const allowedOrigins = parseUrlListEnv(process.env.CORS_ALLOWED_ORIGINS);
+    if (isAllowedCorsOrigin(origin)) return callback(null, true);
 
-    // Check if the origin is in the allowed list
-    if (Array.isArray(allowedOrigins)) {
-      if (allowedOrigins.includes(origin)) {
-        return callback(null, true);
-      }
-    } else if (allowedOrigins === '*') {
-      return callback(null, true);
-    }
-
-    // Not allowed - use callback(null, false) to properly reject without 500
-    // and without setting Access-Control-Allow-Origin header
+    // Withhold CORS headers for disallowed origins; CORS is browser policy, not auth.
     return callback(null, false);
   },
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
   credentials: true,
   allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With'],
 }));
+// Rate limiting middleware (in-memory, per-IP). Register it before body readers so
+// rejected requests do not spend CPU/memory parsing JSON or webhook payloads.
+const rateLimitMap = new Map();
+const RATE_LIMIT_WINDOW_MS = 60_000; // 1 minute
+const configuredRateLimit = Number(process.env.AGENT_DASHBOARD_RATE_LIMIT_MAX_REQUESTS);
+const RATE_LIMIT_MAX_REQUESTS =
+  Number.isInteger(configuredRateLimit) && configuredRateLimit > 0
+    ? configuredRateLimit
+    : 120; // 120 req/min per IP by default
+const rateLimitCleanupTimer = setInterval(() => {
+  const now = Date.now();
+  for (const [ip, timestamps] of rateLimitMap.entries()) {
+    const recent = timestamps.filter(ts => now - ts < RATE_LIMIT_WINDOW_MS);
+    if (recent.length === 0) rateLimitMap.delete(ip);
+    else rateLimitMap.set(ip, recent);
+  }
+}, RATE_LIMIT_WINDOW_MS);
+rateLimitCleanupTimer.unref?.();
+
+function rateLimit(req, res, next) {
+  const ip = req.ip || req.socket.remoteAddress || 'unknown';
+  const now = Date.now();
+  const timestamps = rateLimitMap.get(ip) || [];
+  const recent = timestamps.filter(ts => now - ts < RATE_LIMIT_WINDOW_MS);
+  if (recent.length >= RATE_LIMIT_MAX_REQUESTS) {
+    return res.status(429).json({ success: false, error: 'Too many requests, please slow down' });
+  }
+  recent.push(now);
+  rateLimitMap.set(ip, recent);
+  next();
+}
+app.use(rateLimit);
+
+
 // Capture raw body on the webhook trigger path before JSON parsing (needed for HMAC verification)
 // Sets req._rawBodyBuffer for HMAC verification; sets req._body = true so express.json() skips it.
 app.use('/api/webhooks/trigger', (req, _res, next) => {
@@ -492,6 +519,7 @@ app.use('/api/webhooks/trigger', (req, _res, next) => {
   });
 });
 app.use(express.json());
+
 app.use((req, res, next) => {
   const start = Date.now();
   res.on('finish', () => {
@@ -739,7 +767,7 @@ if (process.env.AGENT_DASHBOARD_DISABLE_LISTEN !== '1') {
   // Start the background task auto-runner (picks up pending tasks by priority)
   // dispatchMessage: creates or reuses a session, then runs the agent loop non-streaming
   const dispatchTaskMessage = async (task) => {
-    const sessionId = `sess_task_${Date.now()}_${Math.random().toString(36).substr(2, 6)}`;
+    const sessionId = `sess_task_${Date.now()}_${randomBytes(3).toString('hex')}`;
     const endpoint = 'primary';
     const resolvedLlmUrl = await resolveEndpointUrl(endpoint);
     const experience = task.experience || 'developer';

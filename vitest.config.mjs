@@ -8,6 +8,6 @@ export default defineConfig({
     // test/ suites use describe/it without importing them.
     globals: true,
     environment: 'node',
-    include: ['test/**/*.test.js'],
+    include: ['test/**/*.test.js', 'test/**/*.test.mjs'],
   },
 });

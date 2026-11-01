@@ -130,16 +130,6 @@ const WELL_KNOWN_PROVIDERS = [
     docsUrl:      'https://docs.perplexity.ai',
     defaultModel: 'llama-3.1-sonar-large-128k-online',
   },
-  {
-    key:          'wk_9router',
-    name:         '9router (host)',
-    url:          process.env.NINEROUTER_URL || 'http://host.docker.internal:20128',
-    apiStyle:     'openai',
-    requiresKey:  true,
-    keyHint:      'NINEROUTER_API_KEY',
-    docsUrl:      'https://9router.com/docs',
-    defaultModel: process.env.NINEROUTER_MODEL || 'MAX',
-  },
 ];
 
 async function probeEndpoint(host, port) {
@@ -190,12 +180,14 @@ async function probeEndpoint(host, port) {
   return null;
 }
 
-export function getKnownEndpointUrls(configs) {
+export function getKnownEndpointUrls(configs = {}) {
   return new Set(
     Object.values(configs)
-      .filter(config => !config.requiresKey || Boolean(config.apiKey))
-      .map(config => config.url?.replace(/\/$/, ''))
-      .filter(Boolean)
+      .filter((config) =>
+        config?.url &&
+        (!config.requiresKey || String(config.apiKey || '').trim()),
+      )
+      .map((config) => config.url.replace(/\/$/, '')),
   );
 }
 
@@ -288,5 +280,3 @@ export function createDiscoverRouter({ LLM_CONFIG, logStructured }) {
 
   return router;
 }
-
-

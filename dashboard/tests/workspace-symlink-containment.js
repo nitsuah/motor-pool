@@ -60,6 +60,13 @@ try {
   assert.ok(abs.status >= 400, 'absolute path is refused');
   console.log('  ✅ traversal and absolute paths remain refused');
 
+  // Long slash runs are normalized with a bounded linear scan, not a user-input regex.
+  const slashHeavyPath = '/'.repeat(1000) + 'sub/ok.txt';
+  const slashHeavy = await get(`/workspace/read?path=${encodeURIComponent(slashHeavyPath)}`);
+  assert.strictEqual(slashHeavy.status, 200, 'slash-heavy relative path remains readable');
+  assert.strictEqual((await slashHeavy.json()).content, 'inside\n');
+  console.log('  ✅ long leading slash runs normalize without changing path containment');
+
   // ── ordinary nested paths still work ──────────────────────────────────────
   const write = await post('/workspace/write', { path: 'sub/new.txt', content: 'written\n' });
   assert.strictEqual(write.status, 200, 'nested write succeeds');
