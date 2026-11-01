@@ -8,11 +8,18 @@
  *
  * Also returns WELL_KNOWN_PROVIDERS — cloud APIs (Anthropic, OpenAI, etc.) that
  * are always surfaced for BYOK configuration regardless of scan results.
+ *
+ * SSRF Protections:
+ * - Only scans ports from ALLOWED_PORTS (no user-controlled port list)
+ * - Only scans hosts from ALLOWED_HOSTS (no host.docker.internal by default)
+ * - fetch() uses redirect: 'manual' to prevent redirect-following SSRF
+ * - Response URLs validated against private IP ranges
  */
 import express from 'express';
 
 // Ports likely to host a local LLM, OpenAI-compatible proxy, or external tool
-const DEFAULT_PORTS = [
+// This is an ALLOWLIST - user cannot override via query parameter
+const ALLOWED_PORTS = new Set([
   1234,   // LM Studio
   1337,   // Jan AI
   3100,   // bb-mcp
@@ -36,10 +43,13 @@ const DEFAULT_PORTS = [
   20128,  // 9router
   20200,
   20201,
-];
+]);
 
 const PROBE_TIMEOUT_MS = 1500;
-const HOSTS = ['localhost', 'host.docker.internal'];
+
+// Only localhost is allowed by default. host.docker.internal is NOT in allowlist
+// because it exposes host machine services to the container.
+const ALLOWED_HOSTS = new Set(['localhost', '127.0.0.1', '::1']);
 
 // Known port→name hints so discovered endpoints get a useful display name
 const PORT_HINTS = {
@@ -54,6 +64,45 @@ const PORT_HINTS = {
   11435: 'Ollama (host alt)',
   20128: '9router',
 };
+
+/**
+ * Check if a URL's hostname resolves to a private/internal IP address.
+ * Prevents redirect-following SSRF to metadata services, private networks, etc.
+ */
+function isPrivateHost(url) {
+  try {
+    const { hostname } = new URL(url);
+    // Block private IPv4 ranges
+    if (/^10\./.test(hostname) ||
+        /^172\.(1[6-9]|2[0-9]|3[0-1])\./.test(hostname) ||
+        /^192\.168\./.test(hostname) ||
+        /^169\.254\./.test(hostname) ||  // link-local / metadata
+        /^127\./.test(hostname) ||       // loopback (redundant but safe)
+        hostname === 'localhost' ||
+        hostname === 'host.docker.internal') {
+      return true;
+    }
+    // Block IPv6 loopback and link-local
+    if (hostname === '::1' || hostname.startsWith('fe80:')) {
+      return true;
+    }
+    // Block decimal IP notation (e.g., 16777343 = 127.0.0.1)
+    if (/^\d+$/.test(hostname)) {
+      const ip = parseInt(hostname, 10);
+      if (ip >= 0 && ip <= 0xffffffff) {
+        // Check if it maps to private range
+        const a = (ip >>> 24) & 0xff;
+        const b = (ip >>> 16) & 0xff;
+        if (a === 10 || (a === 172 && b >= 16 && b <= 31) || (a === 192 && b === 168) || a === 127 || (a === 169 && b === 254)) {
+          return true;
+        }
+      }
+    }
+    return false;
+  } catch {
+    return true; // If we can't parse, treat as unsafe
+  }
+}
 
 /**
  * Cloud and well-known API providers. These are always returned so the user can
@@ -135,9 +184,15 @@ const WELL_KNOWN_PROVIDERS = [
 async function probeEndpoint(host, port) {
   const baseUrl = `http://${host}:${port}`;
 
+  // fetch with redirect: 'manual' to prevent redirect-following SSRF
+  const fetchOpts = {
+    signal: AbortSignal.timeout(PROBE_TIMEOUT_MS),
+    redirect: 'manual'
+  };
+
   // Try OpenAI-compatible first
   try {
-    const res = await fetch(`${baseUrl}/v1/models`, { signal: AbortSignal.timeout(PROBE_TIMEOUT_MS) });
+    const res = await fetch(`${baseUrl}/v1/models`, fetchOpts);
     if (res.ok) {
       const data = await res.json().catch(() => null);
       const models = data?.data?.map(m => m.id) || [];
@@ -147,11 +202,18 @@ async function probeEndpoint(host, port) {
     if (res.status === 401 || res.status === 403) {
       return { url: baseUrl, apiStyle: 'openai', models: [], requiresAuth: true };
     }
+    // Check for redirect to private address
+    if (res.status >= 300 && res.status < 400) {
+      const location = res.headers.get('location');
+      if (location && isPrivateHost(location)) {
+        return null; // Blocked redirect to private address
+      }
+    }
   } catch { /* not openai */ }
 
   // Try Ollama
   try {
-    const res2 = await fetch(`${baseUrl}/api/tags`, { signal: AbortSignal.timeout(PROBE_TIMEOUT_MS) });
+    const res2 = await fetch(`${baseUrl}/api/tags`, fetchOpts);
     if (res2.ok) {
       const data = await res2.json().catch(() => null);
       const models = data?.models?.map(m => m.name) || [];
@@ -160,12 +222,18 @@ async function probeEndpoint(host, port) {
     if (res2.status === 401 || res2.status === 403) {
       return { url: baseUrl, apiStyle: 'ollama', models: [], requiresAuth: true };
     }
+    if (res2.status >= 300 && res2.status < 400) {
+      const location = res2.headers.get('location');
+      if (location && isPrivateHost(location)) {
+        return null;
+      }
+    }
   } catch { /* not ollama */ }
 
   // Generic health/root probe — detect any live service (may be a tool or proxy)
   for (const path of ['/health', '/']) {
     try {
-      const res3 = await fetch(`${baseUrl}${path}`, { signal: AbortSignal.timeout(PROBE_TIMEOUT_MS) });
+      const res3 = await fetch(`${baseUrl}${path}`, fetchOpts);
       if (res3.ok || res3.status === 401 || res3.status === 403) {
         return {
           url: baseUrl,
@@ -174,26 +242,71 @@ async function probeEndpoint(host, port) {
           requiresAuth: res3.status === 401 || res3.status === 403,
         };
       }
+      if (res3.status >= 300 && res3.status < 400) {
+        const location = res3.headers.get('location');
+        if (location && isPrivateHost(location)) {
+          return null;
+        }
+      }
     } catch { /* not alive on this path */ }
   }
 
   return null;
 }
 
+// Simple in-memory rate limiter (per IP, sliding window)
+const rateLimitMap = new Map();
+const RATE_LIMIT_WINDOW_MS = 60000; // 1 minute
+const RATE_LIMIT_MAX_REQUESTS = 10; // 10 requests per minute per IP
+
+function checkRateLimit(ip) {
+  const now = Date.now();
+  const windowStart = now - RATE_LIMIT_WINDOW_MS;
+
+  if (!rateLimitMap.has(ip)) {
+    rateLimitMap.set(ip, []);
+  }
+
+  const requests = rateLimitMap.get(ip).filter(ts => ts > windowStart);
+
+  if (requests.length >= RATE_LIMIT_MAX_REQUESTS) {
+    return false; // Rate limited
+  }
+
+  requests.push(now);
+  rateLimitMap.set(ip, requests);
+  return true;
+}
+
 export function createDiscoverRouter({ LLM_CONFIG, logStructured }) {
   const router = express.Router();
 
   router.get('/discover/endpoints', async (req, res) => {
-    const customPorts = req.query.ports
-      ? String(req.query.ports).split(',').map(Number).filter(p => p > 0 && p < 65536)
-      : [];
-    const ports = customPorts.length > 0 ? customPorts : DEFAULT_PORTS;
-    const ALLOWED_HOSTS = new Set(['localhost', '127.0.0.1', '::1', 'host.docker.internal']);
-    const requestedHost = req.query.host ? String(req.query.host) : null;
-    if (requestedHost && !ALLOWED_HOSTS.has(requestedHost)) {
-      return res.status(400).json({ success: false, error: 'host must be a local address' });
+    // Rate limiting
+    const clientIp = req.ip || req.socket.remoteAddress || 'unknown';
+    if (!checkRateLimit(clientIp)) {
+      return res.status(429).json({
+        success: false,
+        error: 'Rate limit exceeded. Try again in a minute.'
+      });
     }
-    const hosts = requestedHost ? [requestedHost] : HOSTS;
+
+    // Validate host parameter if provided - must be in ALLOWED_HOSTS
+    if (req.query.host) {
+      const requestedHost = String(req.query.host);
+      if (!ALLOWED_HOSTS.has(requestedHost)) {
+        return res.status(400).json({
+          success: false,
+          error: 'Invalid host. Only localhost addresses are allowed.'
+        });
+      }
+    }
+
+    // No user-controlled ports - only ALLOWED_PORTS
+    const ports = Array.from(ALLOWED_PORTS);
+
+    // No user-controlled host - only ALLOWED_HOSTS (localhost only by default)
+    const hosts = Array.from(ALLOWED_HOSTS);
 
     // Build the set of URLs already registered so we can flag them
     const knownUrls = new Set(Object.values(LLM_CONFIG).map(c => c.url?.replace(/\/$/, '')));
