@@ -27,7 +27,9 @@ let sessionHistoryCache = null;
 async function ensureDir() {
   try {
     await mkdir(TOK_ECON_DIR, { recursive: true });
-  } catch {}
+  } catch {
+    // Best-effort directory setup; downstream reads/writes handle failures.
+  }
 }
 
 async function loadConfig() {
