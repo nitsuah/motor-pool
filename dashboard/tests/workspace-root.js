@@ -85,7 +85,7 @@ try {
   const objectPathWrite = await post('/api/workspace/write', { path: { name: 'readme.md' }, content: 'overwrite' });
   assert.ok(objectPathWrite.status >= 400, 'object path body is refused');
   const unchanged = await (await get('/api/workspace/read?path=readme.md')).json();
-  assert.strictEqual(unchanged.content, '# hello\\n', 'non-string path cannot overwrite a workspace file');
+  assert.strictEqual(unchanged.content, '# hello\n', 'non-string path cannot overwrite a workspace file');
   console.log('  ✅ array/object path inputs are rejected without filesystem changes');
 
   // ── write ─────────────────────────────────────────────────────────────────
