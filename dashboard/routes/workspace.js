@@ -48,7 +48,7 @@ export function createWorkspaceRouter(WORKSPACE_ROOT) {
   const router = express.Router();
 
   function resolveWorkspacePath(reqPath) {
-    if (!WORKSPACE_ROOT) return null;
+    if (!WORKSPACE_ROOT || typeof reqPath !== 'string') return null;
     const safe = reqPath ? reqPath.replace(/\\/g, '/').replace(/^\/+/, '') : '';
     const abs = resolvePath(WORKSPACE_ROOT, safe);
     if (abs !== WORKSPACE_ROOT && !abs.startsWith(WORKSPACE_ROOT + '/')) return null;
