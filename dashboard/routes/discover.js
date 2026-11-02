@@ -16,6 +16,7 @@
  * - Response URLs validated against private IP ranges
  */
 import express from 'express';
+import rateLimit from 'express-rate-limit';
 
 // Ports likely to host a local LLM, OpenAI-compatible proxy, or external tool
 // This is an ALLOWLIST - user cannot override via query parameter
@@ -69,41 +70,102 @@ const PORT_HINTS = {
  * Check if a URL's hostname resolves to a private/internal IP address.
  * Prevents redirect-following SSRF to metadata services, private networks, etc.
  */
-function isPrivateHost(url) {
-  try {
-    const { hostname } = new URL(url);
-    // Block private IPv4 ranges
-    if (/^10\./.test(hostname) ||
-        /^172\.(1[6-9]|2[0-9]|3[0-1])\./.test(hostname) ||
-        /^192\.168\./.test(hostname) ||
-        /^169\.254\./.test(hostname) ||  // link-local / metadata
-        /^127\./.test(hostname) ||       // loopback (redundant but safe)
-        hostname === 'localhost' ||
-        hostname === 'host.docker.internal') {
-      return true;
-    }
-    // Block IPv6 loopback and link-local
-    if (hostname === '::1' || hostname.startsWith('fe80:')) {
-      return true;
-    }
-    // Block decimal IP notation (e.g., 16777343 = 127.0.0.1)
-    if (/^\d+$/.test(hostname)) {
-      const ip = parseInt(hostname, 10);
-      if (ip >= 0 && ip <= 0xffffffff) {
-        // Check if it maps to private range
-        const a = (ip >>> 24) & 0xff;
-        const b = (ip >>> 16) & 0xff;
-        if (a === 10 || (a === 172 && b >= 16 && b <= 31) || (a === 192 && b === 168) || a === 127 || (a === 169 && b === 254)) {
-          return true;
-        }
-      }
-    }
-    return false;
-  } catch {
-    return true; // If we can't parse, treat as unsafe
-  }
+/**
+ * Parse a canonical dotted IPv4 address into octets.
+ */
+function parseIPv4Address(hostname) {
+  const parts = hostname.split('.');
+  if (parts.length !== 4 || parts.some(part => !/^\d{1,3}$/.test(part))) return null;
+  const octets = parts.map(Number);
+  return octets.some(octet => octet < 0 || octet > 255) ? null : octets;
 }
 
+function isPrivateIPv4Address(octets) {
+  const [a, b, c] = octets;
+  return a === 0 || a === 10 || a === 127 ||
+    (a === 100 && b >= 64 && b <= 127) ||
+    (a === 169 && b === 254) ||
+    (a === 172 && b >= 16 && b <= 31) ||
+    (a === 192 && b === 168) ||
+    (a === 192 && b === 0 && (c === 0 || c === 2)) ||
+    (a === 198 && (b === 18 || b === 19 || (b === 51 && c === 100))) ||
+    (a === 203 && b === 0 && c === 113) ||
+    a >= 224;
+}
+
+function expandIPv6Address(hostname) {
+  let value = hostname.toLowerCase();
+  if (value.includes('.')) {
+    const lastColon = value.lastIndexOf(':');
+    if (lastColon < 0) return null;
+    const ipv4 = parseIPv4Address(value.slice(lastColon + 1));
+    if (!ipv4) return null;
+    const high = ((ipv4[0] << 8) | ipv4[1]).toString(16);
+    const low = ((ipv4[2] << 8) | ipv4[3]).toString(16);
+    value = value.slice(0, lastColon + 1) + high + ':' + low;
+  }
+
+  const halves = value.split('::');
+  if (halves.length > 2) return null;
+  const left = halves[0] ? halves[0].split(':') : [];
+  const right = halves.length === 2 && halves[1] ? halves[1].split(':') : [];
+  const missing = 8 - left.length - right.length;
+  if (missing < 0 || (halves.length === 1 && missing !== 0)) return null;
+  const segments = [...left, ...Array(missing).fill('0'), ...right];
+  if (segments.length !== 8) return null;
+  const words = segments.map(segment => parseInt(segment, 16));
+  return words.some(word => !Number.isInteger(word) || word < 0 || word > 0xffff) ? null : words;
+}
+
+function isPrivateIPv6Address(words) {
+  if (!words) return true;
+  if (words.every(word => word === 0)) return true; // unspecified
+  if (words.slice(0, 7).every(word => word === 0) && words[7] === 1) return true; // loopback
+  const first = words[0];
+  if ((first & 0xffc0) === 0xfe80) return true; // fe80::/10
+  if ((first & 0xfe00) === 0xfc00) return true; // fc00::/7
+
+  // IPv4-mapped (::ffff:0:0/96) and deprecated IPv4-compatible (::/96) forms.
+  const mapped = words.slice(0, 5).every(word => word === 0) && words[5] === 0xffff;
+  const compatible = words.slice(0, 6).every(word => word === 0);
+  if (mapped || compatible) {
+    const ipv4 = [words[6] >> 8, words[6] & 0xff, words[7] >> 8, words[7] & 0xff];
+    return isPrivateIPv4Address(ipv4);
+  }
+  return false;
+}
+
+/**
+ * Classify a redirect Location without following it. Relative and same-origin
+ * redirects are safe to continue probing; cross-origin private targets are
+ * rejected. baseUrl is the endpoint we just probed.
+ */
+export function isPrivateHost(location, baseUrl) {
+  let target;
+  let base;
+  try {
+    target = new URL(location, baseUrl);
+    base = new URL(baseUrl);
+  } catch {
+    return true;
+  }
+  if (target.origin === base.origin) return false;
+
+  const hostname = target.hostname.replace(/^\[|\]$/g, '').split('%')[0].toLowerCase();
+  if (hostname === 'localhost' || hostname.endsWith('.localhost') || hostname === 'host.docker.internal' || hostname === 'metadata.google.internal') {
+    return true;
+  }
+  const ipv4 = parseIPv4Address(hostname);
+  if (ipv4) return isPrivateIPv4Address(ipv4);
+  if (/^\d+$/.test(hostname)) {
+    const value = Number(hostname);
+    if (Number.isSafeInteger(value) && value >= 0 && value <= 0xffffffff) {
+      return isPrivateIPv4Address([(value >>> 24) & 0xff, (value >>> 16) & 0xff, (value >>> 8) & 0xff, value & 0xff]);
+    }
+  }
+  if (hostname.includes(':')) return isPrivateIPv6Address(expandIPv6Address(hostname));
+  return false;
+}
 /**
  * Cloud and well-known API providers. These are always returned so the user can
  * quickly add them via BYOK. requiresKey=true means they need an API key to work.
@@ -216,7 +278,7 @@ async function probeEndpoint(host, port) {
     // Check for redirect to private address
     if (res.status >= 300 && res.status < 400) {
       const location = res.headers.get('location');
-      if (location && isPrivateHost(location)) {
+      if (location && isPrivateHost(location, baseUrl)) {
         return null; // Blocked redirect to private address
       }
     }
@@ -235,7 +297,7 @@ async function probeEndpoint(host, port) {
     }
     if (res2.status >= 300 && res2.status < 400) {
       const location = res2.headers.get('location');
-      if (location && isPrivateHost(location)) {
+      if (location && isPrivateHost(location, baseUrl)) {
         return null;
       }
     }
@@ -255,7 +317,7 @@ async function probeEndpoint(host, port) {
       }
       if (res3.status >= 300 && res3.status < 400) {
         const location = res3.headers.get('location');
-        if (location && isPrivateHost(location)) {
+        if (location && isPrivateHost(location, baseUrl)) {
           return null;
         }
       }
@@ -274,62 +336,20 @@ export function getKnownEndpointUrls(configs) {
   );
 }
 
-// Bounded in-memory rate limiter (per IP, sliding window).
-const RATE_LIMIT_WINDOW_MS = 60000; // 1 minute
-const RATE_LIMIT_MAX_REQUESTS = 10; // 10 requests per minute per IP
-const RATE_LIMIT_MAX_CLIENTS = 4096;
-
-export function createRateLimiter({
-  windowMs = RATE_LIMIT_WINDOW_MS,
-  maxRequests = RATE_LIMIT_MAX_REQUESTS,
-  maxClients = RATE_LIMIT_MAX_CLIENTS,
-} = {}) {
-  const clients = new Map();
-  let lastCleanup = 0;
-
-  const pruneExpired = (windowStart) => {
-    for (const [key, timestamps] of clients) {
-      const recent = timestamps.filter(ts => ts > windowStart);
-      if (recent.length) clients.set(key, recent);
-      else clients.delete(key);
-    }
-  };
-
-  return function checkRateLimit(ip, now = Date.now()) {
-    const windowStart = now - windowMs;
-    if (now - lastCleanup >= windowMs) {
-      pruneExpired(windowStart);
-      lastCleanup = now;
-    }
-
-    if (!clients.has(ip)) {
-      if (clients.size >= maxClients) return false;
-      clients.set(ip, []);
-    }
-
-    const requests = clients.get(ip).filter(ts => ts > windowStart);
-    if (requests.length >= maxRequests) return false;
-    requests.push(now);
-    clients.set(ip, requests);
-    return true;
-  };
-}
-
-const checkRateLimit = createRateLimiter();
+// Rate-limit the expensive endpoint-discovery scan only; routine dashboard API
+// polling remains available for the local single-user UI.
+const discoverLimiter = rateLimit({
+  windowMs: 60_000,
+  limit: 10,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { success: false, error: 'Rate limit exceeded. Try again in a minute.' },
+});
 
 export function createDiscoverRouter({ LLM_CONFIG, logStructured }) {
   const router = express.Router();
 
-  router.get('/discover/endpoints', async (req, res) => {
-    // Rate limiting
-    const clientIp = req.ip || req.socket.remoteAddress || 'unknown';
-    if (!checkRateLimit(clientIp)) {
-      return res.status(429).json({
-        success: false,
-        error: 'Rate limit exceeded. Try again in a minute.'
-      });
-    }
-
+  router.get('/discover/endpoints', discoverLimiter, async (req, res) => {
     // Validate host parameter if provided - must be in ALLOWED_HOSTS
     if (req.query.host) {
       const requestedHost = String(req.query.host);
