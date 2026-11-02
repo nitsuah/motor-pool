@@ -1,6 +1,6 @@
-import dotenv from 'dotenv';
+// Loaded from server.js before this module is imported
 import { loadEndpoints } from './endpoint-store.js';
-dotenv.config();
+import { TokenEconomizer } from './token-economizer.js';
 
 export function isTruthyEnv(value) {
   return ['1', 'true', 'yes', 'on'].includes(String(value || '').toLowerCase());
@@ -20,40 +20,95 @@ export const DEVICE_PROFILES = {
 export const DEVICE_PROFILE = (process.env.DEVICE_PROFILE || 'minimal').toLowerCase();
 export const activeProfile = DEVICE_PROFILES[DEVICE_PROFILE] || DEVICE_PROFILES.minimal;
 
-export const LLM_CONFIG = {
-  primary: {
-    url: process.env.PRIMARY_LLM_URL || 'http://ollama:8080',
-    name: 'Ollama (local)',
-    backendType: 'ollama-container',
-    type: 'general',
-    apiStyle: 'ollama',
-    defaultModel: process.env.PRIMARY_LLM_MODEL || activeProfile.models.general,
+function buildLLMConfig() {
+  return {
+    primary: {
+      url: process.env.PRIMARY_LLM_URL || 'http://host.docker.internal:8081',
+      name: 'Ollama (local)',
+      backendType: 'ollama-container',
+      type: 'general',
+      apiStyle: 'ollama',
+      defaultModel: process.env.PRIMARY_LLM_MODEL || activeProfile.models.general,
+    },
+    docker_runner: {
+      url: DOCKER_RUNNER_URL,
+      name: 'Qwen3-Coder (Docker Runner)',
+      backendType: 'docker-runner',
+      type: 'coding',
+      apiStyle: 'openai',
+      defaultModel: process.env.DOCKER_RUNNER_MODEL || 'ai/qwen3-coder:latest',
+    },
+    glm_flash: {
+      url: DOCKER_RUNNER_URL,
+      name: 'GLM-4.7-Flash (Docker Runner)',
+      backendType: 'docker-runner',
+      type: 'fast',
+      apiStyle: 'openai',
+      defaultModel: process.env.GLM_FLASH_MODEL || 'ai/glm-4.7-flash:latest',
+    },
+    openllm: {
+      url: process.env.OPENLLM_URL || 'http://llm_openllm:3000',
+      name: 'OpenLLM (custom models)',
+      backendType: 'openllm-container',
+      type: 'custom',
+      apiStyle: 'openai',
+      defaultModel: process.env.OPENLLM_MODEL || '',
+    },
+    nine_router: {
+      url: process.env.NINE_ROUTER_URL || 'http://localhost:4000',
+      name: 'Nine Router (model routing)',
+      backendType: 'nine-router',
+      type: 'router',
+      apiStyle: 'openai',
+      defaultModel: process.env.NINE_ROUTER_MODEL || 'auto',
+    },
+  };
+}
+
+// Use a getter so config is built at access time, after dotenv has loaded
+let _llmConfigCache = null;
+export function getLLMConfig() {
+  if (!_llmConfigCache) {
+    _llmConfigCache = buildLLMConfig();
+  }
+  return _llmConfigCache;
+}
+
+// For backward compatibility - returns a mutable object that gets rebuilt on first access
+export const LLM_CONFIG = new Proxy({}, {
+  get(target, prop) {
+    const config = getLLMConfig();
+    return config[prop];
   },
-  docker_runner: {
-    url: DOCKER_RUNNER_URL,
-    name: 'Qwen3-Coder (Docker Runner)',
-    backendType: 'docker-runner',
-    type: 'coding',
-    apiStyle: 'openai',
-    defaultModel: process.env.DOCKER_RUNNER_MODEL || 'ai/qwen3-coder:latest',
+  set(target, prop, value) {
+    const config = getLLMConfig();
+    config[prop] = value;
+    return true;
   },
-  glm_flash: {
-    url: DOCKER_RUNNER_URL,
-    name: 'GLM-4.7-Flash (Docker Runner)',
-    backendType: 'docker-runner',
-    type: 'fast',
-    apiStyle: 'openai',
-    defaultModel: process.env.GLM_FLASH_MODEL || 'ai/glm-4.7-flash:latest',
+  deleteProperty(target, prop) {
+    const config = getLLMConfig();
+    if (prop in config) {
+      delete config[prop];
+      return true;
+    }
+    return false;
   },
-  openllm: {
-    url: process.env.OPENLLM_URL || 'http://llm_openllm:3000',
-    name: 'OpenLLM (custom models)',
-    backendType: 'openllm-container',
-    type: 'custom',
-    apiStyle: 'openai',
-    defaultModel: process.env.OPENLLM_MODEL || '',
+  ownKeys() {
+    return Object.keys(getLLMConfig());
   },
-};
+  getOwnPropertyDescriptor(target, prop) {
+    const config = getLLMConfig();
+    if (prop in config) {
+      return { configurable: true, enumerable: true, writable: true, value: config[prop] };
+    }
+    return undefined;
+  }
+});
+
+// Re-export a function to rebuild config after env changes (e.g., dotenv loaded)
+export function rebuildLLMConfig() {
+  _llmConfigCache = null;
+}
 
 // ── Custom endpoint registry ──────────────────────────────────────────────────
 function applyCustomEndpoint(ep) {

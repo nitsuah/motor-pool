@@ -56,7 +56,7 @@ const toolCall = (name, args) => ({
   tool_calls: [{ id: `call_${name}`, function: { name, arguments: JSON.stringify(args) } }],
 });
 
-const session = { model: 'test-model', id: 'sess_1' };
+const session = { model: 'test-model', id: 'sess_1', experience: 'developer', workspaceRoot: WORKSPACE };
 const helpers = createAgentHelpers({
   WORKSPACE_ROOT: WORKSPACE, execAsync, TOOL_SERVERS: {}, TOOL_CALL_TIMEOUT_MS: 5000,
 });
@@ -229,30 +229,35 @@ try {
   console.log('  ✅ read_file/write_file refuse path traversal and leak nothing');
 
   // ── safety: symbolic links that point outside the workspace ────────────────
-  const OUTSIDE = realpathSync(mkdtempSync(join(tmpdir(), 'ab-outside-')));
-  writeFileSync(join(OUTSIDE, 'secret.txt'), 'outside-secret');
-  mkdirSync(join(OUTSIDE, 'dir'));
-  symlinkSync(join(OUTSIDE, 'secret.txt'), join(WORKSPACE, 'link-file'));
-  symlinkSync(join(OUTSIDE, 'dir'), join(WORKSPACE, 'link-dir'));
-  symlinkSync(join(OUTSIDE, 'new.txt'), join(WORKSPACE, 'dangling'));
-  script = [toolCall('read_file', { path: 'link-file' }), { content: 'nope' }];
-  out = await run(helpers);
-  assert.ok(out.toolLog[0].result.error, 'read_file refuses a symlink that leaves the workspace');
-  assert.ok(!String(out.toolLog[0].result.content || '').includes('outside-secret'), 'no outside content leaks through a symlink');
-  script = [toolCall('write_file', { path: 'link-dir/escaped.txt', content: 'x' }), { content: 'nope' }];
-  out = await run(helpers);
-  assert.ok(out.toolLog[0].result.error, 'write_file refuses a path through a symlinked directory');
-  assert.ok(!existsSync(join(OUTSIDE, 'dir', 'escaped.txt')), 'nothing written through the symlinked directory');
-  script = [toolCall('write_file', { path: 'dangling', content: 'x' }), { content: 'nope' }];
-  out = await run(helpers);
-  assert.ok(out.toolLog[0].result.error, 'write_file refuses a dangling symlink');
-  assert.ok(!existsSync(join(OUTSIDE, 'new.txt')), 'nothing created at the dangling link target');
-  script = [toolCall('write_file', { path: 'nested/ok.txt', content: 'fine' }), toolCall('read_file', { path: 'nested/ok.txt' }), { content: 'ok' }];
-  out = await run(helpers);
-  assert.ok(out.toolLog[0].result.success, 'ordinary nested writes still work');
-  assert.strictEqual(out.toolLog[1].result.content, 'fine', 'ordinary nested reads still work');
-  rmSync(OUTSIDE, { recursive: true, force: true });
-  console.log('  ✅ read/write refuse symlinks that escape the workspace; normal paths still work');
+  // Skip on Windows where symlinks require admin privileges
+  if (process.platform !== 'win32') {
+    const OUTSIDE = realpathSync(mkdtempSync(join(tmpdir(), 'ab-outside-')));
+    writeFileSync(join(OUTSIDE, 'secret.txt'), 'outside-secret');
+    mkdirSync(join(OUTSIDE, 'dir'));
+    symlinkSync(join(OUTSIDE, 'secret.txt'), join(WORKSPACE, 'link-file'));
+    symlinkSync(join(OUTSIDE, 'dir'), join(WORKSPACE, 'link-dir'));
+    symlinkSync(join(OUTSIDE, 'new.txt'), join(WORKSPACE, 'dangling'));
+    script = [toolCall('read_file', { path: 'link-file' }), { content: 'nope' }];
+    out = await run(helpers);
+    assert.ok(out.toolLog[0].result.error, 'read_file refuses a symlink that leaves the workspace');
+    assert.ok(!String(out.toolLog[0].result.content || '').includes('outside-secret'), 'no outside content leaks through a symlink');
+    script = [toolCall('write_file', { path: 'link-dir/escaped.txt', content: 'x' }), { content: 'nope' }];
+    out = await run(helpers);
+    assert.ok(out.toolLog[0].result.error, 'write_file refuses a path through a symlinked directory');
+    assert.ok(!existsSync(join(OUTSIDE, 'dir', 'escaped.txt')), 'nothing written through the symlinked directory');
+    script = [toolCall('write_file', { path: 'dangling', content: 'x' }), { content: 'nope' }];
+    out = await run(helpers);
+    assert.ok(out.toolLog[0].result.error, 'write_file refuses a dangling symlink');
+    assert.ok(!existsSync(join(OUTSIDE, 'new.txt')), 'nothing created at the dangling link target');
+    script = [toolCall('write_file', { path: 'nested/ok.txt', content: 'fine' }), toolCall('read_file', { path: 'nested/ok.txt' }), { content: 'ok' }];
+    out = await run(helpers);
+    assert.ok(out.toolLog[0].result.success, 'ordinary nested writes still work');
+    assert.strictEqual(out.toolLog[1].result.content, 'fine', 'ordinary nested reads still work');
+    rmSync(OUTSIDE, { recursive: true, force: true });
+    console.log('  ✅ read/write refuse symlinks that escape the workspace; normal paths still work');
+  } else {
+    console.log('  ⏭️  symlink tests skipped on Windows');
+  }
 
   // ── tools without a workspace ──────────────────────────────────────────────
   script = [toolCall('read_file', { path: 'hello.txt' }), { content: 'no ws' }];
@@ -333,11 +338,23 @@ try {
   console.log('  ✅ id-less calls get one id reused for history and the tool log');
 
   // ── bash runs without the dashboard's secrets in its environment ──────────
+  // On Windows, shell expansion syntax differs; cmd.exe prints literal %VAR% if unset
   process.env.MP_TEST_SECRET = 'leak-me';
-  script = [toolCall('bash', { command: 'echo "secret=[$MP_TEST_SECRET] path=[${PATH:+set}]"' }), { content: 'env checked' }];
+  const isWindows = process.platform === 'win32';
+  const echoCmd = isWindows
+    ? 'cmd /c echo secret=[%MP_TEST_SECRET%] path=[%PATH%]'
+    : 'echo "secret=[$MP_TEST_SECRET] path=[${PATH:+set}]"';
+  script = [toolCall('bash', { command: echoCmd }), { content: 'env checked' }];
   out = await run(helpers);
   delete process.env.MP_TEST_SECRET;
-  assert.match(out.toolLog[0].result.stdout, /secret=\[\] path=\[set\]/, 'secrets are not inherited; PATH is');
+  if (isWindows) {
+    // On Windows, %MP_TEST_SECRET% prints literally if not in env (filtered out)
+    // Check that the secret value "leak-me" is NOT present
+    assert.doesNotMatch(out.toolLog[0].result.stdout, /leak-me/, 'secret value not leaked');
+    assert.match(out.toolLog[0].result.stdout, /path=\[.+\]/, 'PATH is passed through');
+  } else {
+    assert.match(out.toolLog[0].result.stdout, /secret=\[\] path=\[set\]/, 'secrets are not inherited; PATH is');
+  }
   console.log('  ✅ bash tool gets a scrubbed environment (no dashboard secrets)');
 
   // ── object-form arguments ──────────────────────────────────────────────────

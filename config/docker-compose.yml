@@ -26,8 +26,8 @@ services:
   # ===== LLM SERVICES =====
 
   # Local Ollama instance — runs models pulled via `docker exec ollama ollama pull <model>`
-  # Default model: llama3.2:3b (small + modern — 7B-class models like llama2 are too
-  # slow on CPU-only hosts and blow past the dashboard's 120s chat timeout).
+  # Default model: llama3.1:8b-instruct-q4_K_M (4.9 GB; set PRIMARY_LLM_MODEL to a smaller model such as
+  # llama3.2:3b on hosts with less RAM).
   # Port: 8081 (host) → 8080 (container)
   ollama:
     image: ollama/ollama:latest
@@ -41,6 +41,9 @@ services:
       # hosts reloading a 7B model from disk can exceed the dashboard's chat
       # timeout. Keep it resident for 30m of inactivity instead.
       - OLLAMA_KEEP_ALIVE=${OLLAMA_KEEP_ALIVE:-30m}
+      # Ollama's default context is 4096 tokens on hosts with less than 24 GiB VRAM (including CPU-only); a coding agent's prompt (system prompt + tool definitions + brief) is 5k+, so the
+      # model silently loses the tools and answers with meta-chatter (confirmed: 'truncating input prompt limit=2050'). 16k costs ~1.5 GiB of KV cache.
+      - OLLAMA_CONTEXT_LENGTH=${OLLAMA_CONTEXT_LENGTH:-16384}
     volumes:
       - ollama_data:/root/.ollama
     networks:
@@ -56,7 +59,7 @@ services:
         condition: service_started
     environment:
       - OLLAMA_HOST=http://ollama:8080
-      - PRIMARY_LLM_MODEL=${PRIMARY_LLM_MODEL:-llama3.2:3b}
+      - PRIMARY_LLM_MODEL=${PRIMARY_LLM_MODEL:-llama3.1:8b-instruct-q4_K_M}
     entrypoint: ["sh", "-c"]
     command:
       - |
@@ -92,7 +95,7 @@ services:
         condition: service_started
     environment:
       - OLLAMA_HOST=http://ollama:8080
-      - PRIMARY_LLM_MODEL=${PRIMARY_LLM_MODEL:-llama3.2:3b}
+      - PRIMARY_LLM_MODEL=${PRIMARY_LLM_MODEL:-llama3.1:8b-instruct-q4_K_M}
     entrypoint: ["sh", "-c"]
     command:
       - |
@@ -231,7 +234,7 @@ services:
           var c=JSON.parse(raw);
           var inf=c.models&&c.models.providers&&c.models.providers.inference;
           if(inf){inf.baseUrl='http://ollama:8080/v1';inf.apiKey='ollama';}
-          var m='llama3.2:3b';
+          var m=process.env.PRIMARY_LLM_MODEL||'llama3.1:8b-instruct-q4_K_M';
           if(c.agents&&c.agents.defaults&&c.agents.defaults.model) c.agents.defaults.model.primary=m;
           if(inf&&inf.models) inf.models=[{id:m,name:m,reasoning:false,input:['text'],
             cost:{input:0,output:0,cacheRead:0,cacheWrite:0},contextWindow:32768,maxTokens:4096}];
@@ -241,7 +244,7 @@ services:
           if(!Array.isArray(ao)) c.gateway.controlUi.allowedOrigins=['http://localhost:3000'];
           else if(!ao.includes('http://localhost:3000')) ao.push('http://localhost:3000');
           fs.writeFileSync(f,JSON.stringify(c,null,2));
-          process.stderr.write('[setup] openclaw.json patched: inference → Ollama llama3.2:3b + allowedOrigins\n');
+          process.stderr.write('[setup] openclaw.json patched: inference → Ollama '+m+' + allowedOrigins\n');
         " 2>&1 || echo '[setup] WARNING: openclaw.json patch failed'
 
         # 7. Save patched config as the new backup baseline
@@ -257,6 +260,7 @@ services:
     environment:
       - NEMOCLAW_HOME=/workspace
       - NEMOCLAW_DASHBOARD_PORT=8080
+      - PRIMARY_LLM_MODEL=${PRIMARY_LLM_MODEL:-llama3.1:8b-instruct-q4_K_M}
       - CHAT_UI_URL=http://agent-dashboard:3000
     security_opt:
       - no-new-privileges:false
@@ -308,7 +312,7 @@ services:
       - ../.env
     environment:
       - PRIMARY_LLM_URL=http://ollama:8080
-      - PRIMARY_LLM_MODEL=${PRIMARY_LLM_MODEL:-llama3.2:3b}
+      - PRIMARY_LLM_MODEL=${PRIMARY_LLM_MODEL:-llama3.1:8b-instruct-q4_K_M}
       # Docker Model Runner: Docker Desktop exposes this host to all containers
       - DOCKER_RUNNER_URL=http://model-runner.docker.internal/engines/llama.cpp/v1
       - DOCKER_RUNNER_MODEL=ai/qwen3-coder:latest
@@ -521,7 +525,8 @@ services:
       - tools
       - prebuild
     ports:
-      - "3202:3202"
+      # Bind to loopback only: this service has no independent authentication.
+      - "127.0.0.1:3202:3202"
     # TokenEconomizer runs model calls through your existing agent on same plan/login.
     # No API keys needed. Data stays in ~/.tokeneconomizer volume.
     environment:
@@ -567,7 +572,7 @@ volumes:
   agent_endpoint_data:  # Encrypted custom endpoint store (survives restarts)
   agent_session_data:  # Active-session snapshots including message history
   agent_workspace:  # Agent sandbox checkout — reset with: docker volume rm <project>_agent_workspace
-  tokeneconomizer_data:  # TokenEconomizer learned data (microskills, toolprune state)
+  tokeneconomizer_data:  # TokenEconomizer learned data (microskills, toolprune state, configs)
 
 networks:
   agent-network:

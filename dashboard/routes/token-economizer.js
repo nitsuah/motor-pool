@@ -160,5 +160,63 @@ export function createTokenEconomizerRouter({ TokenEconomizer, logStructured }) 
     }
   });
 
+  // Agent loop integration: record tool use for tool pruning evidence
+  router.post('/record-tool-use', async (req, res) => {
+    try {
+      const { toolName, promptIndex, sessionId, experience = 'developer', repoRoot } = req.body;
+      if (!toolName || typeof promptIndex !== 'number' || !sessionId) {
+        return res.status(400).json({ success: false, error: 'toolName, promptIndex, and sessionId are required' });
+      }
+      const evidence = await TokenEconomizer.recordToolUse(toolName, experience, repoRoot || process.cwd());
+      // Track session for loop guard
+      await TokenEconomizer.recordSession({
+        sessionId,
+        repo: repoRoot || process.cwd(),
+        experience,
+        turnCount: promptIndex + 1,
+        lastTurnTime: new Date().toISOString(),
+      });
+      res.json({ success: true, evidence });
+    } catch (error) {
+      logStructured('error', 'tokeneconomizer_record_tool_use_failed', { error: error.message });
+      res.status(500).json({ success: false, error: error.message });
+    }
+  });
+
+  // Agent loop integration: get loop guard nudge
+  router.post('/loop-guard-nudge', async (req, res) => {
+    try {
+      const { sessionId, turnIndex, lastResponse } = req.body;
+      if (!sessionId || typeof turnIndex !== 'number') {
+        return res.status(400).json({ success: false, error: 'sessionId and turnIndex are required' });
+      }
+      const history = await TokenEconomizer.loadSessionHistory();
+      const session = history.find(h => h.sessionId === sessionId);
+      if (!session) {
+        return res.json({ success: true, shouldNudge: false });
+      }
+      const result = await TokenEconomizer.getLoopGuardNudge(sessionId, turnIndex, session.lastTurnTime);
+      res.json({ success: true, ...result });
+    } catch (error) {
+      logStructured('error', 'tokeneconomizer_loop_guard_nudge_failed', { error: error.message });
+      res.status(500).json({ success: false, error: error.message });
+    }
+  });
+
+  // Agent loop integration: get microskills for injection
+  router.post('/microskills-inject', async (req, res) => {
+    try {
+      const { sessionId, repoRoot } = req.body;
+      if (!sessionId) {
+        return res.status(400).json({ success: false, error: 'sessionId is required' });
+      }
+      const microskills = TokenEconomizer.getMicroskillsForInjection(repoRoot || process.cwd());
+      res.json({ success: true, microskills });
+    } catch (error) {
+      logStructured('error', 'tokeneconomizer_microskills_inject_failed', { error: error.message });
+      res.status(500).json({ success: false, error: error.message });
+    }
+  });
+
   return router;
 }

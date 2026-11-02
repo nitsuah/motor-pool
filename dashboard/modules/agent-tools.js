@@ -2,8 +2,18 @@ import axios from 'axios';
 import { randomUUID } from 'crypto';
 import { stat, readFile, writeFile, mkdir, readdir } from 'fs/promises';
 import { lstatSync, realpathSync } from 'fs';
-import { resolve as resolvePath, dirname } from 'path';
+import { resolve as resolvePath, dirname, sep } from 'path';
 import { mcpRequest } from './mcp-helpers.js';
+
+let TokenEconomizer = null;
+const loadTokenEconomizer = async () => {
+  if (!TokenEconomizer) {
+    try {
+      TokenEconomizer = (await import('./token-economizer.js')).TokenEconomizer;
+    } catch {}
+  }
+  return TokenEconomizer;
+};
 
 export const DEVELOPER_TOOLS = [
   {
@@ -154,7 +164,7 @@ export function createAgentHelpers({ WORKSPACE_ROOT, execAsync, TOOL_SERVERS, TO
     if (!WORKSPACE_ROOT) return null;
     const safe = reqPath ? reqPath.replace(/\\/g, '/').replace(/^\/+/, '') : '';
     const abs = resolvePath(WORKSPACE_ROOT, safe);
-    if (abs !== WORKSPACE_ROOT && !abs.startsWith(WORKSPACE_ROOT + '/')) return null;
+    if (abs !== WORKSPACE_ROOT && !abs.startsWith(WORKSPACE_ROOT + sep)) return null;
     return isInsideWorkspaceReal(abs) ? abs : null;
   }
 
@@ -178,7 +188,7 @@ export function createAgentHelpers({ WORKSPACE_ROOT, execAsync, TOOL_SERVERS, TO
         }
       }
       const real = realpathSync(probe); // throws for a dangling symlink
-      return real === rootReal || real.startsWith(rootReal + '/');
+      return real === rootReal || real.startsWith(rootReal + sep);
     } catch {
       return false;
     }
@@ -274,13 +284,14 @@ export function createAgentHelpers({ WORKSPACE_ROOT, execAsync, TOOL_SERVERS, TO
 
       if (toolName === 'read_file') {
         if (!WORKSPACE_ROOT) return JSON.stringify({ error: 'Workspace not mounted' });
-        const abs = resolveWorkspacePath(toolArgs.path);
+        const path = toolArgs.path;
+        const abs = resolveWorkspacePath(path);
         if (!abs) return JSON.stringify({ error: 'Invalid path (path traversal detected)' });
         try {
           const s = await stat(abs);
           if (s.size > 512 * 1024) return JSON.stringify({ error: 'File too large (> 512 KB)' });
           const content = await readFile(abs, 'utf8');
-          return JSON.stringify({ content, path: toolArgs.path });
+          return JSON.stringify({ content, path });
         } catch (err) {
           return JSON.stringify({ error: err.message });
         }
@@ -371,6 +382,14 @@ export function createAgentHelpers({ WORKSPACE_ROOT, execAsync, TOOL_SERVERS, TO
       const pluginTool = resolvePluginTool(toolName);
       if (pluginTool) {
         return await callPluginTool(pluginTool.plugin, pluginTool.name, toolArgs);
+      }
+
+      // TokenEconomizer: record tool use for pruning evidence (non-blocking, guarded)
+      const te = await loadTokenEconomizer();
+      if (te && session?.experience && session?.workspaceRoot) {
+        const repoRoot = session.workspaceRoot;
+        const experience = session.experience;
+        te.recordToolUse(toolName, experience, repoRoot).catch(() => {});
       }
 
       return JSON.stringify({ error: `Unknown tool: ${toolName}` });
@@ -635,6 +654,18 @@ export function createAgentHelpers({ WORKSPACE_ROOT, execAsync, TOOL_SERVERS, TO
 
         toolLog.push({ name, args, result: parsed, callId });
         options.onToolCall?.({ name, args, result: parsed, callId });
+
+        // TokenEconomizer: check loop guard after each tool call (non-blocking)
+        const te = await loadTokenEconomizer();
+        if (te && session?.experience && session?.workspaceRoot && session?.id) {
+          te.getLoopGuardNudge(session.id, toolLog.length, new Date().toISOString())
+            .then(nudge => {
+              if (nudge.shouldNudge) {
+                options.onLoopGuardNudge?.(nudge);
+              }
+            })
+            .catch(() => {});
+        }
 
         if (apiStyle === 'openai') {
           localMsgs.push({ role: 'tool', tool_call_id: callId, content: result });

@@ -1,10 +1,16 @@
 import express from 'express';
 import cors from 'cors';
 import axios from 'axios';
-import dotenv from 'dotenv';
 import { fileURLToPath } from 'url';
 import { dirname, join } from 'path';
 import { existsSync } from 'fs';
+import dotenv from 'dotenv';
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = dirname(__filename);
+
+dotenv.config({ path: join(__dirname, '..', '.env') });
+
 import { flushSessionSnapshot, initSessionSnapshot, scheduleSnapshotWrite } from './modules/session-snapshot.js';
 import { exec, execFile } from 'child_process';
 import { promisify } from 'util';
@@ -39,6 +45,7 @@ import { createChannelsRouter } from './routes/channels.js';
 import { createMcpRegistryRouter } from './routes/mcp-registry.js';
 import { createPluginsRouter } from './routes/plugins.js';
 import { createWorktreesRouter } from './routes/worktrees.js';
+import { createTokenEconomizerRouter } from './routes/token-economizer.js';
 import { createPluginRegistry } from './modules/plugin-loader.js';
 import { startTaskRunner } from './task-runner.js';
 import outputsRouter from './routes/outputs.js';
@@ -61,10 +68,6 @@ import { parseMcpRpcResponse } from './modules/mcp-helpers.js';
 import { eventBus, attachEventWebSocketServer } from './modules/event-bus.js';
 import { createAgentHelpers } from './modules/agent-tools.js';
 import { ensureWorkspaceSandbox, isSandboxSeeded } from './modules/workspace-sandbox.js';
-dotenv.config();
-
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = dirname(__filename);
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -576,6 +579,10 @@ app.use('/api', createWorktreesRouter({
   TMUX_ENABLED, TMUX_SESSION, ALLOWED_COMMANDS: TMUX_ALLOWED_COMMANDS,
   EXEC_TIMEOUT_MS: process.env.AGENT_BOARD_TMUX_EXEC_TIMEOUT_MS,
   eventBus, logStructured,
+}));
+app.use('/api/tokeneconomizer', createTokenEconomizerRouter({
+  TokenEconomizer: (await import('./modules/token-economizer.js')).TokenEconomizer,
+  logStructured
 }));
 
 app.get('/api/health', async (req, res) => {

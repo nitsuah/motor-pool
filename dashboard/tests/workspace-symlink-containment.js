@@ -13,6 +13,12 @@ import { join } from 'node:path';
 import express from 'express';
 import { createWorkspaceRouter } from '../routes/workspace.js';
 
+// Symlink tests require admin on Windows; skip on win32
+if (process.platform === 'win32') {
+  console.log('  ⏭️  symlink tests skipped on Windows');
+  process.exit(0);
+}
+
 // realpath: on macOS/Windows runners tmpdir is often a symlink, and the route
 // compares resolved absolute paths.
 const ROOT = realpathSync(mkdtempSync(join(tmpdir(), 'ab-ws-link-root-')));

@@ -48,7 +48,9 @@ export function createWorkspaceRouter(WORKSPACE_ROOT) {
     if (!WORKSPACE_ROOT) return null;
     const safe = reqPath ? reqPath.replace(/\\/g, '/').replace(/^\/+/, '') : '';
     const abs = resolvePath(WORKSPACE_ROOT, safe);
-    if (abs !== WORKSPACE_ROOT && !abs.startsWith(WORKSPACE_ROOT + '/')) return null;
+    // Use path.sep for cross-platform compatibility (Windows uses \)
+    const rootWithSep = WORKSPACE_ROOT.endsWith(sep) ? WORKSPACE_ROOT : WORKSPACE_ROOT + sep;
+    if (abs !== WORKSPACE_ROOT && !abs.startsWith(rootWithSep)) return null;
     if (!isRealPathInside(WORKSPACE_ROOT, abs)) return null;
     return abs;
   }

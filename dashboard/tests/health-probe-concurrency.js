@@ -48,17 +48,20 @@ const openllmProbe = createProbeServer(path => {
   openllmPaths.push(path);
   return path === '/v1/models' ? { data: models } : { error: 'expected /v1/models' };
 });
-const probes = [primaryProbe, runnerProbe, openllmProbe];
+const nineRouterProbe = createProbeServer(() => ({ data: models }));
+const probes = [primaryProbe, runnerProbe, openllmProbe, nineRouterProbe];
 let dashboard;
 
 try {
-  const [primaryUrl, runnerUrl, openllmUrl] = await Promise.all(probes.map(listen));
+  const [primaryUrl, runnerUrl, openllmUrl, nineRouterUrl] = await Promise.all(probes.map(listen));
   process.env.PRIMARY_LLM_URL = primaryUrl;
   process.env.DOCKER_RUNNER_URL = runnerUrl;
   process.env.OPENLLM_URL = openllmUrl;
+  process.env.NINE_ROUTER_URL = nineRouterUrl;
   process.env.OPENLLM_MODEL = 'local-test';
   process.env.DOCKER_RUNNER_MODEL = 'ai/qwen3-coder:latest';
   process.env.GLM_FLASH_MODEL = 'ai/glm-4.7-flash:latest';
+  process.env.NINE_ROUTER_MODEL = 'local-test';
 
   const { app } = await import('../server.js');
   dashboard = app.listen(0, '127.0.0.1');
@@ -73,9 +76,10 @@ try {
   assert.equal(response.data.endpoints.docker_runner, 'healthy');
   assert.equal(response.data.endpoints.glm_flash, 'healthy');
   assert.equal(response.data.endpoints.openllm, 'healthy');
+  assert.equal(response.data.endpoints.nine_router, 'healthy');
   assert.ok(openllmPaths.includes('/v1/models'), 'OpenLLM must use its OpenAI-compatible model-list route');
-  assert.equal(maxConcurrentProbes, 3, 'primary, shared runner, and OpenLLM probes should overlap');
-  assert.ok(elapsedMs < 450, `three 150ms probes should not stack sequentially (took ${elapsedMs}ms)`);
+  assert.equal(maxConcurrentProbes, 4, 'primary, shared runner, OpenLLM, and nine_router probes should overlap');
+  assert.ok(elapsedMs < 600, `four 150ms probes should not stack sequentially (took ${elapsedMs}ms)`);
 
   console.log(`Health endpoint probed providers concurrently (${elapsedMs}ms)`);
 
@@ -85,8 +89,8 @@ try {
   const modelsElapsedMs = Date.now() - modelsStartedAt;
   assert.equal(modelsResponse.data.success, true);
   assert.ok(modelsResponse.data.models.length > 0);
-  assert.equal(maxConcurrentProbes, 3, 'primary, shared runner, and OpenLLM model lists should overlap');
-  assert.ok(modelsElapsedMs < 550, `model discovery should not serialize provider requests (took ${modelsElapsedMs}ms)`);
+  assert.equal(maxConcurrentProbes, 4, 'primary, shared runner, OpenLLM, and nine_router model lists should overlap');
+  assert.ok(modelsElapsedMs < 600, `model discovery should not serialize provider requests (took ${modelsElapsedMs}ms)`);
 
   console.log(`Model discovery probed providers concurrently (${modelsElapsedMs}ms)`);
 } finally {

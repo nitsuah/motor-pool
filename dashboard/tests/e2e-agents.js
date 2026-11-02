@@ -276,6 +276,8 @@ async function run() {
     console.log('     Preview:', contentChat.response?.slice(0, 100));
   } else if (isModelUnavailable(contentChat.response || '')) {
     console.warn('  ⚠️  LLM unavailable for content studio test (acceptable)');
+  } else if (contentChat.response?.includes('Tool content_gen is offline') || contentChat.response?.includes('Enable AGENT_BOARD_ENABLE_DOCKER_CONTROL')) {
+    console.warn('  ⚠️  content_gen tool server not running (expected without Docker)');
   } else {
     throw new Error('Content Studio chat failed: ' + contentChat.response);
   }
@@ -318,6 +320,8 @@ async function run() {
     }
   } else if (isModelUnavailable(webChat.response || '')) {
     console.warn('  ⚠️  LLM unavailable for website agent test (acceptable)');
+  } else if (webChat.response?.includes('Tool website is offline') || webChat.response?.includes('Enable AGENT_BOARD_ENABLE_DOCKER_CONTROL')) {
+    console.warn('  ⚠️  website tool server not running (expected without Docker)');
   } else {
     throw new Error('Website Agent chat failed: ' + webChat.response);
   }

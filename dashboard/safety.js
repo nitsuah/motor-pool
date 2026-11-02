@@ -281,9 +281,19 @@ export function buildSystemMessages(session) {
   const safetyMode = session.safetyMode || experience.safetyMode || 'standard';
   const safety = SAFETY_CONFIGS[safetyMode] || SAFETY_CONFIGS.standard;
 
+  // TokenEconomizer: inject confirmed micro-skills for this repo
+  let microskillsText = '';
+  if (session.workspaceRoot) {
+    const microskills = TokenEconomizer.getMicroskillsForInjection(session.workspaceRoot);
+    if (microskills.length > 0) {
+      microskillsText = '\n\n[Micro-skills for this workspace]:\n' + microskills.map((f, i) => `${i + 1}. ${f}`).join('\n');
+    }
+  }
+
   const systemContent = [
     safety.systemPrompt,
     experience.systemPromptSuffix,
+    microskillsText,
     session.userRole ? `The user has identified as: ${session.userRole}.` : null
   ].filter(Boolean).join(' ');
 
