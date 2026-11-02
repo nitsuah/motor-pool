@@ -61,9 +61,7 @@ async function runTeCommand(teArgs) {
       if (code !== 0) {
         return reject({
           status: 500,
-          error: `te ${teArgs[0]} failed:`,
-          // Do not include argv in errors: config.set may carry a sensitive value.
-          output: stdout || stderr,
+          error: 'TokenEconomizer command failed',
         });
       }
 
@@ -74,12 +72,11 @@ async function runTeCommand(teArgs) {
       });
     });
 
-    proc.on('error', (err) => {
+    proc.on('error', () => {
       clearTimeout(timeout);
       reject({
         status: 500,
-        error: 'Failed to spawn te process',
-        details: err.message,
+        error: 'TokenEconomizer command failed',
       });
     });
   });
@@ -172,7 +169,7 @@ export function createApp({ commandRunner = runTeCommand, logError = console.err
           : {};
         const args = definition.args(body);
         const result = await commandRunner([route, ...args]);
-        if (route === 'config' && body.operation === 'set') {
+        if (route === 'config' && ['set', 'unset'].includes(body.operation)) {
           return res.json({ success: true, command: 'config', message: 'Configuration updated' });
         }
         res.json(result);
