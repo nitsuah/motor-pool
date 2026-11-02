@@ -85,7 +85,11 @@ export function createSessionsRouter({
       : coerceModelForEndpoint(endpoint, req.body.model) || LLM_CONFIG[endpoint]?.defaultModel || LLM_CONFIG.primary.defaultModel;
     const resolvedSafetyMode = resolveConfiguredSafetyMode(experience, safetyMode);
 
+<<<<<<< HEAD
     const sessionId = `sess_${Date.now()}_${secureRandom().toString(36).substr(2, 9)}`;
+=======
+    const sessionId = `sess_${Date.now()}_${randomBytes(5).toString('hex')}`;
+>>>>>>> origin/master
     const resolvedLlmUrl = await resolveEndpointUrl(endpoint);
 
     const session = {
@@ -192,7 +196,11 @@ export function createSessionsRouter({
       ? Math.min(Math.max(0, atMessageIndex + 1), parent.messages.length)
       : parent.messages.length;
 
+<<<<<<< HEAD
     const forkId = `sess_${Date.now()}_${secureRandom().toString(36).substr(2, 9)}`;
+=======
+    const forkId = `sess_${Date.now()}_${randomBytes(5).toString('hex')}`;
+>>>>>>> origin/master
     const forkName = `${parent.name} (fork)`.slice(0, 80);
     const fork = {
       id: forkId,

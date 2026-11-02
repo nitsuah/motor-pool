@@ -88,7 +88,8 @@ export async function handleSessionStream(req, res, deps) {
       activeDockerRunnerModelRef.current = { key: session.endpoint, model: session.model, at: new Date() };
     }
     llmUrl = prepared.llmUrl;
-    const { apiStyle, apiKey } = prepared;
+    const { apiStyle } = prepared;
+    const apiKey = LLM_CONFIG[session.endpoint]?.apiKey || null;
     const streamHeaders = apiKey ? { Authorization: `Bearer ${apiKey}` } : {};
     const systemMessages = buildSystemMessages({ ...session, safetyMode });
     const historyMessages = session.messages.map(m => ({ role: m.role, content: m.content }));

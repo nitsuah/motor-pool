@@ -26,7 +26,10 @@ export function useWebSocket({ onEvent }) {
         setWsConnected(false);
         if (!destroyed) {
           const base = Math.min(30000, 1000 * Math.pow(2, attemptRef.current));
-          const delay = base * (0.8 + 0.4 * Math.random());
+          const jitter = typeof crypto !== 'undefined' && crypto.getRandomValues
+            ? crypto.getRandomValues(new Uint32Array(1))[0] / 0xFFFFFFFF
+            : Math.random();
+          const delay = base * (0.8 + 0.4 * jitter);
           attemptRef.current += 1;
           reconnectTimerRef.current = setTimeout(connect, delay);
         }

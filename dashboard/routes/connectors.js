@@ -111,7 +111,12 @@ export function createConnectorsRouter({ BB_MCP_ENABLED, BB_MCP_URL, logStructur
     send('start', { tool, demo: true });
     for (const line of lines) {
       if (closed) break;
+<<<<<<< HEAD
       await new Promise(r => setTimeout(r, 220 + secureRandom() * 180));
+=======
+      const jitter = randomBytes(1)[0] / 255;
+      await new Promise(r => setTimeout(r, 220 + jitter * 180));
+>>>>>>> origin/master
       send('token', { text: line });
     }
     if (!closed) send('done', { tool, demo: true });

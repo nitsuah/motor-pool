@@ -22,6 +22,7 @@ const BASE = `http://127.0.0.1:${port}`;
 // ── Unit: slug + naming scheme ───────────────────────────────────────────────
 assert.strictEqual(slugifyWorktreeName('refactor-auth'), 'refactor-auth');
 assert.strictEqual(slugifyWorktreeName('Refactor Auth'), 'refactor-auth', 'spaces and case normalized');
+assert.strictEqual(slugifyWorktreeName('foo---bar'), 'foo-bar', 'existing hyphen runs are collapsed');
 assert.strictEqual(slugifyWorktreeName('  fix/the thing!  '), 'fix-the-thing', 'punctuation collapsed, edges trimmed');
 assert.strictEqual(slugifyWorktreeName('a'.repeat(80)).length, 40, 'slug capped at 40 chars');
 assert.strictEqual(slugifyWorktreeName(''), null, 'empty name rejected');

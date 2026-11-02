@@ -15,6 +15,7 @@ RUN npm install --omit=dev
 
 # Copy server
 COPY server.js ./
+COPY safe-error.mjs ./
 
 # Create non-root user (use existing node user from node:slim)
 USER node

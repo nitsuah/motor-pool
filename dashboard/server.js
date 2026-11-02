@@ -5,6 +5,7 @@ import dotenv from 'dotenv';
 import { fileURLToPath } from 'url';
 import { dirname, join } from 'path';
 import { existsSync } from 'fs';
+import { randomBytes } from 'crypto';
 import { flushSessionSnapshot, initSessionSnapshot, scheduleSnapshotWrite } from './modules/session-snapshot.js';
 import { exec, execFile } from 'child_process';
 import { promisify } from 'util';
@@ -90,6 +91,8 @@ const WORKTREE_ROOT = process.env.AGENT_BOARD_WORKTREE_ROOT || null;
 const TMUX_ALLOWED_COMMANDS = String(process.env.AGENT_BOARD_TMUX_ALLOWED_COMMANDS || '')
   .split(',').map(s => s.trim()).filter(Boolean);
 const WEBSITE_OUTPUT_DIR = process.env.WEBSITE_OUTPUT_DIR || join(__dirname, '..', 'tools', 'website', 'output');
+
+// CORS allowed origins (comma-separated). Empty = no cross-origin requests allowed.
 
 function parseUrlListEnv(rawValue, fallback = []) {
   const fromEnv = String(rawValue || '').split(',').map(s => s.trim()).filter(Boolean);
@@ -349,8 +352,7 @@ async function prepareSessionForLlmCall(session) {
       metadata: { reason: modelResolution.reason, resolvedModel: modelResolution.model },
     });
   }
-  const apiKey = LLM_CONFIG[session.endpoint]?.apiKey || null;
-  return { llmUrl, apiStyle, modelResolution, apiKey };
+  return { llmUrl, apiStyle, modelResolution };
 }
 
 function coerceModelForEndpoint(endpoint, requestedModel) {
@@ -451,8 +453,46 @@ const tasksRouter = createTasksRouter({ tasks, sessions, eventBus, logStructured
 const workspaceRouter = createWorkspaceRouter(WORKSPACE_ROOT);
 
 // Middleware
-app.use(cors());
+function isAllowedCorsOrigin(origin) {
+  return parseUrlListEnv(process.env.CORS_ALLOWED_ORIGINS).includes(origin);
+}
 
+// CORS middleware - reads allowed origins dynamically at request time
+app.use(cors({
+  origin: (origin, callback) => {
+    // Requests without Origin are not subject to CORS.
+    if (!origin) return callback(null, true);
+
+    if (isAllowedCorsOrigin(origin)) return callback(null, true);
+
+    // Withhold CORS headers for disallowed origins; CORS is browser policy, not auth.
+    return callback(null, false);
+  },
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+  credentials: true,
+  allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With'],
+}));
+
+// Rate limiting middleware to prevent DoS
+// Localhost is exempt: this is a single-user local dashboard, and legitimate
+// local tooling (tests, dev clients) makes many requests in quick succession.
+import rateLimit from 'express-rate-limit';
+const LOCALHOST = new Set(['127.0.0.1', '::1', 'localhost', '::ffff:127.0.0.1']);
+function isLocalhost(ip) {
+  if (!ip) return true;
+  // Normalize IPv4-mapped IPv6 addresses (::ffff:127.0.0.1 -> 127.0.0.1)
+  const normalized = ip.replace(/^::ffff:/, '');
+  return LOCALHOST.has(normalized);
+}
+const apiLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000, // 15 minutes
+  max: 100, // limit each remote IP to 100 requests per windowMs
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: 'Too many requests, please try again later.' },
+  skip: (req) => isLocalhost(req.ip || req.socket.remoteAddress || ''),
+});
+app.use('/api/', apiLimiter);
 
 
 // Capture raw body on the webhook trigger path before JSON parsing (needed for HMAC verification)
@@ -475,6 +515,7 @@ app.use('/api/webhooks/trigger', (req, _res, next) => {
   });
 });
 app.use(express.json());
+
 app.use((req, res, next) => {
   const start = Date.now();
   res.on('finish', () => {
@@ -670,6 +711,7 @@ export {
   normalizeOllamaModelName,
   normalizeTaskPriority,
   parseMcpRpcResponse,
+  prepareSessionForLlmCall,
   TOOL_SERVERS,
   normalizeTaskStatus,
   redactSensitiveText,
@@ -721,7 +763,11 @@ if (process.env.AGENT_DASHBOARD_DISABLE_LISTEN !== '1') {
   // Start the background task auto-runner (picks up pending tasks by priority)
   // dispatchMessage: creates or reuses a session, then runs the agent loop non-streaming
   const dispatchTaskMessage = async (task) => {
+<<<<<<< HEAD
     const sessionId = `sess_task_${Date.now()}_${secureRandom().toString(36).substr(2, 6)}`;
+=======
+    const sessionId = `sess_task_${Date.now()}_${randomBytes(3).toString('hex')}`;
+>>>>>>> origin/master
     const endpoint = 'primary';
     const resolvedLlmUrl = await resolveEndpointUrl(endpoint);
     const experience = task.experience || 'developer';
@@ -741,7 +787,8 @@ if (process.env.AGENT_DASHBOARD_DISABLE_LISTEN !== '1') {
 
     session.messages.push({ role: 'user', content: task.title, timestamp: new Date() });
     const prepared = await prepareSessionForLlmCall(session);
-    const { llmUrl, apiStyle, apiKey } = prepared;
+    const { llmUrl, apiStyle } = prepared;
+    const apiKey = LLM_CONFIG[session.endpoint]?.apiKey || null;
     const streamHeaders = apiKey ? { Authorization: `Bearer ${apiKey}` } : {};
     const { buildSystemMessages } = await import('./safety.js');
     const systemMessages = buildSystemMessages({ ...session, safetyMode: null });
