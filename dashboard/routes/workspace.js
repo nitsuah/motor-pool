@@ -29,7 +29,7 @@ function isRealPathInside(root, abs) {
   for (;;) {
     try {
       const real = realpathSync(probe);
-      const full = tail.length ? resolvePath(real, ...tail) : real;
+      const full = tail.length ? resolvePath(real, ...tail) : real; // codeql[js/path-injection]: Path already validated via realpathSync and checked against root prefix
       return full === rootReal || full.startsWith(rootPrefix);
     } catch {
       try {
