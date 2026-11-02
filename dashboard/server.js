@@ -59,13 +59,6 @@ import {
   TOOL_SERVERS,
 } from './modules/llm-config.js';
 import { parseMcpRpcResponse } from './modules/mcp-helpers.js';
-
-// Secure random utility for non-cryptographic use (avoids CodeQL insecure-randomness alerts)
-function secureRandom() {
-  const array = new Uint32Array(1);
-  crypto.getRandomValues(array);
-  return array[0] / 0x100000000;
-}
 import { eventBus, attachEventWebSocketServer } from './modules/event-bus.js';
 import { createAgentHelpers } from './modules/agent-tools.js';
 import { ensureWorkspaceSandbox, isSandboxSeeded } from './modules/workspace-sandbox.js';
@@ -472,7 +465,6 @@ app.use(cors({
   credentials: true,
   allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With'],
 }));
-
 // Rate limiting middleware to prevent DoS
 // Localhost is exempt: this is a single-user local dashboard, and legitimate
 // local tooling (tests, dev clients) makes many requests in quick succession.
@@ -763,11 +755,7 @@ if (process.env.AGENT_DASHBOARD_DISABLE_LISTEN !== '1') {
   // Start the background task auto-runner (picks up pending tasks by priority)
   // dispatchMessage: creates or reuses a session, then runs the agent loop non-streaming
   const dispatchTaskMessage = async (task) => {
-<<<<<<< HEAD
-    const sessionId = `sess_task_${Date.now()}_${secureRandom().toString(36).substr(2, 6)}`;
-=======
     const sessionId = `sess_task_${Date.now()}_${randomBytes(3).toString('hex')}`;
->>>>>>> origin/master
     const endpoint = 'primary';
     const resolvedLlmUrl = await resolveEndpointUrl(endpoint);
     const experience = task.experience || 'developer';
