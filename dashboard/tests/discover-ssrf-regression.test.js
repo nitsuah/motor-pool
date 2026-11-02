@@ -5,6 +5,7 @@
 import assert from 'node:assert/strict';
 import http from 'node:http';
 import { BASE, closeTestServer } from './helpers/test-server.js';
+import { isPrivateHost } from '../routes/discover.js';
 
 const testServers = [];
 
@@ -25,14 +26,17 @@ async function closeServers() {
 }
 
 try {
-  // The limiter is bounded and prunes expired client entries.
-  const limit = createRateLimiter({ windowMs: 1000, maxRequests: 1, maxClients: 2 });
-  assert.equal(limit('a', 100), true);
-  assert.equal(limit('a', 200), false);
-  assert.equal(limit('b', 200), true);
-  assert.equal(limit('c', 200), false);
-  assert.equal(limit('c', 1201), true);
-  console.log('✓ bounded rate-limit state and expiry');
+  // Relative redirects stay on the probed origin; private IPv4/IPv6 targets are blocked.
+  assert.equal(isPrivateHost('/api/tags', 'http://localhost:5000'), false);
+  assert.equal(isPrivateHost('http://169.254.169.254/latest/meta-data', 'http://localhost:5000'), true);
+  assert.equal(isPrivateHost('http://[fe80::1]/', 'http://localhost:5000'), true);
+  assert.equal(isPrivateHost('http://[febf::1]/', 'http://localhost:5000'), true);
+  assert.equal(isPrivateHost('http://[fec0::1]/', 'http://localhost:5000'), false);
+  assert.equal(isPrivateHost('http://[fc00::1]/', 'http://localhost:5000'), true);
+  assert.equal(isPrivateHost('http://[fdff::1]/', 'http://localhost:5000'), true);
+  assert.equal(isPrivateHost('http://[::ffff:7f00:1]/', 'http://localhost:5000'), true);
+  assert.equal(isPrivateHost('http://[::ffff:808:808]/', 'http://localhost:5000'), false);
+  console.log('✓ relative and private IPv6 redirect targets are classified');
 
   // Arbitrary ports are ignored, even when a local service is listening there.
   const { port: arbitraryPort } = await startTestServer((req, res) => {
@@ -59,10 +63,14 @@ try {
   console.log('✓ caller-controlled non-loopback hosts are rejected');
 
   // A service on an explicitly allowlisted port remains discoverable.
+  // A same-origin relative redirect must not stop the remaining probes; fetch never follows it.
   const { server: validServer } = await startTestServer((req, res) => {
     if (req.url === '/v1/models') {
+      res.writeHead(302, { Location: '/api/tags' });
+      res.end();
+    } else if (req.url === '/api/tags') {
       res.writeHead(200, { 'Content-Type': 'application/json' });
-      res.end(JSON.stringify({ data: [{ id: 'test-model' }] }));
+      res.end(JSON.stringify({ models: [{ name: 'test-model' }] }));
     } else {
       res.writeHead(404);
       res.end();
@@ -82,6 +90,15 @@ try {
   const multipleData = await multipleRes.json();
   assert.equal(multipleData.discovered.some(entry => [9999, 8888, 7777].some(port => entry.url?.includes(':' + port))), false);
   console.log('✓ multiple arbitrary ports are ignored');
+
+  // Five earlier requests used the discovery quota. Five more are allowed; the next is throttled.
+  for (let i = 0; i < 5; i += 1) {
+    const res = await fetch(`${BASE}/api/discover/endpoints?host=host.docker.internal&ports=11434`);
+    assert.equal(res.status, 400);
+  }
+  const limitedRes = await fetch(`${BASE}/api/discover/endpoints?host=host.docker.internal&ports=11434`);
+  assert.equal(limitedRes.status, 429);
+  console.log('✓ rate limit applies to discovery scans only');
 } finally {
   await closeServers();
 }
