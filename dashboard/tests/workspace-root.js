@@ -79,6 +79,15 @@ try {
   assert.ok(!existsSync(join(ROOT, '..', 'escaped.txt')), 'no file was written outside the root');
   console.log('  ✅ path traversal is refused for read and write, nothing escapes the root');
 
+  // Non-string query/body paths (arrays and objects) are rejected before path normalization.
+  const arrayPathRead = await get('/api/workspace/read?path=readme.md&path=../etc/passwd');
+  assert.ok(arrayPathRead.status >= 400, 'array path query is refused');
+  const objectPathWrite = await post('/api/workspace/write', { path: { name: 'readme.md' }, content: 'overwrite' });
+  assert.ok(objectPathWrite.status >= 400, 'object path body is refused');
+  const unchanged = await (await get('/api/workspace/read?path=readme.md')).json();
+  assert.strictEqual(unchanged.content, '# hello\\n', 'non-string path cannot overwrite a workspace file');
+  console.log('  ✅ array/object path inputs are rejected without filesystem changes');
+
   // ── write ─────────────────────────────────────────────────────────────────
   const write = await (await post('/api/workspace/write', { path: 'new.txt', content: 'written\n' })).json();
   assert.strictEqual(write.bytes, 8, 'reports bytes written');
