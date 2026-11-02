@@ -88,6 +88,7 @@ process.env.AGENT_DASHBOARD_DISABLE_LISTEN = '1';
 delete process.env.WORKSPACE_ROOT;           // developer tools off; write_artifact reports "not mounted"
 delete process.env.AGENT_BOARD_ENABLE_DOCKER_CONTROL;
 delete process.env.DATABASE_URL;
+process.env.AGENT_DASHBOARD_RATE_LIMIT_MAX_REQUESTS = '1000'; // the matrix intentionally exceeds the production per-IP cap
 const { app } = await import('../server.js');
 
 const server = app.listen(0);

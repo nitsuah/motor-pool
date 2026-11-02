@@ -149,12 +149,14 @@ const PLUGIN_RESPONSE_MAX_BYTES = 8 * 1024 * 1024;
 // send an oversized payload this path was never meant to allow (CWE-400).
 const PLUGIN_ARGS_MAX_BYTES = 256 * 1024;
 
+import { sep as PATH_SEP } from 'node:path';
+
 export function createAgentHelpers({ WORKSPACE_ROOT, execAsync, TOOL_SERVERS, TOOL_CALL_TIMEOUT_MS, pluginRegistry = null }) {
   function resolveWorkspacePath(reqPath) {
     if (!WORKSPACE_ROOT) return null;
     const safe = reqPath ? reqPath.replace(/\\/g, '/').replace(/^\/+/, '') : '';
     const abs = resolvePath(WORKSPACE_ROOT, safe);
-    if (abs !== WORKSPACE_ROOT && !abs.startsWith(WORKSPACE_ROOT + '/')) return null;
+    if (abs !== WORKSPACE_ROOT && !abs.startsWith(WORKSPACE_ROOT + PATH_SEP)) return null;
     return isInsideWorkspaceReal(abs) ? abs : null;
   }
 
@@ -178,7 +180,7 @@ export function createAgentHelpers({ WORKSPACE_ROOT, execAsync, TOOL_SERVERS, TO
         }
       }
       const real = realpathSync(probe); // throws for a dangling symlink
-      return real === rootReal || real.startsWith(rootReal + '/');
+      return real === rootReal || real.startsWith(rootReal + PATH_SEP);
     } catch {
       return false;
     }

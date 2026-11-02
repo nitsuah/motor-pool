@@ -20,6 +20,19 @@ export const DEVICE_PROFILES = {
 export const DEVICE_PROFILE = (process.env.DEVICE_PROFILE || 'minimal').toLowerCase();
 export const activeProfile = DEVICE_PROFILES[DEVICE_PROFILE] || DEVICE_PROFILES.minimal;
 
+const BUILTIN_ENDPOINT_KEYS = new Set([
+  'primary',
+  'docker_runner',
+  'glm_flash',
+  'openllm',
+  'ninerouter',
+]);
+const RESERVED_ENDPOINT_KEYS = new Set(['__proto__', 'constructor', 'prototype']);
+
+export function isBuiltinEndpointKey(key) {
+  return BUILTIN_ENDPOINT_KEYS.has(key);
+}
+
 export const LLM_CONFIG = {
   primary: {
     url: process.env.PRIMARY_LLM_URL || 'http://ollama:8080',
@@ -53,10 +66,26 @@ export const LLM_CONFIG = {
     apiStyle: 'openai',
     defaultModel: process.env.OPENLLM_MODEL || '',
   },
+  // 9router - OpenAI-compatible router for Anthropic/Claude models
+  // Connects to 9router running on host (port 20128) via host.docker.internal
+  ninerouter: {
+    url: process.env.NINEROUTER_URL || 'http://host.docker.internal:20128',
+    name: '9router (host)',
+    backendType: 'ninerouter',
+    type: 'cloud',
+    requiresKey: true,
+    apiStyle: 'openai',
+    defaultModel: process.env.NINEROUTER_MODEL || 'MAX',
+    apiKey: process.env.NINEROUTER_API_KEY || '',
+  },
 };
 
 // ── Custom endpoint registry ──────────────────────────────────────────────────
 function applyCustomEndpoint(ep) {
+  if (BUILTIN_ENDPOINT_KEYS.has(ep.key) || RESERVED_ENDPOINT_KEYS.has(ep.key)) {
+    console.warn('[config] Skipping custom endpoint that would override a protected key:', ep.key);
+    return;
+  }
   if (!ep.key || !ep.url) {
     console.warn('[config] Skipping custom endpoint missing key or url:', ep);
     return;
@@ -102,6 +131,7 @@ export const OPENLLM_ENABLED = isTruthyEnv(process.env.OPENLLM_ENABLED);
 
 export const TOOL_CONTENT_GEN_URL = process.env.TOOL_CONTENT_GEN_URL || 'http://tool-content-gen:3200';
 export const TOOL_WEBSITE_URL = process.env.TOOL_WEBSITE_URL || 'http://tool-website:3201';
+export const TOKEN_ECONOMIZER_URL = process.env.TOKEN_ECONOMIZER_URL || 'http://tool-tokeneconomizer:3202';
 
 export const TOOL_SERVERS = {
   content_gen: {
@@ -121,5 +151,14 @@ export const TOOL_SERVERS = {
     serviceKey: 'tool_website',
     composeService: 'tool-website',
     ports: '3201:3201',
+  },
+  tokeneconomizer: {
+    key: 'tokeneconomizer',
+    name: 'TokenEconomizer',
+    description: 'Microsoft token cost optimization — microskills, tool pruning, loop guard.',
+    url: TOKEN_ECONOMIZER_URL,
+    serviceKey: 'tool_tokeneconomizer',
+    composeService: 'tool-tokeneconomizer',
+    ports: '3202:3202',
   },
 };

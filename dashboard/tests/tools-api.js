@@ -31,7 +31,7 @@ async function run() {
     assert.equal(tools.data.success, true, 'tools payload should be successful');
     assert.equal(typeof tools.data.dockerControlEnabled, 'boolean', 'dockerControlEnabled should be boolean');
     const keys = tools.data.tools.map(t => t.key).sort();
-    assert.deepEqual(keys, ['content_gen', 'website'], 'both tool servers should be listed');
+    assert.deepEqual(keys, ['content_gen', 'tokeneconomizer', 'website'], 'all tool servers should be listed');
     for (const tool of tools.data.tools) {
       assert.equal(typeof tool.running, 'boolean', `${tool.key} running flag should be boolean`);
       assert.ok(tool.serviceKey, `${tool.key} should expose its service registry key`);

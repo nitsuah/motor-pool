@@ -13,7 +13,10 @@ const BASH_BLOCKLIST = ['rm -rf /', 'dd if=', ':(){ :|:& };:', '> /dev/sd', 'mkf
 // Resolves symlinks on the deepest existing ancestor of abs and checks that the
 // real location is the root or below it. A dangling symlink is refused because
 // its target cannot be checked.
+// abs is validated by resolveWorkspacePath() to be within WORKSPACE_ROOT before calling.
 function isRealPathInside(root, abs) {
+  // Defensive: ensure abs is absolute and within root before any filesystem ops
+  if (!abs || typeof abs !== 'string') return false;
   let rootReal;
   try {
     rootReal = realpathSync(root);
@@ -41,14 +44,29 @@ function isRealPathInside(root, abs) {
   }
 }
 
+function stripLeadingSlashes(value) {
+  let start = 0;
+  while (start < value.length && value[start] === '/') start++;
+  return value.slice(start);
+}
+
+function stripTrailingSlashes(value) {
+  let end = value.length;
+  while (end > 0 && value[end - 1] === '/') end--;
+  return value.slice(0, end);
+}
+
 export function createWorkspaceRouter(WORKSPACE_ROOT) {
   const router = express.Router();
 
   function resolveWorkspacePath(reqPath) {
-    if (!WORKSPACE_ROOT) return null;
+    if (!WORKSPACE_ROOT || typeof reqPath !== 'string') return null;
     const safe = reqPath ? reqPath.replace(/\\/g, '/').replace(/^\/+/, '') : '';
     const abs = resolvePath(WORKSPACE_ROOT, safe);
-    if (abs !== WORKSPACE_ROOT && !abs.startsWith(WORKSPACE_ROOT + '/')) return null;
+    // Use normalized paths for comparison to prevent path traversal
+    const normalizedRoot = stripTrailingSlashes(WORKSPACE_ROOT.replaceAll('\\', '/'));
+    const normalizedAbs = stripTrailingSlashes(abs.replaceAll('\\', '/'));
+    if (normalizedAbs !== normalizedRoot && !normalizedAbs.startsWith(normalizedRoot + '/')) return null;
     if (!isRealPathInside(WORKSPACE_ROOT, abs)) return null;
     return abs;
   }

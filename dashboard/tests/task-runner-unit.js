@@ -3,10 +3,11 @@
  */
 import assert from 'node:assert/strict';
 import { EventEmitter } from 'node:events';
+import { randomBytes } from 'crypto';
 import { startTaskRunner } from '../task-runner.js';
 
 function makeTask(overrides = {}) {
-  const id = `task_test_${Math.random().toString(36).slice(2, 8)}`;
+  const id = `task_test_${randomBytes(3).toString('hex')}`;
   return {
     id, title: 'Test task', status: 'pending',
     priority: 'medium', assignedUserId: null, experience: null,

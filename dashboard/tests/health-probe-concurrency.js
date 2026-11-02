@@ -6,9 +6,11 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
 process.env.AGENT_DASHBOARD_DISABLE_LISTEN = '1';
-// The live vault may have persisted BYOK endpoints (for example, a 9router
-// instance still being configured). Keep the concurrency assertion limited to
-// the three mock upstreams plus the two shared runner aliases.
+// This fixture verifies an optional cloud provider does not degrade health
+// until configured. Keep it unconfigured even if the CI environment has a key.
+process.env.NINEROUTER_API_KEY = '';
+// The live vault may have persisted BYOK endpoints. Keep the concurrency
+// assertion limited to the three mock upstreams plus the shared runner aliases.
 process.env.CUSTOM_LLM_ENDPOINTS = '[]';
 const endpointStoreDir = mkdtempSync(join(tmpdir(), 'motor-pool-health-probe-'));
 process.env.ENDPOINT_STORE_PATH = join(endpointStoreDir, 'endpoints.json');
@@ -73,6 +75,7 @@ try {
   assert.equal(response.data.endpoints.docker_runner, 'healthy');
   assert.equal(response.data.endpoints.glm_flash, 'healthy');
   assert.equal(response.data.endpoints.openllm, 'healthy');
+  assert.equal(response.data.endpoints.ninerouter, 'unconfigured');
   assert.ok(openllmPaths.includes('/v1/models'), 'OpenLLM must use its OpenAI-compatible model-list route');
   assert.equal(maxConcurrentProbes, 3, 'primary, shared runner, and OpenLLM probes should overlap');
   assert.ok(elapsedMs < 450, `three 150ms probes should not stack sequentially (took ${elapsedMs}ms)`);

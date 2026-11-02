@@ -15,6 +15,10 @@ RUN npm install --omit=dev
 
 # Copy server
 COPY server.js ./
+<<<<<<< HEAD
+=======
+COPY safe-error.mjs ./
+>>>>>>> worktree-tokeneconomizer-fix
 
 # Create non-root user (use existing node user from node:slim)
 USER node

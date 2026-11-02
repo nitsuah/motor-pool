@@ -38,7 +38,8 @@ export async function handleSessionMessage(req, res, deps) {
     if (LLM_CONFIG[session.endpoint]?.backendType === 'docker-runner') {
       activeDockerRunnerModelRef.current = { key: session.endpoint, model: session.model, at: new Date() };
     }
-    const { llmUrl, apiStyle, apiKey } = prepared;
+    const { llmUrl, apiStyle } = prepared;
+    const apiKey = LLM_CONFIG[session.endpoint]?.apiKey || null;
     const llmHeaders = apiKey ? { Authorization: `Bearer ${apiKey}` } : {};
 
     const systemMessages = buildSystemMessages({ ...session, safetyMode: turn.safetyMode });

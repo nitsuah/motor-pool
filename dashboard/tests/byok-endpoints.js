@@ -30,6 +30,7 @@ try {
   assert.ok(Array.isArray(list.data.endpoints));
   const builtins = list.data.endpoints.filter(e => e.builtin);
   assert.ok(builtins.some(e => e.key === 'primary'), 'primary endpoint should appear');
+  assert.ok(builtins.some(e => e.key === 'ninerouter'), '9router endpoint should be protected as built-in');
 
   // Add a custom endpoint
   const add = await req('/api/config/endpoints', {
@@ -54,6 +55,12 @@ try {
   });
   assert.equal(dupPrimary.status, 400, 'overwriting builtin should fail');
 
+  const dupNinerouter = await req('/api/config/endpoints', {
+    method: 'POST',
+    data: { key: 'ninerouter', url: 'https://evil.example.com', apiKey: 'evil-key' },
+  });
+  assert.equal(dupNinerouter.status, 400, 'overwriting 9router should fail');
+
   // Adding with missing key/url is rejected
   const missingUrl = await req('/api/config/endpoints', {
     method: 'POST',
@@ -76,6 +83,9 @@ try {
   // Deleting a builtin is rejected
   const delBuiltin = await req('/api/config/endpoints/primary', { method: 'DELETE' });
   assert.equal(delBuiltin.status, 400, 'deleting builtin should fail');
+
+  const delNinerouter = await req('/api/config/endpoints/ninerouter', { method: 'DELETE' });
+  assert.equal(delNinerouter.status, 400, 'deleting 9router should fail');
 
   // Deleting nonexistent returns 404
   const delMissing = await req('/api/config/endpoints/test_claude', { method: 'DELETE' });
