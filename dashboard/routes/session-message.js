@@ -4,7 +4,7 @@ import { preflightTurn, ensureTurnTool, finalizeReply, recordTurnError } from '.
 export async function handleSessionMessage(req, res, deps) {
   const {
     sessions, LLM_CONFIG, prepareSessionForLlmCall,
-    getExperienceTools, runAgentLoop, activeDockerRunnerModelRef, logStructured,
+    getExperienceTools, runAgentLoop, activeDockerRunnerModelRef, logStructured, WORKSPACE_ROOT,
   } = deps;
   const session = sessions.get(req.params.id);
   if (!session) return res.status(404).json({ success: false, error: 'Session not found' });
@@ -46,7 +46,7 @@ export async function handleSessionMessage(req, res, deps) {
     const msgs = [...systemMessages, ...historyMessages];
 
     const experienceTools = useSafeMode ? [] : getExperienceTools(session.experience);
-    const { content: assistantMessage, toolLog } = await runAgentLoop(msgs, apiStyle, llmUrl, llmHeaders, experienceTools, session);
+    const { content: assistantMessage, toolLog } = await runAgentLoop(msgs, apiStyle, llmUrl, llmHeaders, experienceTools, session, { repoRoot: WORKSPACE_ROOT });
 
     const reply = finalizeReply(session, assistantMessage, turn.safetyMode, deps, { latencyMs: Date.now() - msgStart, toolLog });
 

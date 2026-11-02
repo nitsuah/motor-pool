@@ -5,6 +5,16 @@ import { lstatSync, realpathSync } from 'fs';
 import { resolve as resolvePath, dirname } from 'path';
 import { mcpRequest } from './mcp-helpers.js';
 
+// Lazy-load TokenEconomizer to avoid circular imports and optional dependency issues
+let TokenEconomizer = null;
+async function getTokenEconomizer() {
+  if (!TokenEconomizer) {
+    const mod = await import('./token-economizer.js');
+    TokenEconomizer = mod.TokenEconomizer;
+  }
+  return TokenEconomizer;
+}
+
 export const DEVELOPER_TOOLS = [
   {
     type: 'function',
@@ -551,6 +561,20 @@ export function createAgentHelpers({ WORKSPACE_ROOT, execAsync, TOOL_SERVERS, TO
     const toolLog = [];
     const localMsgs = [...msgs];
     let consecutiveErrors = 0;
+
+    // TokenEconomizer integration: inject micro-skills into system messages
+    const TE = await getTokenEconomizer();
+    if (TE && session?.experience && options?.repoRoot) {
+      const microskills = TE.getMicroskillsForInjection(options.repoRoot);
+      if (microskills.length > 0) {
+        // Insert micro-skills as a system message after existing system messages
+        const systemMsgIdx = localMsgs.findIndex(m => m.role === 'system');
+        if (systemMsgIdx >= 0) {
+          const skillContent = `Learned micro-skills for this repository:\n${microskills.map(s => `- ${s}`).join('\n')}`;
+          localMsgs.splice(systemMsgIdx + 1, 0, { role: 'system', content: skillContent });
+        }
+      }
+    }
     // The model is only ever offered this experience's active tool set (empty
     // for Safe Chat / plain-chat experiences, which never set reqBody.tools
     // below), but a tool_calls entry it returns anyway must not be dispatched
@@ -623,6 +647,16 @@ export function createAgentHelpers({ WORKSPACE_ROOT, execAsync, TOOL_SERVERS, TO
         let parsed;
         try { parsed = JSON.parse(result); } catch { parsed = { raw: result }; }
 
+        // TokenEconomizer: record successful tool use for tool pruning evidence
+        if (!parsed?.error && TE && session?.experience && options?.repoRoot) {
+          try {
+            await TE.recordToolUse(name, session.experience, options.repoRoot);
+          } catch (e) {
+            // Non-fatal: token economizer failures shouldn't break the agent loop
+            console.warn('[TokenEconomizer] recordToolUse failed:', e.message);
+          }
+        }
+
         if (parsed?.error) {
           consecutiveErrors++;
           if (consecutiveErrors >= MAX_CONSECUTIVE_TOOL_ERRORS) {
@@ -647,6 +681,32 @@ export function createAgentHelpers({ WORKSPACE_ROOT, execAsync, TOOL_SERVERS, TO
     if (options.signal?.aborted) throw options.signal.reason || new Error('Agent stream aborted');
     const response = await requestReply(localMsgs, []);
     const msg = response.message || response.choices?.[0]?.message;
+
+    // TokenEconomizer: check loop guard and record session
+    if (TE && session?.experience && options?.repoRoot) {
+      try {
+        const turnCount = toolLog.length;
+        const lastTurnTime = toolLog.length > 0 ? new Date() : new Date();
+        const nudge = await TE.getLoopGuardNudge(session.id, turnCount, lastTurnTime);
+        if (nudge.shouldNudge) {
+          console.warn('[TokenEconomizer] Loop guard nudge:', nudge.message);
+        }
+
+        // Record session for history
+        await TE.recordSession({
+          id: session.id,
+          experience: session.experience,
+          repo: options.repoRoot,
+          tokens: 0, // Would need token counting from response
+          toolsUsed: toolLog.length,
+          turns: turnCount,
+          timestamp: new Date().toISOString(),
+        });
+      } catch (e) {
+        console.warn('[TokenEconomizer] session recording failed:', e.message);
+      }
+    }
+
     return { content: msg?.content || 'No response received', toolLog };
   }
 

@@ -740,7 +740,7 @@ if (process.env.AGENT_DASHBOARD_DISABLE_LISTEN !== '1') {
     const historyMessages = session.messages.map(m => ({ role: m.role, content: m.content }));
     const msgs = [...systemMessages, ...historyMessages];
     const tools = getExperienceTools(experience);
-    const result = await runAgentLoop(msgs, apiStyle, llmUrl, streamHeaders, tools, session);
+    const result = await runAgentLoop(msgs, apiStyle, llmUrl, streamHeaders, tools, session, { repoRoot: WORKSPACE_ROOT });
     session.messages.push({ role: 'assistant', content: result.content, timestamp: new Date(), toolLog: result.toolLog?.length ? result.toolLog : undefined });
     session.updatedAt = new Date();
     upsertSessionContextWithSnapshot(session, logStructured);

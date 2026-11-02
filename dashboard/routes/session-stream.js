@@ -19,6 +19,7 @@ export async function handleSessionStream(req, res, deps) {
     sessions, LLM_CONFIG, DEVICE_PROFILE,
     resolveEndpointUrl, prepareSessionForLlmCall,
     getExperienceTools, runAgentLoop, activeDockerRunnerModelRef, logStructured,
+    WORKSPACE_ROOT,
   } = deps;
   const session = sessions.get(req.params.id);
   if (!session) return res.status(404).json({ success: false, error: 'Session not found' });
@@ -107,6 +108,7 @@ export async function handleSessionStream(req, res, deps) {
         const { content: loopContent, toolLog } = await runAgentLoop(
           msgs, apiStyle, llmUrl, streamHeaders, experienceStreamTools, session,
           {
+            repoRoot: WORKSPACE_ROOT,
             stream: true,
             signal: upstream.signal,
             onToken: buffered ? undefined : (content) => {

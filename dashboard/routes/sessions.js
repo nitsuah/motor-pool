@@ -38,6 +38,7 @@ export function createSessionsRouter({
   serviceRegistry,
   dockerControlEnabled,
   runComposeAction,
+  WORKSPACE_ROOT,
 }) {
   const router = express.Router();
 
@@ -49,6 +50,7 @@ export function createSessionsRouter({
     getExperienceTools, runAgentLoop,
     upsertSessionContext, activeDockerRunnerModelRef,
     TOOL_SERVERS, serviceRegistry, dockerControlEnabled, runComposeAction,
+    WORKSPACE_ROOT,
   };
 
   router.post('/', async (req, res) => {
