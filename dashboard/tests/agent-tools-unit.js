@@ -231,9 +231,10 @@ try {
   // ── safety: symbolic links that point outside the workspace ────────────────
   // On Windows, creating symlinks requires admin privileges. Skip if not available.
   let symlinksCreated = false;
+  let OUTSIDE;
   if (process.platform === 'win32') {
     try {
-      const OUTSIDE = realpathSync(mkdtempSync(join(tmpdir(), 'ab-outside-')));
+      OUTSIDE = realpathSync(mkdtempSync(join(tmpdir(), 'ab-outside-')));
       writeFileSync(join(OUTSIDE, 'secret.txt'), 'outside-secret');
       mkdirSync(join(OUTSIDE, 'dir'));
       symlinkSync(join(OUTSIDE, 'secret.txt'), join(WORKSPACE, 'link-file'));
@@ -244,7 +245,7 @@ try {
       console.log('  ⚠️  Symlink creation not permitted on this Windows environment; skipping symlink escape tests');
     }
   } else {
-    const OUTSIDE = realpathSync(mkdtempSync(join(tmpdir(), 'ab-outside-')));
+    OUTSIDE = realpathSync(mkdtempSync(join(tmpdir(), 'ab-outside-')));
     writeFileSync(join(OUTSIDE, 'secret.txt'), 'outside-secret');
     mkdirSync(join(OUTSIDE, 'dir'));
     symlinkSync(join(OUTSIDE, 'secret.txt'), join(WORKSPACE, 'link-file'));
