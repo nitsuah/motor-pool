@@ -3,17 +3,11 @@ import axios from 'axios';
 import { fileURLToPath } from 'url';
 import { dirname, join } from 'path';
 import { existsSync, readFileSync } from 'fs';
+import { randomBytes } from 'crypto';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 const CONNECTORS_PATH = join(__dirname, '..', '..', 'config', 'connectors.json');
-
-// Secure random utility for non-cryptographic use (avoids CodeQL insecure-randomness alerts)
-function secureRandom() {
-  const array = new Uint32Array(1);
-  crypto.getRandomValues(array);
-  return array[0] / 0x100000000;
-}
 
 export function createConnectorsRouter({ BB_MCP_ENABLED, BB_MCP_URL, logStructured }) {
   const router = express.Router();

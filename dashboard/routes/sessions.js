@@ -1,15 +1,9 @@
 import express from 'express';
 import { rmSync } from 'fs';
 import path from 'path';
+import { randomBytes } from 'crypto';
 import { handleSessionMessage } from './session-message.js';
 import { handleSessionStream } from './session-stream.js';
-
-// Secure random utility for non-cryptographic use (avoids CodeQL insecure-randomness alerts)
-function secureRandom() {
-  const array = new Uint32Array(1);
-  crypto.getRandomValues(array);
-  return array[0] / 0x100000000;
-}
 
 export function createSessionsRouter({
   sessions,
