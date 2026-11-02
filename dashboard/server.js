@@ -465,38 +465,26 @@ app.use(cors({
   credentials: true,
   allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With'],
 }));
-// Rate limiting middleware (in-memory, per-IP). Register it before body readers so
-// rejected requests do not spend CPU/memory parsing JSON or webhook payloads.
-const rateLimitMap = new Map();
-const RATE_LIMIT_WINDOW_MS = 60_000; // 1 minute
-const configuredRateLimit = Number(process.env.AGENT_DASHBOARD_RATE_LIMIT_MAX_REQUESTS);
-const RATE_LIMIT_MAX_REQUESTS =
-  Number.isInteger(configuredRateLimit) && configuredRateLimit > 0
-    ? configuredRateLimit
-    : 120; // 120 req/min per IP by default
-const rateLimitCleanupTimer = setInterval(() => {
-  const now = Date.now();
-  for (const [ip, timestamps] of rateLimitMap.entries()) {
-    const recent = timestamps.filter(ts => now - ts < RATE_LIMIT_WINDOW_MS);
-    if (recent.length === 0) rateLimitMap.delete(ip);
-    else rateLimitMap.set(ip, recent);
-  }
-}, RATE_LIMIT_WINDOW_MS);
-rateLimitCleanupTimer.unref?.();
-
-function rateLimit(req, res, next) {
-  const ip = req.ip || req.socket.remoteAddress || 'unknown';
-  const now = Date.now();
-  const timestamps = rateLimitMap.get(ip) || [];
-  const recent = timestamps.filter(ts => now - ts < RATE_LIMIT_WINDOW_MS);
-  if (recent.length >= RATE_LIMIT_MAX_REQUESTS) {
-    return res.status(429).json({ success: false, error: 'Too many requests, please slow down' });
-  }
-  recent.push(now);
-  rateLimitMap.set(ip, recent);
-  next();
+// Rate limiting middleware to prevent DoS
+// Localhost is exempt: this is a single-user local dashboard, and legitimate
+// local tooling (tests, dev clients) makes many requests in quick succession.
+import rateLimit from 'express-rate-limit';
+const LOCALHOST = new Set(['127.0.0.1', '::1', 'localhost', '::ffff:127.0.0.1']);
+function isLocalhost(ip) {
+  if (!ip) return true;
+  // Normalize IPv4-mapped IPv6 addresses (::ffff:127.0.0.1 -> 127.0.0.1)
+  const normalized = ip.replace(/^::ffff:/, '');
+  return LOCALHOST.has(normalized);
 }
-app.use(rateLimit);
+const apiLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000, // 15 minutes
+  max: 100, // limit each remote IP to 100 requests per windowMs
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: 'Too many requests, please try again later.' },
+  skip: (req) => isLocalhost(req.ip || req.socket.remoteAddress || ''),
+});
+app.use('/api/', apiLimiter);
 
 
 // Capture raw body on the webhook trigger path before JSON parsing (needed for HMAC verification)
