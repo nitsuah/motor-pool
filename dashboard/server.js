@@ -69,6 +69,7 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 
 const app = express();
+app.set('trust proxy', true);
 const PORT = process.env.PORT || 3000;
 const execAsync = promisify(exec);
 const execFileAsync = promisify(execFile);
