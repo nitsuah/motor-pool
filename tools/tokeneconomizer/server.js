@@ -12,10 +12,7 @@ import express from 'express';
 import { fileURLToPath } from 'url';
 import { dirname, join } from 'path';
 import { readFileSync } from 'fs';
-<<<<<<< HEAD
-=======
 import { safeTeError } from './safe-error.mjs';
->>>>>>> worktree-tokeneconomizer-fix
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -109,12 +106,8 @@ app.post('/exec', async (req, res) => {
     res.json(result);
   } catch (err) {
     const status = err.status || 500;
-<<<<<<< HEAD
-    res.status(status).json(err);
-=======
-    // Keep command arguments and CLI output server-side; errors may contain secrets.
+// Keep command arguments and CLI output server-side; errors may contain secrets.
     res.status(status).json({ success: false, ...safeTeError(err) });
->>>>>>> worktree-tokeneconomizer-fix
   }
 });
 
@@ -158,12 +151,8 @@ TE_COMMANDS.forEach((cmd) => {
       res.json(result);
     } catch (err) {
       const status = err.status || 500;
-<<<<<<< HEAD
-      res.status(status).json(err);
-=======
-      // Keep command arguments and CLI output server-side; errors may contain secrets.
+// Keep command arguments and CLI output server-side; errors may contain secrets.
       res.status(status).json({ success: false, ...safeTeError(err) });
->>>>>>> worktree-tokeneconomizer-fix
     }
   });
 });
