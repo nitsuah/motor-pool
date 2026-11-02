@@ -21,17 +21,6 @@ const TE_PYTHON = process.env.TE_PYTHON || process.env.TOKEN_ECONOMIZER_PYTHON |
 // te CLI installed via pip3 at /usr/local/bin/te
 const TE_CMD = '/usr/local/bin/te';
 
-const app = express();
-app.use(express.json({ limit: '1MB' }));
-
-// Root health endpoint
-app.get('/health', (req, res) => {
-  res.json({
-    service: 'tokeneconomizer',
-    python: TE_PYTHON || 'auto',
-    volume: process.env.TOKENECONOMIZER_HOME || (process.env.HOME || '/home/node') + '/.tokeneconomizer',
-  });
-});
 
 // Internal function to execute te CLI
 async function runTeCommand(teArgs) {
@@ -118,7 +107,10 @@ const COMMANDS = {
   toolprune: {
     args: (body) => {
       const action = body.action || 'show';
-      if (!['show', 'measure', 'apply', 'restore', 'refresh-catalog', 'apply-pending'].includes(action)) {
+      if (['apply', 'apply-pending', 'restore', 'refresh-catalog'].includes(action)) {
+        throw Object.assign(new Error('Mutating toolprune actions are disabled over HTTP'), { status: 403 });
+      }
+      if (!['show', 'measure'].includes(action)) {
         throw badRequest('Invalid toolprune action');
       }
       return action === 'show' ? [] : [action];
@@ -160,32 +152,56 @@ const COMMANDS = {
   doctor: { args: () => [] },
 };
 
-for (const [route, definition] of Object.entries(COMMANDS)) {
-  app.post('/' + route, async (req, res) => {
-    try {
-      const body = req.body && typeof req.body === 'object' && !Array.isArray(req.body)
-        ? req.body
-        : {};
-      const args = definition.args(body);
-      const result = await runTeCommand([route, ...args]);
-      res.json(result);
-    } catch (err) {
-      if (err?.status === 400) {
-        return res.status(400).json({ error: err.message });
-      }
-      // Do not log argv or raw CLI errors; config.set values may be sensitive.
-      console.error('TokenEconomizer command failed', route, err?.status || 500);
-      res.status(err?.status || 500).json({ error: 'TokenEconomizer command failed' });
-    }
+export function createApp({ commandRunner = runTeCommand, logError = console.error } = {}) {
+  const app = express();
+  app.use(express.json({ limit: '1MB' }));
+
+  app.get('/health', (req, res) => {
+    res.json({
+      service: 'tokeneconomizer',
+      python: TE_PYTHON || 'auto',
+      volume: process.env.TOKENECONOMIZER_HOME || (process.env.HOME || '/home/node') + '/.tokeneconomizer',
+    });
   });
+
+  for (const [route, definition] of Object.entries(COMMANDS)) {
+    app.post('/' + route, async (req, res) => {
+      try {
+        const body = req.body && typeof req.body === 'object' && !Array.isArray(req.body)
+          ? req.body
+          : {};
+        const args = definition.args(body);
+        const result = await commandRunner([route, ...args]);
+        if (route === 'config' && body.operation === 'set') {
+          return res.json({ success: true, command: 'config', message: 'Configuration updated' });
+        }
+        res.json(result);
+      } catch (err) {
+        if (err?.status === 400) {
+          return res.status(400).json({ error: err.message });
+        }
+        if (err?.status === 403) {
+          return res.status(403).json({ error: err.message });
+        }
+        // Do not log argv or raw CLI errors; config.set values may be sensitive.
+        logError('TokenEconomizer command failed', route, err?.status || 500);
+        res.status(err?.status || 500).json({ error: 'TokenEconomizer command failed' });
+      }
+    });
+  }
+
+  // Unknown routes never forward caller-controlled command arguments.
+  app.get('/*', (req, res) => {
+    res.status(404).json({ error: 'Not found', commands: Object.keys(COMMANDS) });
+  });
+
+  return app;
 }
 
-// Unknown routes never forward caller-controlled command arguments.
-app.get('/*', (req, res) => {
-  res.status(404).json({ error: 'Not found', commands: Object.keys(COMMANDS) });
-});
-
-app.listen(PORT, '0.0.0.0', () => {
-  console.log(`TokenEconomizer HTTP wrapper listening on port ${PORT}`);
-  console.log(`Serving ${Object.keys(COMMANDS).length} fixed commands: ${Object.keys(COMMANDS).join(', ')}`);
-});
+const app = createApp();
+if (process.env.TOKEN_ECONOMIZER_DISABLE_LISTEN !== '1') {
+  app.listen(PORT, '0.0.0.0', () => {
+    console.log(`TokenEconomizer HTTP wrapper listening on port ${PORT}`);
+    console.log(`Serving ${Object.keys(COMMANDS).length} fixed commands: ${Object.keys(COMMANDS).join(', ')}`);
+  });
+}
