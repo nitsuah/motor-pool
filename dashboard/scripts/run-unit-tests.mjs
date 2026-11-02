@@ -15,6 +15,7 @@ const testsDir = join(__dirname, '..', 'tests');
 // the unit run and in the coverage numbers.
 const INTEGRATION_TESTS = new Set([
   'e2e-chat.js', 'e2e-chat-matrix.js', 'e2e-agents.js', 'e2e-services.js',
+  'discover-ssrf-regression.test.js',
 ]);
 
 const SPECIAL = new Set(['safety-layer.js']);

@@ -5,7 +5,6 @@
 import assert from 'node:assert/strict';
 import http from 'node:http';
 import { BASE, closeTestServer } from './helpers/test-server.js';
-import { createRateLimiter } from '../routes/discover.js';
 
 const testServers = [];
 

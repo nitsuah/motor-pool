@@ -4,6 +4,13 @@ import path from 'path';
 import { handleSessionMessage } from './session-message.js';
 import { handleSessionStream } from './session-stream.js';
 
+// Secure random utility for non-cryptographic use (avoids CodeQL insecure-randomness alerts)
+function secureRandom() {
+  const array = new Uint32Array(1);
+  crypto.getRandomValues(array);
+  return array[0] / 0x100000000;
+}
+
 export function createSessionsRouter({
   sessions,
   sessionCounterRef,
@@ -78,7 +85,7 @@ export function createSessionsRouter({
       : coerceModelForEndpoint(endpoint, req.body.model) || LLM_CONFIG[endpoint]?.defaultModel || LLM_CONFIG.primary.defaultModel;
     const resolvedSafetyMode = resolveConfiguredSafetyMode(experience, safetyMode);
 
-    const sessionId = `sess_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+    const sessionId = `sess_${Date.now()}_${secureRandom().toString(36).substr(2, 9)}`;
     const resolvedLlmUrl = await resolveEndpointUrl(endpoint);
 
     const session = {
@@ -185,7 +192,7 @@ export function createSessionsRouter({
       ? Math.min(Math.max(0, atMessageIndex + 1), parent.messages.length)
       : parent.messages.length;
 
-    const forkId = `sess_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+    const forkId = `sess_${Date.now()}_${secureRandom().toString(36).substr(2, 9)}`;
     const forkName = `${parent.name} (fork)`.slice(0, 80);
     const fork = {
       id: forkId,

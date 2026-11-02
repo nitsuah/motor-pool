@@ -105,7 +105,7 @@ app.post('/exec', async (req, res) => {
     res.json(result);
   } catch (err) {
     const status = err.status || 500;
-    res.status(status).json(err);
+    res.status(status).json({ error: err.message || 'Internal error' });
   }
 });
 
@@ -149,7 +149,7 @@ TE_COMMANDS.forEach((cmd) => {
       res.json(result);
     } catch (err) {
       const status = err.status || 500;
-      res.status(status).json(err);
+      res.status(status).json({ error: err.message || 'Internal error' });
     }
   });
 });

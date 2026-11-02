@@ -1,5 +1,6 @@
 import express from 'express';
 import cors from 'cors';
+import rateLimit from 'express-rate-limit';
 import axios from 'axios';
 import dotenv from 'dotenv';
 import { fileURLToPath } from 'url';
@@ -58,6 +59,13 @@ import {
   TOOL_SERVERS,
 } from './modules/llm-config.js';
 import { parseMcpRpcResponse } from './modules/mcp-helpers.js';
+
+// Secure random utility for non-cryptographic use (avoids CodeQL insecure-randomness alerts)
+function secureRandom() {
+  const array = new Uint32Array(1);
+  crypto.getRandomValues(array);
+  return array[0] / 0x100000000;
+}
 import { eventBus, attachEventWebSocketServer } from './modules/event-bus.js';
 import { createAgentHelpers } from './modules/agent-tools.js';
 import { ensureWorkspaceSandbox, isSandboxSeeded } from './modules/workspace-sandbox.js';
@@ -445,6 +453,27 @@ const workspaceRouter = createWorkspaceRouter(WORKSPACE_ROOT);
 
 // Middleware
 app.use(cors());
+
+// Rate limiting middleware to prevent DoS
+// Localhost is exempt: this is a single-user local dashboard, and legitimate
+// local tooling (tests, dev clients) makes many requests in quick succession.
+const LOCALHOST = new Set(['127.0.0.1', '::1', 'localhost', '::ffff:127.0.0.1']);
+function isLocalhost(ip) {
+  if (!ip) return true;
+  // Normalize IPv4-mapped IPv6 addresses (::ffff:127.0.0.1 -> 127.0.0.1)
+  const normalized = ip.replace(/^::ffff:/, '');
+  return LOCALHOST.has(normalized);
+}
+const apiLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000, // 15 minutes
+  max: 100, // limit each remote IP to 100 requests per windowMs
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: 'Too many requests, please try again later.' },
+  skip: (req) => isLocalhost(req.ip || req.socket.remoteAddress || ''),
+});
+app.use('/api/', apiLimiter);
+
 // Capture raw body on the webhook trigger path before JSON parsing (needed for HMAC verification)
 // Sets req._rawBodyBuffer for HMAC verification; sets req._body = true so express.json() skips it.
 app.use('/api/webhooks/trigger', (req, _res, next) => {
@@ -711,7 +740,7 @@ if (process.env.AGENT_DASHBOARD_DISABLE_LISTEN !== '1') {
   // Start the background task auto-runner (picks up pending tasks by priority)
   // dispatchMessage: creates or reuses a session, then runs the agent loop non-streaming
   const dispatchTaskMessage = async (task) => {
-    const sessionId = `sess_task_${Date.now()}_${Math.random().toString(36).substr(2, 6)}`;
+    const sessionId = `sess_task_${Date.now()}_${secureRandom().toString(36).substr(2, 6)}`;
     const endpoint = 'primary';
     const resolvedLlmUrl = await resolveEndpointUrl(endpoint);
     const experience = task.experience || 'developer';

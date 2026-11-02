@@ -13,7 +13,10 @@ const BASH_BLOCKLIST = ['rm -rf /', 'dd if=', ':(){ :|:& };:', '> /dev/sd', 'mkf
 // Resolves symlinks on the deepest existing ancestor of abs and checks that the
 // real location is the root or below it. A dangling symlink is refused because
 // its target cannot be checked.
+// abs is validated by resolveWorkspacePath() to be within WORKSPACE_ROOT before calling.
 function isRealPathInside(root, abs) {
+  // Defensive: ensure abs is absolute and within root before any filesystem ops
+  if (!abs || typeof abs !== 'string') return false;
   let rootReal;
   try {
     rootReal = realpathSync(root);
