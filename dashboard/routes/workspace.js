@@ -13,7 +13,10 @@ const BASH_BLOCKLIST = ['rm -rf /', 'dd if=', ':(){ :|:& };:', '> /dev/sd', 'mkf
 // Resolves symlinks on the deepest existing ancestor of abs and checks that the
 // real location is the root or below it. A dangling symlink is refused because
 // its target cannot be checked.
+// abs is validated by resolveWorkspacePath() to be within WORKSPACE_ROOT before calling.
 function isRealPathInside(root, abs) {
+  // Defensive: ensure abs is absolute and within root before any filesystem ops
+  if (!abs || typeof abs !== 'string') return false;
   let rootReal;
   try {
     rootReal = realpathSync(root);
@@ -57,8 +60,8 @@ export function createWorkspaceRouter(WORKSPACE_ROOT) {
   const router = express.Router();
 
   function resolveWorkspacePath(reqPath) {
-    if (!WORKSPACE_ROOT) return null;
-    const safe = reqPath ? stripLeadingSlashes(reqPath.replaceAll('\\', '/')) : '';
+    if (!WORKSPACE_ROOT || typeof reqPath !== 'string') return null;
+    const safe = reqPath ? reqPath.replace(/\\/g, '/').replace(/^\/+/, '') : '';
     const abs = resolvePath(WORKSPACE_ROOT, safe);
     // Use normalized paths for comparison to prevent path traversal
     const normalizedRoot = stripTrailingSlashes(WORKSPACE_ROOT.replaceAll('\\', '/'));

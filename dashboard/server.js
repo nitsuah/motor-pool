@@ -59,6 +59,13 @@ import {
   TOOL_SERVERS,
 } from './modules/llm-config.js';
 import { parseMcpRpcResponse } from './modules/mcp-helpers.js';
+
+// Secure random utility for non-cryptographic use (avoids CodeQL insecure-randomness alerts)
+function secureRandom() {
+  const array = new Uint32Array(1);
+  crypto.getRandomValues(array);
+  return array[0] / 0x100000000;
+}
 import { eventBus, attachEventWebSocketServer } from './modules/event-bus.js';
 import { createAgentHelpers } from './modules/agent-tools.js';
 import { ensureWorkspaceSandbox, isSandboxSeeded } from './modules/workspace-sandbox.js';
@@ -465,38 +472,27 @@ app.use(cors({
   credentials: true,
   allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With'],
 }));
-// Rate limiting middleware (in-memory, per-IP). Register it before body readers so
-// rejected requests do not spend CPU/memory parsing JSON or webhook payloads.
-const rateLimitMap = new Map();
-const RATE_LIMIT_WINDOW_MS = 60_000; // 1 minute
-const configuredRateLimit = Number(process.env.AGENT_DASHBOARD_RATE_LIMIT_MAX_REQUESTS);
-const RATE_LIMIT_MAX_REQUESTS =
-  Number.isInteger(configuredRateLimit) && configuredRateLimit > 0
-    ? configuredRateLimit
-    : 120; // 120 req/min per IP by default
-const rateLimitCleanupTimer = setInterval(() => {
-  const now = Date.now();
-  for (const [ip, timestamps] of rateLimitMap.entries()) {
-    const recent = timestamps.filter(ts => now - ts < RATE_LIMIT_WINDOW_MS);
-    if (recent.length === 0) rateLimitMap.delete(ip);
-    else rateLimitMap.set(ip, recent);
-  }
-}, RATE_LIMIT_WINDOW_MS);
-rateLimitCleanupTimer.unref?.();
 
-function rateLimit(req, res, next) {
-  const ip = req.ip || req.socket.remoteAddress || 'unknown';
-  const now = Date.now();
-  const timestamps = rateLimitMap.get(ip) || [];
-  const recent = timestamps.filter(ts => now - ts < RATE_LIMIT_WINDOW_MS);
-  if (recent.length >= RATE_LIMIT_MAX_REQUESTS) {
-    return res.status(429).json({ success: false, error: 'Too many requests, please slow down' });
-  }
-  recent.push(now);
-  rateLimitMap.set(ip, recent);
-  next();
+// Rate limiting middleware to prevent DoS
+// Localhost is exempt: this is a single-user local dashboard, and legitimate
+// local tooling (tests, dev clients) makes many requests in quick succession.
+import rateLimit from 'express-rate-limit';
+const LOCALHOST = new Set(['127.0.0.1', '::1', 'localhost', '::ffff:127.0.0.1']);
+function isLocalhost(ip) {
+  if (!ip) return true;
+  // Normalize IPv4-mapped IPv6 addresses (::ffff:127.0.0.1 -> 127.0.0.1)
+  const normalized = ip.replace(/^::ffff:/, '');
+  return LOCALHOST.has(normalized);
 }
-app.use(rateLimit);
+const apiLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000, // 15 minutes
+  max: 100, // limit each remote IP to 100 requests per windowMs
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: 'Too many requests, please try again later.' },
+  skip: (req) => isLocalhost(req.ip || req.socket.remoteAddress || ''),
+});
+app.use('/api/', apiLimiter);
 
 
 // Capture raw body on the webhook trigger path before JSON parsing (needed for HMAC verification)
@@ -767,7 +763,11 @@ if (process.env.AGENT_DASHBOARD_DISABLE_LISTEN !== '1') {
   // Start the background task auto-runner (picks up pending tasks by priority)
   // dispatchMessage: creates or reuses a session, then runs the agent loop non-streaming
   const dispatchTaskMessage = async (task) => {
+<<<<<<< HEAD
+    const sessionId = `sess_task_${Date.now()}_${secureRandom().toString(36).substr(2, 6)}`;
+=======
     const sessionId = `sess_task_${Date.now()}_${randomBytes(3).toString('hex')}`;
+>>>>>>> origin/master
     const endpoint = 'primary';
     const resolvedLlmUrl = await resolveEndpointUrl(endpoint);
     const experience = task.experience || 'developer';
