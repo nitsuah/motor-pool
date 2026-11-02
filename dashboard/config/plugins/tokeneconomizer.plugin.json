@@ -4,7 +4,7 @@
   "name": "tokeneconomizer",
   "version": "1.0.0",
   "description": "Token cost optimization plugin using Microsoft TokenEconomizer. Learns from past sessions, prunes unused tools, detects stuck loops. Requires local TokenEconomizer installation via https://github.com/microsoft/TokenEconomizer.",
-  "enabled": true,
+  "enabled": false,
   "baseUrl": "${TOKEN_ECONOMIZER_URL:-http://tool-tokeneconomizer:3202}",
   "tools": [
     {
