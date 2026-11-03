@@ -5,7 +5,6 @@ import { lstatSync, realpathSync } from 'fs';
 import { resolve as resolvePath, dirname } from 'path';
 import { mcpRequest } from './mcp-helpers.js';
 import { TokenEconomizer } from './token-economizer.js';
-const { getLoopGuardNudge } = TokenEconomizer;
 
 export const DEVELOPER_TOOLS = [
   {
@@ -153,7 +152,7 @@ const PLUGIN_ARGS_MAX_BYTES = 256 * 1024;
 
 import { sep as PATH_SEP } from 'node:path';
 
-export function createAgentHelpers({ WORKSPACE_ROOT, execAsync, TOOL_SERVERS, TOOL_CALL_TIMEOUT_MS, pluginRegistry = null }) {
+export function createAgentHelpers({ WORKSPACE_ROOT, execAsync, TOOL_SERVERS, TOOL_CALL_TIMEOUT_MS, pluginRegistry = null, getLoopGuardNudge = TokenEconomizer.getLoopGuardNudge }) {
   function resolveWorkspacePath(reqPath) {
     if (!WORKSPACE_ROOT) return null;
     const safe = reqPath ? reqPath.replace(/\\/g, '/').replace(/^\/+/, '') : '';
@@ -593,7 +592,7 @@ export function createAgentHelpers({ WORKSPACE_ROOT, execAsync, TOOL_SERVERS, TO
 
       if (toolCalls.length === 0) {
         // Check for loop guard nudge
-        const loopGuard = getLoopGuardNudge(session?.id, msgs.length, session?.lastActivity);
+        const loopGuard = await getLoopGuardNudge(session?.id, msgs.length, session?.lastActivity);
         if (loopGuard.shouldNudge) {
           options.onReset?.();
           return {

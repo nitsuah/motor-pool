@@ -116,6 +116,33 @@ try {
   assert.strictEqual(out.content, 'No response received', 'null content falls back to a placeholder');
   console.log('  ✅ a reply with no tool calls is returned directly');
 
+  // ── async loop guard is awaited and resets the response ────────────────────
+  const loopGuardCalls = [];
+  const loopGuardHelpers = createAgentHelpers({
+    WORKSPACE_ROOT: WORKSPACE, execAsync, TOOL_SERVERS: {}, TOOL_CALL_TIMEOUT_MS: 5000,
+    getLoopGuardNudge: async (...args) => {
+      loopGuardCalls.push(args);
+      await Promise.resolve();
+      return { shouldNudge: true, message: 'test loop guard' };
+    },
+  });
+  script = [{ content: 'plain response should be replaced' }];
+  requests.length = 0;
+  let resetCount = 0;
+  out = await loopGuardHelpers.runAgentLoop(
+    [{ role: 'user', content: 'go' }],
+    'ollama',
+    LLM_URL,
+    {},
+    [],
+    session,
+    { onReset: () => { resetCount++; } },
+  );
+  assert.equal(loopGuardCalls.length, 1, 'the loop guard is consulted once on a no-tool response');
+  assert.equal(out.content, '[Loop Guard] test loop guard', 'the awaited guard can replace the plain response');
+  assert.equal(resetCount, 1, 'the UI reset callback runs when the guard nudges');
+  console.log('  ✅ async loop guard is awaited and its nudge resets the response');
+
   // ── Ollama streaming tool loop ────────────────────────────────────────────
   streamScript = [
     { events: [
