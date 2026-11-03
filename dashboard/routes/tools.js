@@ -3,7 +3,7 @@ import axios from 'axios';
 import { mcpRequest } from '../modules/mcp-helpers.js';
 import { ensureToolReady } from '../modules/tool-lifecycle.js';
 
-export function createToolsRouter({ TOOL_SERVERS, DOCKER_CONTROL_ENABLED, serviceRegistry, runComposeAction, eventBus, logStructured, TOOL_CALL_TIMEOUT_MS, IN_DOCKER }) {
+export function createToolsRouter({ TOOL_SERVERS, DOCKER_CONTROL_ENABLED, serviceRegistry, runComposeAction, eventBus, logStructured, TOOL_CALL_TIMEOUT_MS, IN_DOCKER, repoRoot }) {
   const router = express.Router();
 
   function getHealthUrl(tool) {

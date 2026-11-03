@@ -347,6 +347,8 @@ services:
       - agent_workspace:/workspace
       - agent_endpoint_data:/data
       - ../dashboard/config/plugins:/app/config/plugins:ro
+      # Config directory for docker compose commands (auto-start tool servers)
+      - ../config:/config:ro
       # Active session snapshots (including messages) survive container recreation.
       - agent_session_data:/app/data
     # Docker socket access is intentionally not mounted by default.

@@ -4,6 +4,8 @@ import { stat, readFile, writeFile, mkdir, readdir } from 'fs/promises';
 import { lstatSync, realpathSync } from 'fs';
 import { resolve as resolvePath, dirname } from 'path';
 import { mcpRequest } from './mcp-helpers.js';
+import { TokenEconomizer } from './token-economizer.js';
+const { getLoopGuardNudge } = TokenEconomizer;
 
 export const DEVELOPER_TOOLS = [
   {
@@ -553,6 +555,7 @@ export function createAgentHelpers({ WORKSPACE_ROOT, execAsync, TOOL_SERVERS, TO
     const toolLog = [];
     const localMsgs = [...msgs];
     let consecutiveErrors = 0;
+    const repoRoot = options.repoRoot || session?.repoRoot || process.cwd();
     // The model is only ever offered this experience's active tool set (empty
     // for Safe Chat / plain-chat experiences, which never set reqBody.tools
     // below), but a tool_calls entry it returns anyway must not be dispatched
@@ -589,6 +592,15 @@ export function createAgentHelpers({ WORKSPACE_ROOT, execAsync, TOOL_SERVERS, TO
       }
 
       if (toolCalls.length === 0) {
+        // Check for loop guard nudge
+        const loopGuard = getLoopGuardNudge(session?.id, msgs.length, session?.lastActivity);
+        if (loopGuard.shouldNudge) {
+          options.onReset?.();
+          return {
+            content: `[Loop Guard] ${loopGuard.message}`,
+            toolLog
+          };
+        }
         return { content: msg?.content || 'No response received', toolLog };
       }
 

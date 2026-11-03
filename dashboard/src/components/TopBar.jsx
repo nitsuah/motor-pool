@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { EXPERIENCE_META } from '../constants/app-config.js';
 import WorktreeLauncher from './WorktreeLauncher.jsx';
+import TokenEconomizerPanel from './TokenEconomizerPanel.jsx';
 
 function SessionDot({ sessionId, loadingSessions, sessionPendingReply, sessionErrors, wsConnected }) {
   const isWorking = loadingSessions.has(sessionId);
@@ -30,6 +31,7 @@ export default function TopBar({
   sessionErrors = new Set(),
 }) {
   const [sessionSearch, setSessionSearch] = useState('');
+  const [showTokenEconomizer, setShowTokenEconomizer] = useState(false);
   const filteredSessions = sessionSearch.trim()
     ? sessions.filter(s => s.name.toLowerCase().includes(sessionSearch.toLowerCase()))
     : sessions;
@@ -46,6 +48,9 @@ export default function TopBar({
 
   return (
     <div className="topbar">
+      {showTokenEconomizer && (
+        <TokenEconomizerPanel onClose={() => setShowTokenEconomizer(false)} />
+      )}
       {/* ── Far-left: motor icon → always go to hub ── */}
       <button
         className={`topbar-motor-btn${anyWorking ? ' topbar-motor-btn--working' : anyPending ? ' topbar-motor-btn--pending' : ''}`}
@@ -130,6 +135,17 @@ export default function TopBar({
           <svg viewBox="0 0 16 16" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="1.5"><rect x="1" y="1" width="14" height="6" rx="1"/><rect x="1" y="9" width="14" height="6" rx="1"/></svg>
         </button>
       </div>
+
+      <div className="topbar-divider" />
+
+      {/* ── TokenEconomizer button ── */}
+      <button
+        className={`icon-btn ${showTokenEconomizer ? 'active' : ''}`}
+        onClick={() => setShowTokenEconomizer(p => !p)}
+        title="TokenEconomizer — token cost optimization"
+      >
+        💰
+      </button>
 
       <div className="topbar-divider" />
 

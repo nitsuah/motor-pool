@@ -22,7 +22,7 @@ function TokenEconomizerPanel({ onClose }) {
   const fetchStatus = useCallback(async () => {
     setLoading(prev => ({ ...prev, status: true }));
     try {
-      const res = await fetch(`/api/tokeneconomizer/status?repoRoot=${encodeURIComponent(repoRoot || process.cwd())}`);
+      const res = await fetch(`/api/tokeneconomizer/status${repoRoot ? `?repoRoot=${encodeURIComponent(repoRoot)}` : ''}`);
       const data = await res.json();
       if (data.success) setStatus(data.status);
     } catch (error) {
@@ -48,7 +48,7 @@ function TokenEconomizerPanel({ onClose }) {
   const fetchMicroskills = useCallback(async () => {
     setLoading(prev => ({ ...prev, microskills: true }));
     try {
-      const res = await fetch(`/api/tokeneconomizer/microskills?repoRoot=${encodeURIComponent(repoRoot || process.cwd())}`);
+      const res = await fetch(`/api/tokeneconomizer/microskills${repoRoot ? `?repoRoot=${encodeURIComponent(repoRoot)}` : ''}`);
       const data = await res.json();
       if (data.success) setMicroskills(data.microskills);
     } catch (error) {
@@ -61,7 +61,7 @@ function TokenEconomizerPanel({ onClose }) {
   const fetchToolprune = useCallback(async () => {
     setLoading(prev => ({ ...prev, toolprune: true }));
     try {
-      const res = await fetch(`/api/tokeneconomizer/toolprune?repoRoot=${encodeURIComponent(repoRoot || process.cwd())}&experience=developer`);
+      const res = await fetch(`/api/tokeneconomizer/toolprune${repoRoot ? `?repoRoot=${encodeURIComponent(repoRoot)}` : ''}&experience=developer`);
       const data = await res.json();
       if (data.success) setToolprune({ prunable: data.prunable, evidence: data.evidence });
     } catch (error) {
@@ -74,7 +74,7 @@ function TokenEconomizerPanel({ onClose }) {
   const fetchSessions = useCallback(async () => {
     setLoading(prev => ({ ...prev, sessions: true }));
     try {
-      const res = await fetch(`/api/tokeneconomizer/sessions?repoRoot=${encodeURIComponent(repoRoot || process.cwd())}&limit=50`);
+      const res = await fetch(`/api/tokeneconomizer/sessions${repoRoot ? `?repoRoot=${encodeURIComponent(repoRoot)}` : ''}&limit=50`);
       const data = await res.json();
       if (data.success) setSessions(data.sessions);
     } catch (error) {
@@ -128,7 +128,7 @@ function TokenEconomizerPanel({ onClose }) {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          repoRoot: repoRoot || process.cwd(),
+          repoRoot,
           experience: 'developer',
           tools
         }),

@@ -9,6 +9,7 @@ import WorkspaceView from './components/WorkspaceView.jsx';
 import StatusBar from './components/StatusBar.jsx';
 import OnboardingStrip from './components/OnboardingStrip.jsx';
 import KeyboardShortcutsModal from './components/KeyboardShortcutsModal.jsx';
+import TokenEconomizerPanel from './components/TokenEconomizerPanel.jsx';
 import { useWebSocket } from './hooks/useWebSocket.js';
 import { useSessionStreaming } from './hooks/useSessionStreaming.js';
 import { useServiceActions } from './hooks/useServiceActions.js';

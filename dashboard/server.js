@@ -347,7 +347,10 @@ async function prepareSessionForLlmCall(session) {
       metadata: { reason: modelResolution.reason, resolvedModel: modelResolution.model },
     });
   }
-  return { llmUrl, apiStyle, modelResolution };
+  // Include microskills from TokenEconomizer for injection into system prompt
+  const { TokenEconomizer } = await import('./modules/token-economizer.js');
+  const microskills = TokenEconomizer.getMicroskillsForInjection(session.repoRoot);
+  return { llmUrl, apiStyle, modelResolution, microskills };
 }
 
 function coerceModelForEndpoint(endpoint, requestedModel) {
@@ -587,6 +590,7 @@ app.use('/api/sessions', createSessionsRouter({
   getExperienceTools, runPromptHandlers, runAgentLoop,
   upsertSessionContext: upsertSessionContextWithSnapshot, markSessionEnded: markSessionEndedWithSnapshot, persistEvent, activeDockerRunnerModelRef,
   TOOL_SERVERS, serviceRegistry: getServiceRegistry(), dockerControlEnabled: DOCKER_CONTROL_ENABLED, runComposeAction,
+  repoRoot: WORKSPACE_ROOT,
 }));
 
 app.use('/api', tasksRouter);
@@ -607,7 +611,7 @@ app.get('/api/experiences', (req, res) => {
   });
 });
 
-app.use('/api', createToolsRouter({ TOOL_SERVERS, DOCKER_CONTROL_ENABLED, serviceRegistry: getServiceRegistry(), runComposeAction, eventBus, logStructured, TOOL_CALL_TIMEOUT_MS, IN_DOCKER }));
+app.use('/api', createToolsRouter({ TOOL_SERVERS, DOCKER_CONTROL_ENABLED, serviceRegistry: getServiceRegistry(), runComposeAction, eventBus, logStructured, TOOL_CALL_TIMEOUT_MS, IN_DOCKER, repoRoot: WORKSPACE_ROOT }));
 
 app.use('/api', createConnectorsRouter({ BB_MCP_ENABLED, BB_MCP_URL, logStructured }));
 
@@ -775,21 +779,22 @@ if (process.env.AGENT_DASHBOARD_DISABLE_LISTEN !== '1') {
       createdAt: new Date(), updatedAt: new Date(),
       userId: task.assignedUserId || 'task-runner',
       userRole: null, experience, safetyMode: null, useSafeModeEnabled: false,
+      repoRoot: WORKSPACE_ROOT,
     };
     sessions.set(sessionId, session);
     upsertSessionContextWithSnapshot(session, logStructured);
 
     session.messages.push({ role: 'user', content: task.title, timestamp: new Date() });
     const prepared = await prepareSessionForLlmCall(session);
-    const { llmUrl, apiStyle } = prepared;
+    const { llmUrl, apiStyle, microskills = [] } = prepared;
     const apiKey = LLM_CONFIG[session.endpoint]?.apiKey || null;
     const streamHeaders = apiKey ? { Authorization: `Bearer ${apiKey}` } : {};
     const { buildSystemMessages } = await import('./safety.js');
-    const systemMessages = buildSystemMessages({ ...session, safetyMode: null });
+    const systemMessages = buildSystemMessages({ ...session, safetyMode: null }, microskills);
     const historyMessages = session.messages.map(m => ({ role: m.role, content: m.content }));
     const msgs = [...systemMessages, ...historyMessages];
     const tools = getExperienceTools(experience);
-    const result = await runAgentLoop(msgs, apiStyle, llmUrl, streamHeaders, tools, session);
+    const result = await runAgentLoop(msgs, apiStyle, llmUrl, streamHeaders, tools, session, { repoRoot: WORKSPACE_ROOT });
     session.messages.push({ role: 'assistant', content: result.content, timestamp: new Date(), toolLog: result.toolLog?.length ? result.toolLog : undefined });
     session.updatedAt = new Date();
     upsertSessionContextWithSnapshot(session, logStructured);

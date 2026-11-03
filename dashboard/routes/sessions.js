@@ -39,6 +39,7 @@ export function createSessionsRouter({
   serviceRegistry,
   dockerControlEnabled,
   runComposeAction,
+  repoRoot,
 }) {
   const router = express.Router();
 
@@ -50,6 +51,7 @@ export function createSessionsRouter({
     getExperienceTools, runAgentLoop,
     upsertSessionContext, activeDockerRunnerModelRef,
     TOOL_SERVERS, serviceRegistry, dockerControlEnabled, runComposeAction,
+    repoRoot,
   };
 
   router.post('/', async (req, res) => {
@@ -89,6 +91,7 @@ export function createSessionsRouter({
       userId: userId || 'anonymous', userRole: userRole || null,
       experience, safetyMode: resolvedSafetyMode, useSafeModeEnabled: false,
       status: 'idle', lastActivity: new Date(), errorCount: 0,
+      repoRoot,
     };
 
     sessions.set(sessionId, session);
