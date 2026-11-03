@@ -489,7 +489,6 @@ const apiLimiter = rateLimit({
   message: { error: 'Too many requests, please try again later.' },
   skip: (req) => {
     const ip = req.ip || req.socket.remoteAddress || '';
-    logStructured('debug', 'rate_limit_check', { ip, xForwardedFor: req.headers['x-forwarded-for'] });
     return isLocalhost(ip);
   },
 });
