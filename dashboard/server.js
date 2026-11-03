@@ -474,7 +474,7 @@ app.use(cors({
 // Localhost is exempt: this is a single-user local dashboard, and legitimate
 // local tooling (tests, dev clients) makes many requests in quick succession.
 import rateLimit from 'express-rate-limit';
-const LOCALHOST = new Set(['127.0.0.1', '::1', 'localhost', '::ffff:127.0.0.1']);
+const LOCALHOST = new Set(['127.0.0.1', '::1', 'localhost', '::ffff:127.0.0.1', '172.19.0.1']);
 function isLocalhost(ip) {
   if (!ip) return true;
   // Normalize IPv4-mapped IPv6 addresses (::ffff:127.0.0.1 -> 127.0.0.1)
@@ -487,7 +487,11 @@ const apiLimiter = rateLimit({
   standardHeaders: true,
   legacyHeaders: false,
   message: { error: 'Too many requests, please try again later.' },
-  skip: (req) => isLocalhost(req.ip || req.socket.remoteAddress || ''),
+  skip: (req) => {
+    const ip = req.ip || req.socket.remoteAddress || '';
+    logStructured('debug', 'rate_limit_check', { ip, xForwardedFor: req.headers['x-forwarded-for'] });
+    return isLocalhost(ip);
+  },
 });
 app.use('/api/', apiLimiter);
 
