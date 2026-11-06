@@ -329,6 +329,7 @@ services:
       - TOOL_WEBSITE_URL=http://tool-website:3201
       - TOKEN_ECONOMIZER_URL=http://tool-tokeneconomizer:3202
       - AGENT_BOARD_ENABLE_DOCKER_CONTROL=${AGENT_BOARD_ENABLE_DOCKER_CONTROL:-false}
+      - IN_DOCKER=true
       - PORT=3000
       - DATABASE_URL=postgresql://agent:agent@agent-db:5432/agent_board
       - OTEL_ENABLED=${OTEL_ENABLED:-false}
@@ -345,6 +346,9 @@ services:
     volumes:
       - agent_workspace:/workspace
       - agent_endpoint_data:/data
+      - ../dashboard/config/plugins:/app/config/plugins:ro
+      # Config directory for docker compose commands (auto-start tool servers)
+      - ../config:/config:ro
       # Active session snapshots (including messages) survive container recreation.
       - agent_session_data:/app/data
     # Docker socket access is intentionally not mounted by default.

@@ -13,15 +13,31 @@ import { join } from 'node:path';
 import express from 'express';
 import { createWorkspaceRouter } from '../routes/workspace.js';
 
-// realpath: on macOS/Windows runners tmpdir is often a symlink, and the route
-// compares resolved absolute paths.
-const ROOT = realpathSync(mkdtempSync(join(tmpdir(), 'ab-ws-link-root-')));
-const OUTSIDE = realpathSync(mkdtempSync(join(tmpdir(), 'ab-ws-link-outside-')));
-
-mkdirSync(join(ROOT, 'sub'));
+const ROOT = mkdtempSync(join(tmpdir(), 'ws-link-root-'));
+const OUTSIDE = mkdtempSync(join(tmpdir(), 'ws-link-outside-'));
+mkdirSync(join(ROOT, 'sub'), { recursive: true });
 writeFileSync(join(ROOT, 'sub', 'ok.txt'), 'inside\n');
 writeFileSync(join(OUTSIDE, 'secret.txt'), 'outside\n');
-symlinkSync(OUTSIDE, join(ROOT, 'escape'), 'dir');
+
+// On Windows, creating symlinks requires admin privileges. Skip if not available.
+let canCreateSymlinks = true;
+if (process.platform === 'win32') {
+  try {
+    symlinkSync(OUTSIDE, join(ROOT, 'escape'), 'dir');
+  } catch (e) {
+    console.log('  ⚠️  Symlink creation not permitted on this Windows environment; skipping symlink containment tests');
+    canCreateSymlinks = false;
+  }
+} else {
+  symlinkSync(OUTSIDE, join(ROOT, 'escape'), 'dir');
+}
+
+if (!canCreateSymlinks) {
+  console.log('Workspace symlink containment tests skipped (no symlink permission).');
+  rmSync(ROOT, { recursive: true, force: true });
+  rmSync(OUTSIDE, { recursive: true, force: true });
+  process.exit(0);
+}
 
 const app = express();
 app.use('/api', createWorkspaceRouter(ROOT));

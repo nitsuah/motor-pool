@@ -3,26 +3,55 @@ import axios from 'axios';
 import { mcpRequest } from '../modules/mcp-helpers.js';
 import { ensureToolReady } from '../modules/tool-lifecycle.js';
 
-export function createToolsRouter({ TOOL_SERVERS, DOCKER_CONTROL_ENABLED, serviceRegistry, runComposeAction, eventBus, logStructured, TOOL_CALL_TIMEOUT_MS }) {
+/**
+ * Health URLs to probe, in order. The configured tool.url always comes first
+ * (it may point at a remote host via TOOL_*_URL). Outside Docker the compose
+ * service hostname usually doesn't resolve, so the published localhost port
+ * is tried as a fallback.
+ */
+export function healthUrlCandidates(tool, inDocker) {
+  const urls = [`${tool.url}/health`];
+  if (!inDocker) {
+    const portMatch = String(tool.ports || '').match(/^(\d+):/);
+    const local = portMatch ? `http://localhost:${portMatch[1]}/health` : null;
+    if (local && !urls.includes(local)) urls.push(local);
+  }
+  return urls;
+}
+
+export function createToolsRouter({ TOOL_SERVERS, DOCKER_CONTROL_ENABLED, serviceRegistry, runComposeAction, eventBus, logStructured, TOOL_CALL_TIMEOUT_MS, IN_DOCKER }) {
   const router = express.Router();
+
+  async function probeHealth(tool) {
+    for (const url of healthUrlCandidates(tool, IN_DOCKER)) {
+      try {
+        const probe = await axios.get(url, { timeout: 3000 });
+        return { running: true, health: probe.data || null };
+      } catch {
+        // try the next candidate
+      }
+    }
+    return { running: false, health: null };
+  }
 
   router.get('/tools', async (req, res) => {
     const tools = await Promise.all(
       Object.values(TOOL_SERVERS).map(async (tool) => {
-        let running;
-        let health = null;
-        try {
-          const probe = await axios.get(`${tool.url}/health`, { timeout: 3000 });
-          running = true;
-          health = probe.data || null;
-        } catch {
-          running = false;
+        const { running, health } = await probeHealth(tool);
+        // Determine the URL the frontend should use for tool calls
+        // From inside container, use internal Docker URL; from host, use localhost with mapped ports
+        let hostUrl = tool.url;
+        if (IN_DOCKER) {
+          const portMatch = tool.ports.match(/^(\d+):/);
+          if (portMatch) {
+            hostUrl = `http://localhost:${portMatch[1]}`;
+          }
         }
         return {
           key: tool.key,
           name: tool.name,
           description: tool.description,
-          url: tool.url,
+          url: hostUrl,  // Use host-accessible URL for frontend
           serviceKey: tool.serviceKey,
           composeService: tool.composeService,
           ports: tool.ports,

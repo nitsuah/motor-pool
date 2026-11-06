@@ -45,6 +45,8 @@ try {
       // dashboard's live session snapshot and BYOK endpoint store.
       SESSION_SNAPSHOT_PATH: join(testDataDir, `${f}.sessions.json`),
       ENDPOINT_STORE_PATH: join(testDataDir, `${f}.endpoints.json`),
+      // TokenEconomizer state (evidence, history, config) stays per-test too.
+      TOKEN_ECONOMIZER_DIR: join(testDataDir, `${f}.tokeneconomizer`),
     };
     try {
       execFileSync(process.execPath, args, { stdio: 'inherit', env });

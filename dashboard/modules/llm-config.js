@@ -131,6 +131,7 @@ export const OPENLLM_ENABLED = isTruthyEnv(process.env.OPENLLM_ENABLED);
 
 export const TOOL_CONTENT_GEN_URL = process.env.TOOL_CONTENT_GEN_URL || 'http://tool-content-gen:3200';
 export const TOOL_WEBSITE_URL = process.env.TOOL_WEBSITE_URL || 'http://tool-website:3201';
+export const TOKEN_ECONOMIZER_URL = process.env.TOKEN_ECONOMIZER_URL || 'http://tool-tokeneconomizer:3202';
 
 export const TOOL_SERVERS = {
   content_gen: {
@@ -150,5 +151,14 @@ export const TOOL_SERVERS = {
     serviceKey: 'tool_website',
     composeService: 'tool-website',
     ports: '3201:3201',
+  },
+  tokeneconomizer: {
+    key: 'tokeneconomizer',
+    name: 'TokenEconomizer',
+    description: 'Microsoft token cost optimization — microskills, tool pruning, loop guard.',
+    url: TOKEN_ECONOMIZER_URL,
+    serviceKey: 'tool_tokeneconomizer',
+    composeService: 'tool-tokeneconomizer',
+    ports: '3202:3202',
   },
 };

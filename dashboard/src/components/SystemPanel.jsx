@@ -4,6 +4,7 @@ import ServiceRow from './ServiceRow.jsx';
 import ByokEndpointForm from './ByokEndpointForm.jsx';
 import ServiceDiscovery from './ServiceDiscovery.jsx';
 import { BACKEND_TYPES } from '../constants/app-config.js';
+import TokenEconomizerPanel from './TokenEconomizerPanel.jsx';
 
 const SVC_ORDER = ['ollama', 'tool_content_gen', 'tool_website', 'docker-runner', 'nemoclaw', 'llm_openllm', 'bb_mcp'];
 
@@ -19,6 +20,7 @@ function SystemPanel({
   const [diagResults, setDiagResults] = useState(null);
   const [diagBusy, setDiagBusy] = useState(false);
   const [byokEndpoints, setByokEndpoints] = useState([]);
+  const [showTokenEconomizer, setShowTokenEconomizer] = useState(false);
 
   const fetchByokEndpoints = useCallback(async () => {
     try {
@@ -109,6 +111,9 @@ function SystemPanel({
 
   return (
     <aside className="drawer drawer-right">
+      {showTokenEconomizer && (
+        <TokenEconomizerPanel onClose={() => setShowTokenEconomizer(false)} />
+      )}
       <div className="drawer-header">
         <h2>System</h2>
         <span title={deviceTitle} style={{ fontSize: '1rem', cursor: 'default', color: deviceColor, display: 'flex', alignItems: 'center' }}>
@@ -118,6 +123,7 @@ function SystemPanel({
           {darkMode ? '☀️' : '🌙'}
         </button>
         <button className={`icon-btn ${showMetricsPanel ? 'active' : ''}`} onClick={onToggleMetrics} title="Metrics">📊</button>
+        <button className={`icon-btn ${showTokenEconomizer ? 'active' : ''}`} onClick={() => setShowTokenEconomizer(p => !p)} title="TokenEconomizer">💰</button>
         <button className="icon-btn" onClick={onClose} title="Close">✕</button>
       </div>
 

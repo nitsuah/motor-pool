@@ -1,6 +1,7 @@
 import axios from 'axios';
 import { buildSystemMessages, outputFiltersActive } from '../safety.js';
 import { preflightTurn, ensureTurnTool, finalizeReply, recordTurnError } from '../modules/session-turn.js';
+import { TokenEconomizer } from '../modules/token-economizer.js';
 
 /**
  * POST /api/sessions/:id/stream — SSE frames: token | reset | tool_call | done | error.
@@ -18,7 +19,7 @@ export async function handleSessionStream(req, res, deps) {
   const {
     sessions, LLM_CONFIG, DEVICE_PROFILE,
     resolveEndpointUrl, prepareSessionForLlmCall,
-    getExperienceTools, runAgentLoop, activeDockerRunnerModelRef, logStructured,
+    getExperienceTools, runAgentLoop, activeDockerRunnerModelRef, logStructured, repoRoot,
   } = deps;
   const session = sessions.get(req.params.id);
   if (!session) return res.status(404).json({ success: false, error: 'Session not found' });
@@ -88,10 +89,10 @@ export async function handleSessionStream(req, res, deps) {
       activeDockerRunnerModelRef.current = { key: session.endpoint, model: session.model, at: new Date() };
     }
     llmUrl = prepared.llmUrl;
-    const { apiStyle } = prepared;
+    const { apiStyle, microskills = [] } = prepared;
     const apiKey = LLM_CONFIG[session.endpoint]?.apiKey || null;
     const streamHeaders = apiKey ? { Authorization: `Bearer ${apiKey}` } : {};
-    const systemMessages = buildSystemMessages({ ...session, safetyMode });
+    const systemMessages = buildSystemMessages({ ...session, safetyMode }, microskills);
     const historyMessages = session.messages.map(m => ({ role: m.role, content: m.content }));
     const msgs = [...systemMessages, ...historyMessages];
 
@@ -105,9 +106,12 @@ export async function handleSessionStream(req, res, deps) {
       if (clientGone) upstream.abort();
       let streamedContent = false;
       try {
+        const teRepoRoot = session.repoRoot || repoRoot;
+        const recordTool = TokenEconomizer.createToolUseRecorder({ session, repoRoot: teRepoRoot, logStructured });
         const { content: loopContent, toolLog } = await runAgentLoop(
           msgs, apiStyle, llmUrl, streamHeaders, experienceStreamTools, session,
           {
+            repoRoot: teRepoRoot,
             stream: true,
             signal: upstream.signal,
             onToken: buffered ? undefined : (content) => {
@@ -118,7 +122,10 @@ export async function handleSessionStream(req, res, deps) {
               streamedContent = false;
               send({ type: 'reset' });
             },
-            onToolCall: (entry) => send({ type: 'tool_call', tool: entry.name, args: entry.args, result: entry.result }),
+            onToolCall: (entry) => {
+              send({ type: 'tool_call', tool: entry.name, args: entry.args, result: entry.result });
+              recordTool(entry);
+            },
           },
         );
         const reply = finishReply(loopContent, { toolLog });

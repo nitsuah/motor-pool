@@ -276,15 +276,20 @@ export function detectPII(text) {
 
 // ============ PROMPT WRAPPER ============
 
-export function buildSystemMessages(session) {
+export function buildSystemMessages(session, microskills = []) {
   const experience = EXPERIENCE_CONFIGS[session.experience] || EXPERIENCE_CONFIGS.developer;
   const safetyMode = session.safetyMode || experience.safetyMode || 'standard';
   const safety = SAFETY_CONFIGS[safetyMode] || SAFETY_CONFIGS.standard;
 
+  const microskillPrompt = microskills.length > 0
+    ? `\n\nLearned micro-skills (apply when relevant):\n${microskills.map((f, i) => `${i + 1}. ${f}`).join('\n')}`
+    : '';
+
   const systemContent = [
     safety.systemPrompt,
     experience.systemPromptSuffix,
-    session.userRole ? `The user has identified as: ${session.userRole}.` : null
+    session.userRole ? `The user has identified as: ${session.userRole}.` : null,
+    microskillPrompt
   ].filter(Boolean).join(' ');
 
   return [{ role: 'system', content: systemContent }];

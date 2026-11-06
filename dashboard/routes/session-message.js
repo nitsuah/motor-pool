@@ -1,10 +1,11 @@
 import { buildSystemMessages } from '../safety.js';
 import { preflightTurn, ensureTurnTool, finalizeReply, recordTurnError } from '../modules/session-turn.js';
+import { TokenEconomizer } from '../modules/token-economizer.js';
 
 export async function handleSessionMessage(req, res, deps) {
   const {
     sessions, LLM_CONFIG, prepareSessionForLlmCall,
-    getExperienceTools, runAgentLoop, activeDockerRunnerModelRef, logStructured,
+    getExperienceTools, runAgentLoop, activeDockerRunnerModelRef, logStructured, repoRoot,
   } = deps;
   const session = sessions.get(req.params.id);
   if (!session) return res.status(404).json({ success: false, error: 'Session not found' });
@@ -38,16 +39,20 @@ export async function handleSessionMessage(req, res, deps) {
     if (LLM_CONFIG[session.endpoint]?.backendType === 'docker-runner') {
       activeDockerRunnerModelRef.current = { key: session.endpoint, model: session.model, at: new Date() };
     }
-    const { llmUrl, apiStyle } = prepared;
+    const { llmUrl, apiStyle, microskills = [] } = prepared;
     const apiKey = LLM_CONFIG[session.endpoint]?.apiKey || null;
     const llmHeaders = apiKey ? { Authorization: `Bearer ${apiKey}` } : {};
 
-    const systemMessages = buildSystemMessages({ ...session, safetyMode: turn.safetyMode });
+    const systemMessages = buildSystemMessages({ ...session, safetyMode: turn.safetyMode }, microskills);
     const historyMessages = session.messages.map(m => ({ role: m.role, content: m.content }));
     const msgs = [...systemMessages, ...historyMessages];
 
     const experienceTools = useSafeMode ? [] : getExperienceTools(session.experience);
-    const { content: assistantMessage, toolLog } = await runAgentLoop(msgs, apiStyle, llmUrl, llmHeaders, experienceTools, session);
+    const teRepoRoot = session.repoRoot || repoRoot;
+    const { content: assistantMessage, toolLog } = await runAgentLoop(msgs, apiStyle, llmUrl, llmHeaders, experienceTools, session, {
+      repoRoot: teRepoRoot,
+      onToolCall: TokenEconomizer.createToolUseRecorder({ session, repoRoot: teRepoRoot, logStructured }),
+    });
 
     const reply = finalizeReply(session, assistantMessage, turn.safetyMode, deps, { latencyMs: Date.now() - msgStart, toolLog });
 
