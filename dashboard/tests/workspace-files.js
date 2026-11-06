@@ -5,6 +5,9 @@
 import assert from 'node:assert/strict';
 
 process.env.AGENT_DASHBOARD_DISABLE_LISTEN = '1';
+// The exec cases below check validation and output, so the WORKSPACE_EXEC opt-in is on here.
+// workspace-exec-flag.js covers the disabled (403) path.
+process.env.WORKSPACE_EXEC = '1';
 
 const { app } = await import('../server.js');
 

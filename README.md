@@ -388,6 +388,9 @@ To let agents edit a real project instead, set `WORKSPACE_PATH` in `.env` and
 apply the `docker-compose.workspace.yml` overlay (it sets `WORKSPACE_SANDBOX=false`).
 Paths are always confined to the workspace root to prevent traversal.
 
+Shell execution (the `/workspace/exec` route and the agent `bash` tool) is off by
+default. Set `WORKSPACE_EXEC=1` in `.env` to enable it.
+
 - `GET /api/workspace/status` — Workspace mount status and git repo info
 - `GET /api/workspace/ls` — List a workspace directory
 - `GET /api/workspace/read` — Read a workspace file (max 1 MB)

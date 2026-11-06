@@ -4,6 +4,7 @@ import { stat, readFile, writeFile, mkdir, readdir } from 'fs/promises';
 import { lstatSync, realpathSync } from 'fs';
 import { resolve as resolvePath, dirname } from 'path';
 import { mcpRequest } from './mcp-helpers.js';
+import { shellExecEnabled } from './exec-flag.js';
 
 export const DEVELOPER_TOOLS = [
   {
@@ -245,7 +246,9 @@ export function createAgentHelpers({ WORKSPACE_ROOT, execAsync, TOOL_SERVERS, TO
     const TOOL_USING_EXPERIENCES = new Set(['developer', 'research', 'website']);
     const base = (() => {
       switch (experience) {
-        case 'developer': return WORKSPACE_ROOT ? DEVELOPER_TOOLS : [];
+        case 'developer':
+          if (!WORKSPACE_ROOT) return [];
+          return shellExecEnabled() ? DEVELOPER_TOOLS : DEVELOPER_TOOLS.filter(t => t.function?.name !== 'bash');
         case 'research': return RESEARCH_TOOLS;
         case 'website': return WEBSITE_AGENT_TOOLS;
         default: return [];
@@ -259,6 +262,7 @@ export function createAgentHelpers({ WORKSPACE_ROOT, execAsync, TOOL_SERVERS, TO
   async function callAgentTool(toolName, toolArgs, session) {
     try {
       if (toolName === 'bash') {
+        if (!shellExecEnabled()) return JSON.stringify({ error: 'Shell execution is disabled (WORKSPACE_EXEC is not set)' });
         if (!WORKSPACE_ROOT) return JSON.stringify({ error: 'Workspace not mounted (WORKSPACE_ROOT not set)' });
         const { command } = toolArgs;
         if (BASH_BLOCKLIST.some(p => String(command).includes(p))) {
