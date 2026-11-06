@@ -18,7 +18,7 @@ const SESSION_ID = /^[\w-]+$/;
  */
 export function saveOutput(sessionId, filename, content) {
   if (!SESSION_ID.test(String(sessionId))) throw new Error('Invalid session id');
-  const safeId = String(sessionId);
+  const safeId = path.basename(String(sessionId));
   const safeName = path.basename(filename);
   const dir = path.resolve(TMP_ROOT, safeId);
   mkdirSync(dir, { recursive: true });
@@ -30,7 +30,7 @@ export function saveOutput(sessionId, filename, content) {
 
 router.get('/sessions/:id/outputs', async (req, res) => {
   if (!SESSION_ID.test(req.params.id)) return res.status(400).end();
-  const dir = path.resolve(TMP_ROOT, req.params.id);
+  const dir = path.resolve(TMP_ROOT, path.basename(req.params.id)); // id already validated; basename keeps the base-directory guard explicit
   try {
     const files = await readdir(dir).catch(() => []);
     const results = await Promise.all(files.map(async f => {
@@ -43,7 +43,7 @@ router.get('/sessions/:id/outputs', async (req, res) => {
 
 router.get('/sessions/:id/outputs/:filename', (req, res) => {
   if (!SESSION_ID.test(req.params.id)) return res.status(400).end();
-  const dir = path.resolve(TMP_ROOT, req.params.id);
+  const dir = path.resolve(TMP_ROOT, path.basename(req.params.id)); // id already validated; basename keeps the base-directory guard explicit
   const safe = path.resolve(dir, req.params.filename);
   if (!safe.startsWith(dir + path.sep) && safe !== dir) return res.status(403).end();
   res.download(safe, (err) => {
