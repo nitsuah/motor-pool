@@ -14,14 +14,14 @@ import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/streamableHttp.js';
 import express from 'express';
 import axios from 'axios';
-import { exec } from 'child_process';
+import { execFile } from 'child_process';
 import { promisify } from 'util';
 import { fileURLToPath } from 'url';
 import { dirname, join } from 'path';
 import dotenv from 'dotenv';
 import { z } from 'zod';
 
-const execAsync = promisify(exec);
+const execFileAsync = promisify(execFile);
 
 dotenv.config();
 
@@ -163,13 +163,12 @@ function buildServer() {
       anthropic_key: z.string().optional().describe('Anthropic API key'),
     },
     async ({ pexels_key, gemini_key, anthropic_key }) => {
-      const args = [
-        pexels_key    ? `-PexelsKey "${pexels_key}"`    : '',
-        gemini_key    ? `-GeminiKey "${gemini_key}"`    : '',
-        anthropic_key ? `-AnthropicKey "${anthropic_key}"` : '',
-      ].filter(Boolean).join(' ');
-      const { stdout, stderr } = await execAsync(
-        `pwsh -File "${SCRIPTS_DIR}/setup.ps1" ${args}`,
+      const args = [];
+      if (pexels_key)    args.push(`-PexelsKey:${pexels_key}`);
+      if (gemini_key)    args.push(`-GeminiKey:${gemini_key}`);
+      if (anthropic_key) args.push(`-AnthropicKey:${anthropic_key}`);
+      const { stdout, stderr } = await execFileAsync(
+        'pwsh', ['-File', join(SCRIPTS_DIR, 'setup.ps1'), ...args],
         { timeout: 120_000 }
       );
       return { content: [{ type: 'text', text: stdout + (stderr ? `\nSTDERR: ${stderr}` : '') }] };

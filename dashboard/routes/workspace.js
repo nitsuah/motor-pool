@@ -44,29 +44,18 @@ function isRealPathInside(root, abs) {
   }
 }
 
-function stripLeadingSlashes(value) {
-  let start = 0;
-  while (start < value.length && value[start] === '/') start++;
-  return value.slice(start);
-}
-
-function stripTrailingSlashes(value) {
-  let end = value.length;
-  while (end > 0 && value[end - 1] === '/') end--;
-  return value.slice(0, end);
-}
-
 export function createWorkspaceRouter(WORKSPACE_ROOT) {
   const router = express.Router();
 
   function resolveWorkspacePath(reqPath) {
     if (!WORKSPACE_ROOT || typeof reqPath !== 'string') return null;
+    if (reqPath.includes('\0')) return null;
     const safe = reqPath ? reqPath.replace(/\\/g, '/').replace(/^\/+/, '') : '';
-    const abs = resolvePath(WORKSPACE_ROOT, safe);
-    // Use normalized paths for comparison to prevent path traversal
-    const normalizedRoot = stripTrailingSlashes(WORKSPACE_ROOT.replaceAll('\\', '/'));
-    const normalizedAbs = stripTrailingSlashes(abs.replaceAll('\\', '/'));
-    if (normalizedAbs !== normalizedRoot && !normalizedAbs.startsWith(normalizedRoot + '/')) return null;
+    const rootAbs = resolvePath(WORKSPACE_ROOT);
+    const rootPrefix = rootAbs.endsWith(sep) ? rootAbs : rootAbs + sep;
+    const abs = resolvePath(rootAbs, safe);
+    // The containment check and the returned value are the same resolved string.
+    if (abs !== rootAbs && !abs.startsWith(rootPrefix)) return null;
     if (!isRealPathInside(WORKSPACE_ROOT, abs)) return null;
     return abs;
   }
@@ -188,15 +177,12 @@ export function createWorkspaceRouter(WORKSPACE_ROOT) {
         for (const f of files) {
           const abs = resolveWorkspacePath(f);
           if (!abs) return res.status(400).json({ error: `Invalid path: ${f}` });
-          // codeql[js/incomplete-sanitization]: Input path validated via resolveWorkspacePath() against WORKSPACE_ROOT; backslashes escaped before quotes for safe shell interpolation
-          await execAsync(`git add "${abs.replace(/\\/g, '\\\\').replace(/"/g, '\\"')}"`, { cwd: WORKSPACE_ROOT });
+          await execFileAsync('git', ['--literal-pathspecs', 'add', '--', abs], { cwd: WORKSPACE_ROOT });
         }
       } else {
-        await execAsync('git add -A', { cwd: WORKSPACE_ROOT });
+        await execFileAsync('git', ['add', '-A'], { cwd: WORKSPACE_ROOT });
       }
-      // codeql[js/incomplete-sanitization]: Commit message escaped for shell safety; backslashes escaped before quotes prevents injection via trailing backslash
-      const safeMsg = message.replace(/\\/g, '\\\\').replace(/"/g, '\\"');
-      await execAsync(`git commit -m "${safeMsg}"`, { cwd: WORKSPACE_ROOT });
+      await execFileAsync('git', ['commit', '-m', String(message)], { cwd: WORKSPACE_ROOT });
       const sha = await gitInWorkspace('rev-parse', '--short', 'HEAD');
       const branch = await gitInWorkspace('rev-parse', '--abbrev-ref', 'HEAD');
       res.json({ sha, branch, message });
@@ -209,7 +195,7 @@ export function createWorkspaceRouter(WORKSPACE_ROOT) {
     if (!WORKSPACE_ROOT) return res.status(503).json({ error: 'Workspace not configured' });
     try {
       const branch = await gitInWorkspace('rev-parse', '--abbrev-ref', 'HEAD');
-      await execAsync('git push', { cwd: WORKSPACE_ROOT });
+      await execFileAsync('git', ['push'], { cwd: WORKSPACE_ROOT });
       res.json({ branch });
     } catch (err) {
       res.status(500).json({ error: err.message });
@@ -280,8 +266,9 @@ export function createWorkspaceRouter(WORKSPACE_ROOT) {
     const { query } = req.body || {};
     if (!query) return res.status(400).json({ error: 'query is required' });
     try {
-      const { stdout } = await execAsync(
-        `grep -rl "${query.replace(/"/g, '\\"')}" --include="*" --exclude-dir=".git" --exclude-dir="node_modules" .`,
+      const { stdout } = await execFileAsync(
+        'grep',
+        ['-rl', '--exclude-dir=.git', '--exclude-dir=node_modules', '-e', String(query), '.'],
         { cwd: WORKSPACE_ROOT, timeout: 10000 }
       );
       const files = stdout.split('\n').map(f => f.replace(/^\.\//, '')).filter(Boolean);
@@ -313,12 +300,15 @@ export function createWorkspaceRouter(WORKSPACE_ROOT) {
     if (!WORKSPACE_ROOT) return res.status(503).json({ error: 'Workspace not configured' });
     const { branch, create } = req.body || {};
     if (!branch) return res.status(400).json({ error: 'branch is required' });
-    const safe = branch.replace(/[^a-zA-Z0-9/_.-]/g, '');
+    const safe = String(branch).replace(/[^a-zA-Z0-9/_.-]/g, '');
+    if (!safe || safe.startsWith('-') || safe.includes('..')) {
+      return res.status(400).json({ error: 'Invalid branch name' });
+    }
     try {
       if (create) {
-        await execAsync(`git checkout -b ${safe}`, { cwd: WORKSPACE_ROOT });
+        await execFileAsync('git', ['checkout', '-b', safe], { cwd: WORKSPACE_ROOT });
       } else {
-        await execAsync(`git checkout ${safe}`, { cwd: WORKSPACE_ROOT });
+        await execFileAsync('git', ['checkout', safe, '--'], { cwd: WORKSPACE_ROOT }); // trailing -- forces a revision, never a pathspec
       }
       const current = await gitInWorkspace('rev-parse', '--abbrev-ref', 'HEAD');
       res.json({ branch: current });
@@ -330,7 +320,7 @@ export function createWorkspaceRouter(WORKSPACE_ROOT) {
   router.post('/workspace/git/pull', async (req, res) => {
     if (!WORKSPACE_ROOT) return res.status(503).json({ error: 'Workspace not configured' });
     try {
-      const { stdout, stderr } = await execAsync('git pull', { cwd: WORKSPACE_ROOT, timeout: 30000 });
+      const { stdout, stderr } = await execFileAsync('git', ['pull'], { cwd: WORKSPACE_ROOT, timeout: 30000 });
       res.json({ result: (stdout || stderr).trim() });
     } catch (err) {
       res.status(500).json({ error: err.stderr || err.message });
@@ -363,9 +353,9 @@ export function createWorkspaceRouter(WORKSPACE_ROOT) {
       if (file) {
         const abs = resolveWorkspacePath(file);
         if (!abs) return res.status(400).json({ error: 'Invalid path' });
-        await execAsync(`git checkout -- "${abs.replace(/"/g, '\\"')}"`, { cwd: WORKSPACE_ROOT });
+        await execFileAsync('git', ['--literal-pathspecs', 'checkout', '--', abs], { cwd: WORKSPACE_ROOT });
       } else {
-        await execAsync('git checkout -- .', { cwd: WORKSPACE_ROOT });
+        await execFileAsync('git', ['checkout', '--', '.'], { cwd: WORKSPACE_ROOT });
       }
       res.json({ ok: true });
     } catch (err) {

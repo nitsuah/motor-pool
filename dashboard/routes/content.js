@@ -30,14 +30,15 @@ export function createContentRouter({ WEBSITE_OUTPUT_DIR, WORKSPACE_ROOT }) {
   router.get('/content/clients/:slug/files', async (req, res) => {
     const { slug } = req.params;
     if (!/^[\w-]+$/.test(slug)) return res.status(400).json({ success: false, error: 'Invalid slug' });
-    const clientDir = join(WEBSITE_OUTPUT_DIR, slug);
+    const clientDirAbs = resolvePath(WEBSITE_OUTPUT_DIR, slug);
     try {
       const files = [];
       async function walk(dir, prefix) {
         let entries;
         try { entries = await readdir(dir); } catch { return; }
         for (const entry of entries) {
-          const full = join(dir, entry);
+          const full = resolvePath(dir, entry);
+          if (full !== clientDirAbs && !full.startsWith(clientDirAbs + sep)) continue;
           const rel  = prefix ? `${prefix}/${entry}` : entry;
           try {
             const s = await stat(full);
@@ -49,7 +50,7 @@ export function createContentRouter({ WEBSITE_OUTPUT_DIR, WORKSPACE_ROOT }) {
           } catch { /* skip */ }
         }
       }
-      await walk(clientDir, '');
+      await walk(clientDirAbs, '');
       res.json({ success: true, slug, files });
     } catch (err) {
       res.status(500).json({ success: false, error: err.message });
@@ -86,7 +87,7 @@ export function createContentRouter({ WEBSITE_OUTPUT_DIR, WORKSPACE_ROOT }) {
     const filePath = Array.isArray(req.params.splat) ? req.params.splat.join('/') : req.params.splat;
     if (!filePath) return res.status(400).json({ success: false, error: 'Missing file path' });
     const fullPath = resolvePath(join(WEBSITE_OUTPUT_DIR, slug, filePath));
-    if (!fullPath.startsWith(resolvePath(WEBSITE_OUTPUT_DIR))) {
+    if (!fullPath.startsWith(resolvePath(WEBSITE_OUTPUT_DIR, slug) + sep)) {
       return res.status(403).json({ success: false, error: 'Path traversal blocked' });
     }
     if (!existsSync(fullPath)) return res.status(404).json({ success: false, error: 'File not found' });

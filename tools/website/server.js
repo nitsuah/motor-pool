@@ -14,7 +14,7 @@
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/streamableHttp.js';
 import express from 'express';
-import { exec } from 'child_process';
+import { execFile } from 'child_process';
 import { promisify } from 'util';
 import { fileURLToPath } from 'url';
 import { dirname, join, resolve } from 'path';
@@ -24,7 +24,7 @@ import { z } from 'zod';
 
 dotenv.config();
 
-const execAsync = promisify(exec);
+const execFileAsync = promisify(execFile);
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const SCRIPTS_DIR   = join(__dirname, 'scripts');
 const TEMPLATES_DIR = join(__dirname, 'templates');
@@ -52,17 +52,23 @@ async function runPs1(script, args = {}) {
   // as well as on the host (tools/website/scripts/../output).
   const withOutputDir = { OutputDir: OUTPUT_DIR, ...args };
 
-  const argStr = Object.entries(withOutputDir)
-    .filter(([, v]) => v !== undefined && v !== null && v !== '')
-    .map(([k, v]) => {
-      if (typeof v === 'boolean') return v ? `-${k}` : '';
-      return `-${k} "${String(v).replace(/"/g, '`"')}"`;
-    })
-    .filter(Boolean)
-    .join(' ');
+  if (!/^[\w-]+$/.test(script)) throw new Error(`Invalid script name: ${script}`);
 
-  const cmd = `pwsh -File "${SCRIPTS_DIR}/${script}.ps1" ${argStr}`;
-  const { stdout, stderr } = await execAsync(cmd, { timeout: 120_000 });
+  const argv = [];
+  for (const [k, v] of Object.entries(withOutputDir)) {
+    if (v === undefined || v === null || v === '') continue;
+    if (typeof v === 'boolean') {
+      if (v) argv.push(`-${k}`);
+      continue;
+    }
+    argv.push(`-${k}:${String(v)}`); // colon form binds the value literally, even when it starts with '-'
+  }
+
+  const scriptPath = join(SCRIPTS_DIR, `${script}.ps1`);
+  const { stdout, stderr } = await execFileAsync(
+    'pwsh', ['-File', scriptPath, ...argv],
+    { timeout: 120_000 },
+  );
   return stdout + (stderr ? `\nSTDERR:\n${stderr}` : '');
 }
 
@@ -135,7 +141,7 @@ function buildServer() {
     'Save Claude-generated content (pitch deck HTML, site HTML, email text, etc.) to a client output folder. ' +
     'Always use this after Claude generates website or pitch content.',
     {
-      slug:    z.string().describe('Client slug (e.g. "acme-pizza-90210")'),
+      slug:    z.string().regex(/^[\w-]+$/).describe('Client slug (e.g. "acme-pizza-90210")'),
       subdir:  z.enum(['pitch', 'site', 'invoice', 'scrape']).describe('Output sub-folder'),
       filename: z.string().describe('File name (e.g. "index.html", "cold-email.txt")'),
       content: z.string().describe('File content to write'),
@@ -154,7 +160,7 @@ function buildServer() {
     'read_file',
     'Read a previously saved client file (e.g. to review generated site HTML or leads data).',
     {
-      slug:     z.string(),
+      slug:     z.string().regex(/^[\w-]+$/),
       subdir:   z.enum(['pitch', 'site', 'invoice', 'scrape']),
       filename: z.string(),
     },
@@ -171,7 +177,7 @@ function buildServer() {
   server.tool(
     'list_client_files',
     'List all generated files for a client slug.',
-    { slug: z.string() },
+    { slug: z.string().regex(/^[\w-]+$/) },
     async ({ slug }) => {
       const clientDir = safeOutputPath(slug);
       if (!existsSync(clientDir)) {
@@ -200,7 +206,7 @@ function buildServer() {
     'deploy_site',
     'Deploy a generated site to Netlify. Requires `netlify login` to have been run on the host.',
     {
-      slug:      z.string().describe('Client slug matching the output/{slug}/site/ directory'),
+      slug:      z.string().regex(/^[\w-]+$/).describe('Client slug matching the output/{slug}/site/ directory'),
       site_name: z.string().optional().describe('Custom Netlify subdomain (slug used if blank)'),
       draft:     z.boolean().default(false).describe('Preview deploy instead of production'),
     },
@@ -219,7 +225,7 @@ function buildServer() {
     'create_invoice',
     'Generate a professional HTML invoice for a client. Open in browser and print to PDF.',
     {
-      slug:        z.string().describe('Client slug'),
+      slug:        z.string().regex(/^[\w-]+$/).describe('Client slug'),
       client_name: z.string().describe('Business name shown on the invoice'),
       amount:      z.number().default(500).describe('Invoice amount in USD'),
       description: z.string().optional().describe('Line item description'),
