@@ -396,11 +396,13 @@ export function createSessionsRouter({
     if (typeof positive !== 'boolean') return res.status(400).json({ success: false, error: 'positive (boolean) is required' });
     if (!Number.isInteger(messageIndex)) return res.status(400).json({ success: false, error: 'messageIndex must be an integer' });
     if (messageIndex < 0 || messageIndex >= session.messages.length) return res.status(400).json({ success: false, error: 'messageIndex is out of range' });
-    if (session.messages[messageIndex]?.role !== 'assistant') return res.status(400).json({ success: false, error: 'Feedback can only be recorded for assistant messages' });
-    if (session.messages[messageIndex]?.feedback) return res.status(409).json({ success: false, error: 'Feedback already submitted for this message' });
+    const idx = Number(messageIndex);
+    const msg = session.messages[idx];
+    if (msg?.role !== 'assistant') return res.status(400).json({ success: false, error: 'Feedback can only be recorded for assistant messages' });
+    if (msg?.feedback) return res.status(409).json({ success: false, error: 'Feedback already submitted for this message' });
 
-    session.messages[messageIndex].feedback = positive ? 'up' : 'down';
-    session.messages[messageIndex].feedbackAt = new Date();
+    msg.feedback = positive ? 'up' : 'down';
+    msg.feedbackAt = new Date();
     session.updatedAt = new Date();
     upsertSessionContext(session, logStructured);
 

@@ -27,7 +27,7 @@ export function saveOutput(sessionId, filename, content) {
 }
 
 router.get('/sessions/:id/outputs', async (req, res) => {
-  const dir = path.join(TMP_ROOT, path.basename(req.params.id));
+  const dir = path.resolve(TMP_ROOT, path.basename(req.params.id));
   try {
     const files = await readdir(dir).catch(() => []);
     const results = await Promise.all(files.map(async f => {
@@ -39,7 +39,7 @@ router.get('/sessions/:id/outputs', async (req, res) => {
 });
 
 router.get('/sessions/:id/outputs/:filename', (req, res) => {
-  const dir = path.join(TMP_ROOT, path.basename(req.params.id));
+  const dir = path.resolve(TMP_ROOT, path.basename(req.params.id));
   const safe = path.resolve(dir, req.params.filename);
   if (!safe.startsWith(dir + path.sep) && safe !== dir) return res.status(403).end();
   res.download(safe, (err) => {

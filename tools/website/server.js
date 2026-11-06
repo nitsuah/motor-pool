@@ -14,7 +14,7 @@
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/streamableHttp.js';
 import express from 'express';
-import { exec } from 'child_process';
+import { execFile } from 'child_process';
 import { promisify } from 'util';
 import { fileURLToPath } from 'url';
 import { dirname, join, resolve } from 'path';
@@ -24,7 +24,7 @@ import { z } from 'zod';
 
 dotenv.config();
 
-const execAsync = promisify(exec);
+const execFileAsync = promisify(execFile);
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const SCRIPTS_DIR   = join(__dirname, 'scripts');
 const TEMPLATES_DIR = join(__dirname, 'templates');
@@ -52,17 +52,23 @@ async function runPs1(script, args = {}) {
   // as well as on the host (tools/website/scripts/../output).
   const withOutputDir = { OutputDir: OUTPUT_DIR, ...args };
 
-  const argStr = Object.entries(withOutputDir)
-    .filter(([, v]) => v !== undefined && v !== null && v !== '')
-    .map(([k, v]) => {
-      if (typeof v === 'boolean') return v ? `-${k}` : '';
-      return `-${k} "${String(v).replace(/"/g, '`"')}"`;
-    })
-    .filter(Boolean)
-    .join(' ');
+  if (!/^[\w-]+$/.test(script)) throw new Error(`Invalid script name: ${script}`);
 
-  const cmd = `pwsh -File "${SCRIPTS_DIR}/${script}.ps1" ${argStr}`;
-  const { stdout, stderr } = await execAsync(cmd, { timeout: 120_000 });
+  const argv = [];
+  for (const [k, v] of Object.entries(withOutputDir)) {
+    if (v === undefined || v === null || v === '') continue;
+    if (typeof v === 'boolean') {
+      if (v) argv.push(`-${k}`);
+      continue;
+    }
+    argv.push(`-${k}`, String(v));
+  }
+
+  const scriptPath = join(SCRIPTS_DIR, `${script}.ps1`);
+  const { stdout, stderr } = await execFileAsync(
+    'pwsh', ['-File', scriptPath, ...argv],
+    { timeout: 120_000 },
+  );
   return stdout + (stderr ? `\nSTDERR:\n${stderr}` : '');
 }
 
