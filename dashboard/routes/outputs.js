@@ -10,15 +10,17 @@ import path from 'path';
 
 const router = Router();
 const TMP_ROOT = path.join(process.cwd(), 'tmp');
+const SESSION_ID = /^[\w-]+$/;
 
 /**
  * Save a file to the session's output directory.
  * Called from server code when a tool or agent produces output.
  */
 export function saveOutput(sessionId, filename, content) {
-  const safeId = path.basename(sessionId);
+  if (!SESSION_ID.test(String(sessionId))) throw new Error('Invalid session id');
+  const safeId = String(sessionId);
   const safeName = path.basename(filename);
-  const dir = path.join(TMP_ROOT, safeId);
+  const dir = path.resolve(TMP_ROOT, safeId);
   mkdirSync(dir, { recursive: true });
   const filePath = path.resolve(dir, safeName);
   if (!filePath.startsWith(dir + path.sep)) throw new Error('Invalid output path');
@@ -27,7 +29,8 @@ export function saveOutput(sessionId, filename, content) {
 }
 
 router.get('/sessions/:id/outputs', async (req, res) => {
-  const dir = path.resolve(TMP_ROOT, path.basename(req.params.id));
+  if (!SESSION_ID.test(req.params.id)) return res.status(400).end();
+  const dir = path.resolve(TMP_ROOT, req.params.id);
   try {
     const files = await readdir(dir).catch(() => []);
     const results = await Promise.all(files.map(async f => {
@@ -39,7 +42,8 @@ router.get('/sessions/:id/outputs', async (req, res) => {
 });
 
 router.get('/sessions/:id/outputs/:filename', (req, res) => {
-  const dir = path.resolve(TMP_ROOT, path.basename(req.params.id));
+  if (!SESSION_ID.test(req.params.id)) return res.status(400).end();
+  const dir = path.resolve(TMP_ROOT, req.params.id);
   const safe = path.resolve(dir, req.params.filename);
   if (!safe.startsWith(dir + path.sep) && safe !== dir) return res.status(403).end();
   res.download(safe, (err) => {

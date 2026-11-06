@@ -164,9 +164,9 @@ function buildServer() {
     },
     async ({ pexels_key, gemini_key, anthropic_key }) => {
       const args = [];
-      if (pexels_key)    args.push('-PexelsKey', pexels_key);
-      if (gemini_key)    args.push('-GeminiKey', gemini_key);
-      if (anthropic_key) args.push('-AnthropicKey', anthropic_key);
+      if (pexels_key)    args.push(`-PexelsKey:${pexels_key}`);
+      if (gemini_key)    args.push(`-GeminiKey:${gemini_key}`);
+      if (anthropic_key) args.push(`-AnthropicKey:${anthropic_key}`);
       const { stdout, stderr } = await execFileAsync(
         'pwsh', ['-File', join(SCRIPTS_DIR, 'setup.ps1'), ...args],
         { timeout: 120_000 }

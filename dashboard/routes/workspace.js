@@ -44,12 +44,6 @@ function isRealPathInside(root, abs) {
   }
 }
 
-function stripLeadingSlashes(value) {
-  let start = 0;
-  while (start < value.length && value[start] === '/') start++;
-  return value.slice(start);
-}
-
 export function createWorkspaceRouter(WORKSPACE_ROOT) {
   const router = express.Router();
 
@@ -183,7 +177,7 @@ export function createWorkspaceRouter(WORKSPACE_ROOT) {
         for (const f of files) {
           const abs = resolveWorkspacePath(f);
           if (!abs) return res.status(400).json({ error: `Invalid path: ${f}` });
-          await execFileAsync('git', ['add', '--', abs], { cwd: WORKSPACE_ROOT });
+          await execFileAsync('git', ['--literal-pathspecs', 'add', '--', abs], { cwd: WORKSPACE_ROOT });
         }
       } else {
         await execFileAsync('git', ['add', '-A'], { cwd: WORKSPACE_ROOT });
@@ -314,7 +308,7 @@ export function createWorkspaceRouter(WORKSPACE_ROOT) {
       if (create) {
         await execFileAsync('git', ['checkout', '-b', safe], { cwd: WORKSPACE_ROOT });
       } else {
-        await execFileAsync('git', ['checkout', safe], { cwd: WORKSPACE_ROOT });
+        await execFileAsync('git', ['checkout', safe, '--'], { cwd: WORKSPACE_ROOT }); // trailing -- forces a revision, never a pathspec
       }
       const current = await gitInWorkspace('rev-parse', '--abbrev-ref', 'HEAD');
       res.json({ branch: current });
@@ -359,7 +353,7 @@ export function createWorkspaceRouter(WORKSPACE_ROOT) {
       if (file) {
         const abs = resolveWorkspacePath(file);
         if (!abs) return res.status(400).json({ error: 'Invalid path' });
-        await execFileAsync('git', ['checkout', '--', abs], { cwd: WORKSPACE_ROOT });
+        await execFileAsync('git', ['--literal-pathspecs', 'checkout', '--', abs], { cwd: WORKSPACE_ROOT });
       } else {
         await execFileAsync('git', ['checkout', '--', '.'], { cwd: WORKSPACE_ROOT });
       }

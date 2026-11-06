@@ -167,6 +167,17 @@ try {
   assert.equal(res.status, 200, `discard: ${res.text}`);
   assert.equal(readFileSync(join(root, 'README.md'), 'utf8'), 'seed\n');
 
+  // A search query that looks like an option is still a pattern.
+  res = await request(port, { method: 'POST', path: '/api/workspace/search', body: { query: '-e' } });
+  assert.equal(res.status, 200, `option-like query is a pattern: ${res.text}`);
+  assert.ok(Array.isArray(res.body.files));
+
+  // Checkout of "." is a revision lookup (fails), never a discard of working-tree changes.
+  writeFileSync(join(root, 'README.md'), 'keep me\n');
+  res = await request(port, { method: 'POST', path: '/api/workspace/git/checkout', body: { branch: '.' } });
+  assert.notEqual(res.status, 200, `checkout "." is not a pathspec: ${res.text}`);
+  assert.equal(readFileSync(join(root, 'README.md'), 'utf8'), 'keep me\n');
+
   console.log('✓ All workspace argv and containment tests passed');
 } catch (err) {
   console.error('✗ FAIL:', err.message);
