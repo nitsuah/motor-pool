@@ -2,7 +2,6 @@ import axios from 'axios';
 import { buildSystemMessages, outputFiltersActive } from '../safety.js';
 import { preflightTurn, ensureTurnTool, finalizeReply, recordTurnError } from '../modules/session-turn.js';
 import { TokenEconomizer } from '../modules/token-economizer.js';
-const { recordToolUse } = TokenEconomizer;
 
 /**
  * POST /api/sessions/:id/stream — SSE frames: token | reset | tool_call | done | error.
@@ -107,10 +106,12 @@ export async function handleSessionStream(req, res, deps) {
       if (clientGone) upstream.abort();
       let streamedContent = false;
       try {
+        const teRepoRoot = session.repoRoot || repoRoot;
+        const recordTool = TokenEconomizer.createToolUseRecorder({ session, repoRoot: teRepoRoot, logStructured });
         const { content: loopContent, toolLog } = await runAgentLoop(
           msgs, apiStyle, llmUrl, streamHeaders, experienceStreamTools, session,
           {
-            repoRoot,
+            repoRoot: teRepoRoot,
             stream: true,
             signal: upstream.signal,
             onToken: buffered ? undefined : (content) => {
@@ -123,7 +124,7 @@ export async function handleSessionStream(req, res, deps) {
             },
             onToolCall: (entry) => {
               send({ type: 'tool_call', tool: entry.name, args: entry.args, result: entry.result });
-              recordToolUse(entry.name, session.experience, repoRoot).catch(e => logStructured('warn', 'token_economizer_record_failed', { tool: entry.name, error: e.message }));
+              recordTool(entry);
             },
           },
         );

@@ -1,7 +1,6 @@
 import { buildSystemMessages } from '../safety.js';
 import { preflightTurn, ensureTurnTool, finalizeReply, recordTurnError } from '../modules/session-turn.js';
 import { TokenEconomizer } from '../modules/token-economizer.js';
-const { recordToolUse } = TokenEconomizer;
 
 export async function handleSessionMessage(req, res, deps) {
   const {
@@ -49,11 +48,10 @@ export async function handleSessionMessage(req, res, deps) {
     const msgs = [...systemMessages, ...historyMessages];
 
     const experienceTools = useSafeMode ? [] : getExperienceTools(session.experience);
+    const teRepoRoot = session.repoRoot || repoRoot;
     const { content: assistantMessage, toolLog } = await runAgentLoop(msgs, apiStyle, llmUrl, llmHeaders, experienceTools, session, {
-      repoRoot,
-      onToolCall: ({ name, args, result, callId }) => {
-        recordToolUse(name, session.experience, repoRoot).catch(e => logStructured('warn', 'token_economizer_record_failed', { tool: name, error: e.message }));
-      }
+      repoRoot: teRepoRoot,
+      onToolCall: TokenEconomizer.createToolUseRecorder({ session, repoRoot: teRepoRoot, logStructured }),
     });
 
     const reply = finalizeReply(session, assistantMessage, turn.safetyMode, deps, { latencyMs: Date.now() - msgStart, toolLog });

@@ -256,29 +256,21 @@ try {
   console.log('  ✅ read_file/write_file refuse path traversal and leak nothing');
 
   // ── safety: symbolic links that point outside the workspace ────────────────
-  // On Windows, creating symlinks requires admin privileges. Skip if not available.
+  // On Windows, creating symlinks requires admin rights or Developer Mode, so
+  // only a symlink *permission* failure there skips these checks. Fixture setup
+  // errors, and any failure on other platforms, still fail the test.
+  const OUTSIDE = realpathSync(mkdtempSync(join(tmpdir(), 'ab-outside-')));
+  writeFileSync(join(OUTSIDE, 'secret.txt'), 'outside-secret');
+  mkdirSync(join(OUTSIDE, 'dir'));
   let symlinksCreated = false;
-  let OUTSIDE = '';
-  if (process.platform === 'win32') {
-    try {
-      OUTSIDE = realpathSync(mkdtempSync(join(tmpdir(), 'ab-outside-')));
-      writeFileSync(join(OUTSIDE, 'secret.txt'), 'outside-secret');
-      mkdirSync(join(OUTSIDE, 'dir'));
-      symlinkSync(join(OUTSIDE, 'secret.txt'), join(WORKSPACE, 'link-file'));
-      symlinkSync(join(OUTSIDE, 'dir'), join(WORKSPACE, 'link-dir'));
-      symlinkSync(join(OUTSIDE, 'new.txt'), join(WORKSPACE, 'dangling'));
-      symlinksCreated = true;
-    } catch (e) {
-      console.log('  ⚠️  Symlink creation not permitted on this Windows environment; skipping symlink escape tests');
-    }
-  } else {
-    OUTSIDE = realpathSync(mkdtempSync(join(tmpdir(), 'ab-outside-')));
-    writeFileSync(join(OUTSIDE, 'secret.txt'), 'outside-secret');
-    mkdirSync(join(OUTSIDE, 'dir'));
+  try {
     symlinkSync(join(OUTSIDE, 'secret.txt'), join(WORKSPACE, 'link-file'));
     symlinkSync(join(OUTSIDE, 'dir'), join(WORKSPACE, 'link-dir'));
     symlinkSync(join(OUTSIDE, 'new.txt'), join(WORKSPACE, 'dangling'));
     symlinksCreated = true;
+  } catch (e) {
+    if (process.platform !== 'win32' || (e.code !== 'EPERM' && e.code !== 'EACCES')) throw e;
+    console.log('  ⚠️  Symlink creation not permitted on this Windows environment; skipping symlink escape tests');
   }
 
   if (symlinksCreated) {
@@ -301,9 +293,7 @@ try {
   out = await run(helpers);
   assert.ok(out.toolLog[0].result.success, 'ordinary nested writes still work');
   assert.strictEqual(out.toolLog[1].result.content, 'fine', 'ordinary nested reads still work');
-  if (symlinksCreated) {
-    rmSync(OUTSIDE, { recursive: true, force: true });
-  }
+  rmSync(OUTSIDE, { recursive: true, force: true });
 
   // ── tools without a workspace ──────────────────────────────────────────────
   script = [toolCall('read_file', { path: 'hello.txt' }), { content: 'no ws' }];
@@ -390,8 +380,12 @@ try {
   script = [toolCall('bash', { command: 'echo "secret=[$MP_TEST_SECRET] path=[${PATH:+set}]"' }), { content: 'env checked' }];
   out = await run(helpers);
   delete process.env.MP_TEST_SECRET;
-  // The secret must not appear (expands to empty on Unix, literal on Windows).
+  // The secret must never appear. On POSIX shells also keep the stronger check
+  // that the variable is unset while PATH is still inherited.
   assert.ok(!out.toolLog[0].result.stdout.includes('leak-me'), 'secret value not leaked');
+  if (process.platform !== 'win32') {
+    assert.match(out.toolLog[0].result.stdout, /secret=\[\] path=\[set\]/, 'secrets are not inherited; PATH is');
+  }
   console.log('  ✅ bash tool gets a scrubbed environment (no dashboard secrets)');
 
   // ── object-form arguments ──────────────────────────────────────────────────

@@ -4,6 +4,34 @@ import path from 'path';
 import { randomBytes } from 'crypto';
 import { handleSessionMessage } from './session-message.js';
 import { handleSessionStream } from './session-stream.js';
+import { TokenEconomizer } from '../modules/token-economizer.js';
+
+/**
+ * Build a fork of `parent` holding its first `cutoff` messages. Exported for
+ * unit tests: the fork must keep every field the LLM path reads, including
+ * repoRoot (microskill lookup and tool evidence are keyed by it).
+ */
+export function buildForkSession(parent, { forkId, cutoff, defaultRepoRoot = null }) {
+  return {
+    id: forkId,
+    name: `${parent.name} (fork)`.slice(0, 80),
+    model: parent.model,
+    endpoint: parent.endpoint,
+    llmUrl: parent.llmUrl,
+    messages: parent.messages.slice(0, cutoff).map(m => ({ ...m })),
+    createdAt: new Date(),
+    updatedAt: new Date(),
+    userId: parent.userId,
+    userRole: parent.userRole,
+    experience: parent.experience,
+    safetyMode: parent.safetyMode,
+    useSafeModeEnabled: false,
+    status: 'idle',
+    lastActivity: new Date(),
+    errorCount: 0,
+    repoRoot: parent.repoRoot || defaultRepoRoot,
+  };
+}
 
 export function createSessionsRouter({
   sessions,
@@ -40,8 +68,18 @@ export function createSessionsRouter({
   dockerControlEnabled,
   runComposeAction,
   repoRoot,
+  recordSession = TokenEconomizer.recordSession,
+  summarizeSession = TokenEconomizer.summarizeSession,
 }) {
   const router = express.Router();
+
+  // Append an ended session to TokenEconomizer's history (counts only). A
+  // history write failure must never block deleting the session.
+  function recordEndedSession(session) {
+    Promise.resolve()
+      .then(() => recordSession(summarizeSession(session, session.repoRoot || repoRoot, { kind: 'chat' })))
+      .catch(e => logStructured('warn', 'token_economizer_session_record_failed', { error: e.message }));
+  }
 
   // Shared deps passed to the extracted message/stream handlers
   const handlerDeps = {
@@ -190,25 +228,8 @@ export function createSessionsRouter({
       : parent.messages.length;
 
     const forkId = `sess_${Date.now()}_${randomBytes(5).toString('hex')}`;
-    const forkName = `${parent.name} (fork)`.slice(0, 80);
-    const fork = {
-      id: forkId,
-      name: forkName,
-      model: parent.model,
-      endpoint: parent.endpoint,
-      llmUrl: parent.llmUrl,
-      messages: parent.messages.slice(0, cutoff).map(m => ({ ...m })),
-      createdAt: new Date(),
-      updatedAt: new Date(),
-      userId: parent.userId,
-      userRole: parent.userRole,
-      experience: parent.experience,
-      safetyMode: parent.safetyMode,
-      useSafeModeEnabled: false,
-      status: 'idle',
-      lastActivity: new Date(),
-      errorCount: 0,
-    };
+    const fork = buildForkSession(parent, { forkId, cutoff, defaultRepoRoot: repoRoot });
+    const forkName = fork.name;
 
     sessions.set(forkId, fork);
     upsertSessionContext(fork, logStructured);
@@ -348,6 +369,7 @@ export function createSessionsRouter({
       });
       upsertSessionContext(session, logStructured);
       markSessionEnded(id, session.endedAt, logStructured);
+      recordEndedSession(session);
       sessions.delete(id);
       try { rmSync(path.join(process.cwd(), 'tmp', id), { recursive: true, force: true }); } catch { /* non-fatal */ }
       deleted++;
@@ -367,6 +389,7 @@ export function createSessionsRouter({
       });
       upsertSessionContext(session, logStructured);
       markSessionEnded(req.params.id, session.endedAt, logStructured);
+      recordEndedSession(session);
       sessions.delete(req.params.id);
       // Clean up any session output files
       try {

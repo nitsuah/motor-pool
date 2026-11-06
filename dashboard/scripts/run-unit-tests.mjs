@@ -16,7 +16,6 @@ const testsDir = join(__dirname, '..', 'tests');
 const INTEGRATION_TESTS = new Set([
   'e2e-chat.js', 'e2e-chat-matrix.js', 'e2e-agents.js', 'e2e-services.js',
   'discover-ssrf-regression.test.js',
-  'functional-health.js',
 ]);
 
 const SPECIAL = new Set(['safety-layer.js']);
@@ -46,6 +45,8 @@ try {
       // dashboard's live session snapshot and BYOK endpoint store.
       SESSION_SNAPSHOT_PATH: join(testDataDir, `${f}.sessions.json`),
       ENDPOINT_STORE_PATH: join(testDataDir, `${f}.endpoints.json`),
+      // TokenEconomizer state (evidence, history, config) stays per-test too.
+      TOKEN_ECONOMIZER_DIR: join(testDataDir, `${f}.tokeneconomizer`),
     };
     try {
       execFileSync(process.execPath, args, { stdio: 'inherit', env });
