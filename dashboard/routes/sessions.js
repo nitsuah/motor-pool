@@ -4,6 +4,7 @@ import path from 'path';
 import { randomBytes } from 'crypto';
 import { handleSessionMessage } from './session-message.js';
 import { handleSessionStream } from './session-stream.js';
+import { flushSessionSnapshot } from '../modules/session-snapshot.js';
 
 export function createSessionsRouter({
   sessions,
@@ -373,14 +374,21 @@ export function createSessionsRouter({
     res.json({ success: true, deleted: exists });
   });
 
-  router.delete('/:id/messages', (req, res) => {
+  router.delete('/:id/messages', async (req, res) => {
     const session = sessions.get(req.params.id);
     if (!session) return res.status(404).json({ success: false, error: 'Session not found' });
     const count = session.messages.length;
     session.messages = [];
     session.updatedAt = new Date();
-    // Persist the cleared state so the on-disk snapshot drops the old messages.
-    upsertSessionContext(session, logStructured);
+    // Persist the cleared state now so the on-disk snapshot drops the old messages.
+    try {
+      await upsertSessionContext(session, logStructured);
+    } catch (err) {
+      logStructured?.('warn', 'session_context_upsert_failed', { sessionId: session.id, error: err.message });
+    }
+    if (!flushSessionSnapshot(logStructured)) {
+      return res.status(500).json({ success: false, error: 'Failed to persist cleared messages' });
+    }
     logStructured?.('info', 'session_messages_cleared', { sessionId: session.id, cleared: count });
     eventBus.emit('session_messages_cleared', {
       session_id: session.id, user_id: session.userId,
