@@ -535,6 +535,16 @@ try {
     assert.equal(lr2.status, 400, 'listing refused when pinning is lost after the strict check');
     testHooks.before = null;
     testHooks.disableProc = false;
+
+    // The first availability answer is true, the next false: the listing still refuses and returns nothing.
+    seed();
+    writeFileSync(join(OUTSIDE, 'outside-only.txt'), 'x');
+    testHooks.procSequence = [true, false];
+    const lr3 = await get(`/workspace/ls?path=${q('a')}`);
+    testHooks.procSequence = null;
+    assert.equal(lr3.status, 400, 'listing refused when availability flips between checks');
+    const lbody3 = await lr3.text();
+    assert.ok(!lbody3.includes('outside-only') && !lbody3.includes('entries'), 'no entries or outside names returned');
     console.log('  ✅ losing /proc after the strict check refuses a listing');
   }
 
@@ -659,6 +669,7 @@ try {
   testHooks.platform = null;
   testHooks.env = null;
   testHooks.procReadlink = null;
+  testHooks.procSequence = null;
   testHooks.before = null;
   testHooks.disableProc = false;
   testHooks.zeroIno = false;

@@ -38,7 +38,7 @@ const O_NOFOLLOW = fsConstants.O_NOFOLLOW || 0;
 const O_DIRECTORY = fsConstants.O_DIRECTORY || 0;
 
 /** Test seam: `before(stage, abs)` runs between a check and the operation it guards. */
-export const testHooks = { before: null, disableProc: false, zeroIno: false, strict: null, platform: null, env: null, procReadlink: null };
+export const testHooks = { procSequence: null, before: null, disableProc: false, zeroIno: false, strict: null, platform: null, env: null, procReadlink: null };
 
 export class WorkspaceVerifyError extends Error {
   constructor(message = 'Invalid path') {
@@ -58,6 +58,8 @@ async function seam(stage, abs, op) {
 const currentPlatform = () => testHooks.platform || process.platform;
 
 function procAvailable() {
+  // Test seam: a queued answer replaces the real check for one call.
+  if (testHooks.procSequence?.length) return testHooks.procSequence.shift();
   return !testHooks.disableProc && currentPlatform() === 'linux' && existsSync('/proc/self/fd');
 }
 
@@ -94,9 +96,12 @@ export function resetOptOutWarning() {
 }
 
 /** Fail closed when pinned operations are required and /proc is unavailable. */
+function strictRequired() {
+  return testHooks.strict ?? pinnedFsRequired(testHooks.env || process.env);
+}
+
 function requirePin() {
-  const strict = testHooks.strict ?? pinnedFsRequired(testHooks.env || process.env);
-  if (strict && !procAvailable()) refuse();
+  if (strictRequired() && !procAvailable()) refuse();
 }
 
 function procPathOfFd(fd, kind = 'dir') {
@@ -413,8 +418,10 @@ export async function readdirInside(root, abs) {
   assertRealInside(rootReal, abs, true);
   let dirFh = null;
   let base = abs;
-  if (!procAvailable()) requirePin();
-  if (procAvailable()) {
+  // One availability answer for the whole listing; the unpinned branch refuses first when strict.
+  const pinned = procAvailable();
+  if (!pinned && strictRequired()) refuse();
+  if (pinned) {
     dirFh = await open(realpathSync(abs), fsConstants.O_RDONLY | O_DIRECTORY | O_NOFOLLOW);
     const kernelPath = procPathOfFd(dirFh.fd);
     if (kernelPath === null || !insideReal(rootReal, kernelPath, true)) {
