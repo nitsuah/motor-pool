@@ -9,12 +9,12 @@
  * Both the /proc based mode (Linux) and the fallback mode are covered.
  */
 import assert from 'node:assert/strict';
-import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, rmSync, existsSync, realpathSync, symlinkSync, renameSync, readdirSync, statSync, linkSync } from 'node:fs';
+import { readlinkSync, mkdtempSync, mkdirSync, writeFileSync, readFileSync, rmSync, existsSync, realpathSync, symlinkSync, renameSync, readdirSync, statSync, linkSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import express from 'express';
 import { createWorkspaceRouter } from '../routes/workspace.js';
-import { testHooks } from '../modules/workspace-fs.js';
+import { testHooks, pinnedFsRequired } from '../modules/workspace-fs.js';
 
 const ROOT = realpathSync(mkdtempSync(join(tmpdir(), 'ab-ws-fd-root-')));
 const OUTSIDE = realpathSync(mkdtempSync(join(tmpdir(), 'ab-ws-fd-outside-')));
@@ -90,6 +90,7 @@ try {
       continue;
     }
     testHooks.disableProc = mode.disableProc;
+    testHooks.strict = false;
     const label = `[${mode.name}]`;
 
     // ── normal operations still work ────────────────────────────────────────
@@ -191,13 +192,18 @@ try {
       outsideUntouched();
 
       seed();
-      writeFileSync(join(ROOT, 'a', 'inside-only.txt'), '');
-      writeFileSync(join(OUTSIDE, 'outside-only.txt'), '');
+      writeFileSync(join(ROOT, 'a', 'inside-only.txt'), '12345');
+      writeFileSync(join(OUTSIDE, 'outside-only.txt'), '1234567890');
+      writeFileSync(join(OUTSIDE, 'inside-only.txt'), '1234567890123');
       armSwap('before-op');
       r = await get(`/workspace/ls?path=${q('a')}`);
-      if (r.ok) {
-        const names = (await r.json()).entries.map((e) => e.name);
+      assert.ok(r.ok, 'pinned list succeeds');
+      {
+        const names = (await r.clone().json()).entries.map((e) => e.name);
         assert.ok(names.includes('inside-only.txt'), 'pinned list includes the inside entry');
+        const entry = (await r.clone().json()).entries.find((e) => e.name === 'inside-only.txt');
+        assert.equal(entry.size, 5, 'size comes from the inside entry');
+        assert.equal(entry.modified, statSync(join(ROOT, 'a.orig', 'inside-only.txt')).mtime.toISOString(), 'modified comes from the inside entry');
         assert.ok(!names.includes('outside-only.txt'), 'pinned list excludes the outside entry');
       }
       console.log(`  ✅ ${label} swap after the check: operations stay on the pinned directory`);
@@ -209,6 +215,25 @@ try {
       assert.ok(r.status >= 400, 'fallback new-file write refused');
       noBytesOutside();
       console.log(`  ✅ ${label} swap at the open seam: new-file write refused, no bytes outside`);
+    }
+
+    if (mode.disableProc) {
+      // Without pinning, a swap inside the window cannot be prevented for delete/mkdir/rename
+      // (they are detected and refused afterwards); a new file never receives data.
+      for (const [name, call] of [
+        ['delete', () => del('a/gone.txt')],
+        ['mkdir', () => post('/workspace/mkdir', { path: 'a/b/made' })],
+        ['rename', () => post('/workspace/rename', { from: 'a/mv.txt', to: 'a/moved.txt' })],
+        ['new file', () => post('/workspace/write', { path: 'a/b/new.txt', content: 'planted' })],
+      ]) {
+        seed();
+        armSwap('before-op', name === 'new file' ? 'open' : undefined);
+        const r = await call();
+        assert.ok(r.status >= 400, `${label} ${name} in the window is refused`);
+        noBytesOutside();
+        assert.equal(readFileSync(join(OUTSIDE, 'f.txt'), 'utf8'), 'secret\n', `${label} ${name}: outside file content unchanged`);
+      }
+      console.log(`  ✅ ${label} mutations swapped inside the window are refused and carry no data outside`);
     }
 
     // ── opened-file verification on its own (parent checks pass) ────────────
@@ -265,32 +290,27 @@ try {
   testHooks.disableProc = true;
   testHooks.strict = true;
   for (const stage of ['before-parent', 'before-op']) {
-    seed();
-    armSwap(stage);
-    let r = await del('a/gone.txt');
-    assert.equal(r.status, 400, 'strict: delete refused');
-    seed();
-    armSwap(stage);
-    r = await post('/workspace/mkdir', { path: 'a/b/made' });
-    assert.equal(r.status, 400, 'strict: mkdir refused');
-    seed();
-    armSwap(stage);
-    r = await post('/workspace/write', { path: 'a/b/new.txt', content: 'planted' });
-    assert.equal(r.status, 400, 'strict: write refused');
-    seed();
-    armSwap(stage);
-    r = await get(`/workspace/read?path=${q('a/f.txt')}`);
-    assert.equal(r.status, 400, 'strict: read refused');
-    seed();
-    armSwap(stage);
-    r = await post('/workspace/rename', { from: 'a/mv.txt', to: 'a/moved.txt' });
-    assert.equal(r.status, 400, 'strict: rename refused');
-    outsideUntouched();
+    const cases = [
+      ['delete', () => del('a/gone.txt')],
+      ['mkdir', () => post('/workspace/mkdir', { path: 'a/b/made' })],
+      ['write', () => post('/workspace/write', { path: 'a/b/new.txt', content: 'planted' })],
+      ['read', () => get(`/workspace/read?path=${q('a/f.txt')}`)],
+      ['rename', () => post('/workspace/rename', { from: 'a/mv.txt', to: 'a/moved.txt' })],
+      ['rename-dest-parent', () => post('/workspace/rename', { from: 'c/y.txt', to: 'a/z.txt' })],
+    ];
+    for (const [name, call] of cases) {
+      seed();
+      armSwap(stage);
+      const r = await call();
+      assert.equal(r.status, 400, `strict ${stage}: ${name} refused`);
+      outsideUntouched();
+    }
   }
   testHooks.strict = null;
   console.log('  ✅ strict mode without /proc refuses delete/mkdir/write/read/rename even with a swap in the window');
 
   // ── zero inode: only symlink-free paths are accepted ─────────────────────
+  testHooks.strict = false;
   testHooks.disableProc = true;
   testHooks.zeroIno = true;
   testHooks.before = null;
@@ -301,7 +321,68 @@ try {
   r = await get(`/workspace/read?path=${q('alias/f.txt')}`);
   assert.ok(r.status >= 400, 'a path with a symlink component is refused when the inode is unusable');
   console.log('  ✅ unusable inode: symlink-free path accepted, symlinked path refused');
+
+  // ── /proc present but the file descriptor lookup fails: refuse, no fallback ─
+  if (process.platform === 'linux' && existsSync('/proc/self/fd')) {
+    testHooks.disableProc = false;
+    testHooks.strict = false;
+    testHooks.before = null;
+    seed();
+    testHooks.procReadlink = (fd, kind) => {
+      if (kind === 'file') throw new Error('lookup failed');
+      return readlinkSync(`/proc/self/fd/${fd}`);
+    };
+    let lr = await get(`/workspace/read?path=${q('a/f.txt')}`);
+    assert.equal(lr.status, 400, 'read refused when the descriptor lookup fails');
+    assert.ok(!(await lr.text()).includes('inside'), 'no content returned');
+    lr = await post('/workspace/write', { path: 'a/f.txt', content: 'planted' });
+    assert.equal(lr.status, 400, 'write refused when the descriptor lookup fails');
+    assert.equal(readFileSync(join(ROOT, 'a', 'f.txt'), 'utf8'), 'inside\n', 'file was not truncated or written');
+    testHooks.procReadlink = null;
+    lr = await get(`/workspace/read?path=${q('a/f.txt')}`);
+    assert.equal(lr.status, 200, 'works again once the lookup works');
+    console.log('  ✅ a failed descriptor lookup with /proc present is a refusal, not a fallback');
+  }
+
+  // ── strict default per platform and flag forms ───────────────────────────
+  assert.equal(pinnedFsRequired({}, 'linux'), true, 'linux default is strict');
+  assert.equal(pinnedFsRequired({}, 'win32'), false, 'win32 default is best-effort');
+  assert.equal(pinnedFsRequired({}, 'darwin'), false, 'darwin default is best-effort');
+  for (const v of ['1', 'true', 'yes', 'on', ' TRUE ', 'On']) {
+    assert.equal(pinnedFsRequired({ WORKSPACE_REQUIRE_PINNED_FS: v }, 'win32'), true, `"${v}" forces strict`);
+  }
+  for (const v of ['0', 'false', 'no', 'off', ' OFF ', 'False']) {
+    assert.equal(pinnedFsRequired({ WORKSPACE_REQUIRE_PINNED_FS: v }, 'linux'), false, `"${v}" opts out`);
+  }
+  assert.equal(pinnedFsRequired({ WORKSPACE_REQUIRE_PINNED_FS: '  ' }, 'linux'), true, 'blank uses the platform default');
+
+  // Behaviour: no /proc, flag unset.
+  testHooks.strict = null;
+  testHooks.disableProc = true;
+  testHooks.before = null;
+  testHooks.env = {};
+  seed();
+  testHooks.platform = 'linux';
+  let rd = await get(`/workspace/read?path=${q('a/f.txt')}`);
+  assert.equal(rd.status, 400, 'linux without /proc refuses by default');
+  testHooks.platform = 'win32';
+  rd = await get(`/workspace/read?path=${q('a/f.txt')}`);
+  assert.equal(rd.status, 200, 'win32 keeps the best-effort fallback');
+  testHooks.platform = 'darwin';
+  rd = await get(`/workspace/read?path=${q('a/f.txt')}`);
+  assert.equal(rd.status, 200, 'darwin keeps the best-effort fallback');
+  testHooks.env = { WORKSPACE_REQUIRE_PINNED_FS: '1' };
+  rd = await get(`/workspace/read?path=${q('a/f.txt')}`);
+  assert.equal(rd.status, 400, 'the flag forces strict on darwin');
+  testHooks.platform = 'linux';
+  testHooks.env = { WORKSPACE_REQUIRE_PINNED_FS: ' Off ' };
+  rd = await get(`/workspace/read?path=${q('a/f.txt')}`);
+  assert.equal(rd.status, 200, 'the flag opts out on linux');
+  console.log('  ✅ strict default per platform and flag forms');
 } finally {
+  testHooks.platform = null;
+  testHooks.env = null;
+  testHooks.procReadlink = null;
   testHooks.before = null;
   testHooks.disableProc = false;
   testHooks.zeroIno = false;

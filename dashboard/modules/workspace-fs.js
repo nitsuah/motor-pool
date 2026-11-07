@@ -18,9 +18,10 @@
  *    the platform reports no usable inode (ino 0, as on some Windows volumes)
  *    the file is accepted only if no component below the root is a symlink.
  *    This mode cannot pin directories, so a change between the final check and
- *    the operation is detected afterwards rather than prevented. Set
- *    WORKSPACE_REQUIRE_PINNED_FS=1 to refuse every operation where pinning is
- *    unavailable instead of using this mode.
+ *    the operation is detected afterwards rather than prevented. It is used
+ *    only on win32 and darwin. On Linux a missing /proc makes every operation
+ *    fail; WORKSPACE_REQUIRE_PINNED_FS=1 forces that behaviour on every
+ *    platform and =0 (false/no/off) opts out of it explicitly.
  *
  * Opening never truncates: callers truncate after the descriptor is verified.
  * Nothing is ever removed by path outside the root after a failed check.
@@ -33,7 +34,7 @@ const O_NOFOLLOW = fsConstants.O_NOFOLLOW || 0;
 const O_DIRECTORY = fsConstants.O_DIRECTORY || 0;
 
 /** Test seam: `before(stage, abs)` runs between a check and the operation it guards. */
-export const testHooks = { before: null, disableProc: false, zeroIno: false, strict: null };
+export const testHooks = { before: null, disableProc: false, zeroIno: false, strict: null, platform: null, env: null, procReadlink: null };
 
 export class WorkspaceVerifyError extends Error {
   constructor(message = 'Invalid path') {
@@ -50,18 +51,33 @@ async function seam(stage, abs, op) {
   if (testHooks.before) await testHooks.before(stage, abs, op);
 }
 
+const currentPlatform = () => testHooks.platform || process.platform;
+
 function procAvailable() {
-  return !testHooks.disableProc && process.platform === 'linux' && existsSync('/proc/self/fd');
+  return !testHooks.disableProc && currentPlatform() === 'linux' && existsSync('/proc/self/fd');
+}
+
+/**
+ * Whether operations that cannot be pinned must be refused. The flag is read
+ * trimmed and lowercased: false/0/no/off turn it off, any other value turns it
+ * on; unset means on for Linux and off elsewhere.
+ */
+export function pinnedFsRequired(env = process.env, platform = process.platform) {
+  const flag = String(env.WORKSPACE_REQUIRE_PINNED_FS ?? '').trim().toLowerCase();
+  if (['false', '0', 'no', 'off'].includes(flag)) return false;
+  if (flag !== '') return true;
+  return platform === 'linux';
 }
 
 /** Fail closed when pinned operations are required and /proc is unavailable. */
 function requirePin() {
-  const strict = testHooks.strict ?? process.env.WORKSPACE_REQUIRE_PINNED_FS === '1';
+  const strict = testHooks.strict ?? pinnedFsRequired(testHooks.env || process.env, currentPlatform());
   if (strict && !procAvailable()) refuse();
 }
 
-function procPathOfFd(fd) {
+function procPathOfFd(fd, kind = 'dir') {
   try {
+    if (testHooks.procReadlink) return testHooks.procReadlink(fd, kind);
     return readlinkSync(`/proc/self/fd/${fd}`);
   } catch {
     return null;
@@ -118,9 +134,10 @@ function hasNoSymlinkComponents(rootLex, abs) {
 }
 
 async function verifyFd(fh, rootLex, rootReal, abs) {
-  const kernelPath = procAvailable() ? procPathOfFd(fh.fd) : null;
-  if (kernelPath !== null) {
-    if (kernelPath.endsWith(' (deleted)') || !insideReal(rootReal, kernelPath, false)) refuse();
+  if (procAvailable()) {
+    // With /proc present a failed lookup is a failed verification, never a reason to fall back.
+    const kernelPath = procPathOfFd(fh.fd, 'file');
+    if (kernelPath === null || kernelPath.endsWith(' (deleted)') || !insideReal(rootReal, kernelPath, false)) refuse();
     return;
   }
   // Fallback: same file as realpath(target), and that path is inside the root.
