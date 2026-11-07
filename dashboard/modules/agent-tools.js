@@ -1,10 +1,10 @@
 import axios from 'axios';
 import { randomUUID } from 'crypto';
-import { stat, readFile, writeFile, mkdir, readdir } from 'fs/promises';
-import { lstatSync, realpathSync } from 'fs';
-import { resolve as resolvePath, dirname } from 'path';
+import { lstatSync, realpathSync, constants as fsConstants } from 'fs';
+import { resolve as resolvePath, dirname, sep } from 'path';
 import { mcpRequest } from './mcp-helpers.js';
 import { shellExecEnabled } from './exec-flag.js';
+import { openInside, mkdirInside, readdirInside, warnIfPinningOptOut } from './workspace-fs.js';
 
 export const DEVELOPER_TOOLS = [
   {
@@ -151,11 +151,14 @@ const PLUGIN_RESPONSE_MAX_BYTES = 8 * 1024 * 1024;
 const PLUGIN_ARGS_MAX_BYTES = 256 * 1024;
 
 export function createAgentHelpers({ WORKSPACE_ROOT, execAsync, TOOL_SERVERS, TOOL_CALL_TIMEOUT_MS, pluginRegistry = null }) {
+  if (WORKSPACE_ROOT) warnIfPinningOptOut();
+  const ROOT_PREFIX = WORKSPACE_ROOT ? (WORKSPACE_ROOT.endsWith(sep) ? WORKSPACE_ROOT : WORKSPACE_ROOT + sep) : null;
+
   function resolveWorkspacePath(reqPath) {
     if (!WORKSPACE_ROOT) return null;
     const safe = reqPath ? reqPath.replace(/\\/g, '/').replace(/^\/+/, '') : '';
     const abs = resolvePath(WORKSPACE_ROOT, safe);
-    if (abs !== WORKSPACE_ROOT && !abs.startsWith(WORKSPACE_ROOT + '/')) return null;
+    if (abs !== WORKSPACE_ROOT && !abs.startsWith(ROOT_PREFIX)) return null;
     return isInsideWorkspaceReal(abs) ? abs : null;
   }
 
@@ -179,7 +182,7 @@ export function createAgentHelpers({ WORKSPACE_ROOT, execAsync, TOOL_SERVERS, TO
         }
       }
       const real = realpathSync(probe); // throws for a dangling symlink
-      return real === rootReal || real.startsWith(rootReal + '/');
+      return real === rootReal || real.startsWith(rootReal.endsWith(sep) ? rootReal : rootReal + sep);
     } catch {
       return false;
     }
@@ -280,13 +283,19 @@ export function createAgentHelpers({ WORKSPACE_ROOT, execAsync, TOOL_SERVERS, TO
         if (!WORKSPACE_ROOT) return JSON.stringify({ error: 'Workspace not mounted' });
         const abs = resolveWorkspacePath(toolArgs.path);
         if (!abs) return JSON.stringify({ error: 'Invalid path (path traversal detected)' });
+        if (abs === WORKSPACE_ROOT || !abs.startsWith(ROOT_PREFIX)) return JSON.stringify({ error: 'Invalid path' });
+        let fh;
         try {
-          const s = await stat(abs);
+          // Read through a descriptor that was verified to be inside the workspace.
+          fh = await openInside(WORKSPACE_ROOT, abs, fsConstants.O_RDONLY);
+          const s = await fh.stat();
           if (s.size > 512 * 1024) return JSON.stringify({ error: 'File too large (> 512 KB)' });
-          const content = await readFile(abs, 'utf8');
+          const content = await fh.readFile('utf8');
           return JSON.stringify({ content, path: toolArgs.path });
         } catch (err) {
           return JSON.stringify({ error: err.message });
+        } finally {
+          await fh?.close().catch(() => {});
         }
       }
 
@@ -294,12 +303,23 @@ export function createAgentHelpers({ WORKSPACE_ROOT, execAsync, TOOL_SERVERS, TO
         if (!WORKSPACE_ROOT) return JSON.stringify({ error: 'Workspace not mounted' });
         const abs = resolveWorkspacePath(toolArgs.path);
         if (!abs) return JSON.stringify({ error: 'Invalid path' });
+        if (abs === WORKSPACE_ROOT || !abs.startsWith(ROOT_PREFIX)) return JSON.stringify({ error: 'Invalid path' });
+        let fh;
         try {
-          await mkdir(resolvePath(abs, '..'), { recursive: true });
-          await writeFile(abs, String(toolArgs.content), 'utf8');
+          const parentAbs = resolvePath(abs, '..');
+          if (parentAbs !== WORKSPACE_ROOT) {
+            if (!parentAbs.startsWith(ROOT_PREFIX)) return JSON.stringify({ error: 'Invalid path' });
+            await mkdirInside(WORKSPACE_ROOT, parentAbs);
+          }
+          // Open without truncating, verify the descriptor, then truncate and write.
+          fh = await openInside(WORKSPACE_ROOT, abs, fsConstants.O_WRONLY | fsConstants.O_CREAT);
+          await fh.truncate(0);
+          await fh.writeFile(String(toolArgs.content), 'utf8');
           return JSON.stringify({ success: true, path: toolArgs.path, bytes: Buffer.byteLength(String(toolArgs.content), 'utf8') });
         } catch (err) {
           return JSON.stringify({ error: err.message });
+        } finally {
+          await fh?.close().catch(() => {});
         }
       }
 
@@ -307,9 +327,10 @@ export function createAgentHelpers({ WORKSPACE_ROOT, execAsync, TOOL_SERVERS, TO
         if (!WORKSPACE_ROOT) return JSON.stringify({ error: 'Workspace not mounted' });
         const abs = resolveWorkspacePath(toolArgs.path || '');
         if (!abs) return JSON.stringify({ error: 'Invalid path' });
+        if (abs !== WORKSPACE_ROOT && !abs.startsWith(ROOT_PREFIX)) return JSON.stringify({ error: 'Invalid path' });
         try {
-          const entries = await readdir(abs, { withFileTypes: true });
-          return JSON.stringify({ entries: entries.map(e => ({ name: e.name, type: e.isDirectory() ? 'dir' : 'file' })) });
+          const entries = await readdirInside(WORKSPACE_ROOT, abs);
+          return JSON.stringify({ entries: entries.map(e => ({ name: e.name, type: e.isDirectory ? 'dir' : 'file' })) });
         } catch (err) {
           return JSON.stringify({ error: err.message });
         }
@@ -335,13 +356,20 @@ export function createAgentHelpers({ WORKSPACE_ROOT, execAsync, TOOL_SERVERS, TO
         if (!WORKSPACE_ROOT) return JSON.stringify({ error: 'Workspace not mounted' });
         const filename = String(toolArgs.filename || 'artifact.md').replace(/[/\\]/g, '-');
         const abs = resolvePath(WORKSPACE_ROOT, 'artifacts', filename);
-        if (!abs.startsWith(WORKSPACE_ROOT)) return JSON.stringify({ error: 'Invalid filename' });
+        if (!abs.startsWith(ROOT_PREFIX)) return JSON.stringify({ error: 'Invalid filename' });
+        let fh;
         try {
-          await mkdir(resolvePath(abs, '..'), { recursive: true });
-          await writeFile(abs, String(toolArgs.content), 'utf8');
+          const dirAbs = resolvePath(abs, '..');
+          if (!dirAbs.startsWith(ROOT_PREFIX)) return JSON.stringify({ error: 'Invalid filename' });
+          await mkdirInside(WORKSPACE_ROOT, dirAbs);
+          fh = await openInside(WORKSPACE_ROOT, abs, fsConstants.O_WRONLY | fsConstants.O_CREAT);
+          await fh.truncate(0);
+          await fh.writeFile(String(toolArgs.content), 'utf8');
           return JSON.stringify({ success: true, path: `artifacts/${filename}` });
         } catch (err) {
           return JSON.stringify({ error: err.message });
+        } finally {
+          await fh?.close().catch(() => {});
         }
       }
 
