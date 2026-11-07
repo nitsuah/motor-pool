@@ -18,6 +18,9 @@ const BASH_BLOCKLIST = ['rm -rf /', 'dd if=', ':(){ :|:& };:', '> /dev/sd', 'mkf
 function isRealPathInside(root, abs) {
   // Defensive: ensure abs is absolute and within root before any filesystem ops
   if (!abs || typeof abs !== 'string') return false;
+  const lexicalRoot = resolvePath(root);
+  const lexicalPrefix = lexicalRoot.endsWith(sep) ? lexicalRoot : lexicalRoot + sep;
+  if (abs !== lexicalRoot && !abs.startsWith(lexicalPrefix)) return false;
   let rootReal;
   try {
     rootReal = realpathSync(root);
@@ -47,6 +50,8 @@ function isRealPathInside(root, abs) {
 
 export function createWorkspaceRouter(WORKSPACE_ROOT) {
   const router = express.Router();
+  const ROOT_ABS = WORKSPACE_ROOT ? resolvePath(WORKSPACE_ROOT) : null;
+  const ROOT_PREFIX = ROOT_ABS && (ROOT_ABS.endsWith(sep) ? ROOT_ABS : ROOT_ABS + sep);
 
   function resolveWorkspacePath(reqPath) {
     if (!WORKSPACE_ROOT || typeof reqPath !== 'string') return null;
@@ -94,7 +99,7 @@ export function createWorkspaceRouter(WORKSPACE_ROOT) {
   router.get('/workspace/ls', async (req, res) => {
     if (!WORKSPACE_ROOT) return res.status(503).json({ error: 'Workspace not configured' });
     const abs = resolveWorkspacePath(req.query.path || '');
-    if (!abs) return res.status(400).json({ error: 'Invalid path' });
+    if (!abs || (abs !== ROOT_ABS && !abs.startsWith(ROOT_PREFIX))) return res.status(400).json({ error: 'Invalid path' });
 
     try {
       const entries = await readdir(abs, { withFileTypes: true });
@@ -102,7 +107,9 @@ export function createWorkspaceRouter(WORKSPACE_ROOT) {
         const info = { name: e.name, type: e.isDirectory() ? 'dir' : 'file' };
         if (!e.isDirectory()) {
           try {
-            const s = await stat(resolvePath(abs, e.name));
+            const childAbs = resolvePath(abs, e.name);
+            if (!childAbs.startsWith(ROOT_PREFIX)) return info; // a file entry is always below the root
+            const s = await stat(childAbs);
             info.size = s.size;
             info.modified = s.mtime.toISOString();
           } catch { /* ignore */ }
@@ -122,7 +129,7 @@ export function createWorkspaceRouter(WORKSPACE_ROOT) {
   router.get('/workspace/read', async (req, res) => {
     if (!WORKSPACE_ROOT) return res.status(503).json({ error: 'Workspace not configured' });
     const abs = resolveWorkspacePath(req.query.path || '');
-    if (!abs) return res.status(400).json({ error: 'Invalid path' });
+    if (!abs || (abs !== ROOT_ABS && !abs.startsWith(ROOT_PREFIX))) return res.status(400).json({ error: 'Invalid path' });
 
     try {
       const s = await stat(abs);
@@ -142,10 +149,15 @@ export function createWorkspaceRouter(WORKSPACE_ROOT) {
       return res.status(400).json({ error: 'path and content are required' });
     }
     const abs = resolveWorkspacePath(reqPath);
-    if (!abs) return res.status(400).json({ error: 'Invalid path' });
+    if (!abs || (abs !== ROOT_ABS && !abs.startsWith(ROOT_PREFIX))) return res.status(400).json({ error: 'Invalid path' });
+    const parentAbs = resolvePath(abs, '..');
+    if (parentAbs !== ROOT_ABS && !parentAbs.startsWith(ROOT_PREFIX)) return res.status(400).json({ error: 'Invalid path' });
 
     try {
-      await mkdir(resolvePath(abs, '..'), { recursive: true });
+      if (parentAbs !== ROOT_ABS) {
+        if (!parentAbs.startsWith(ROOT_PREFIX)) return res.status(400).json({ error: 'Invalid path' });
+        await mkdir(parentAbs, { recursive: true });
+      }
       await writeFile(abs, content, 'utf8');
       res.json({ path: relativePath(WORKSPACE_ROOT, abs), bytes: Buffer.byteLength(content, 'utf8') });
     } catch (err) {
@@ -177,7 +189,7 @@ export function createWorkspaceRouter(WORKSPACE_ROOT) {
       if (Array.isArray(files) && files.length > 0) {
         for (const f of files) {
           const abs = resolveWorkspacePath(f);
-          if (!abs) return res.status(400).json({ error: `Invalid path: ${f}` });
+          if (!abs || (abs !== ROOT_ABS && !abs.startsWith(ROOT_PREFIX))) return res.status(400).json({ error: `Invalid path: ${f}` });
           await execFileAsync('git', ['--literal-pathspecs', 'add', '--', abs], { cwd: WORKSPACE_ROOT });
         }
       } else {
@@ -224,7 +236,8 @@ export function createWorkspaceRouter(WORKSPACE_ROOT) {
   router.delete('/workspace/file', async (req, res) => {
     if (!WORKSPACE_ROOT) return res.status(503).json({ error: 'Workspace not configured' });
     const abs = resolveWorkspacePath(req.query.path || '');
-    if (!abs) return res.status(400).json({ error: 'Invalid path' });
+    // strictly below the root: the workspace root itself is never deleted
+    if (!abs || abs === ROOT_ABS || !abs.startsWith(ROOT_PREFIX)) return res.status(400).json({ error: 'Invalid path' });
     try {
       const s = await stat(abs);
       if (s.isDirectory()) {
@@ -241,7 +254,7 @@ export function createWorkspaceRouter(WORKSPACE_ROOT) {
   router.post('/workspace/mkdir', express.json(), async (req, res) => {
     if (!WORKSPACE_ROOT) return res.status(503).json({ error: 'Workspace not configured' });
     const abs = resolveWorkspacePath(req.body?.path || '');
-    if (!abs) return res.status(400).json({ error: 'Invalid path' });
+    if (!abs || (abs !== ROOT_ABS && !abs.startsWith(ROOT_PREFIX))) return res.status(400).json({ error: 'Invalid path' });
     try {
       await mkdir(abs, { recursive: true });
       res.json({ path: relativePath(WORKSPACE_ROOT, abs) });
@@ -255,7 +268,8 @@ export function createWorkspaceRouter(WORKSPACE_ROOT) {
     const { from: fromPath, to: toPath } = req.body || {};
     const absFrom = resolveWorkspacePath(fromPath || '');
     const absTo = resolveWorkspacePath(toPath || '');
-    if (!absFrom || !absTo) return res.status(400).json({ error: 'Invalid path' });
+    if (!absFrom || absFrom === ROOT_ABS || !absFrom.startsWith(ROOT_PREFIX)) return res.status(400).json({ error: 'Invalid path' }); // never the root itself
+    if (!absTo || absTo === ROOT_ABS || !absTo.startsWith(ROOT_PREFIX)) return res.status(400).json({ error: 'Invalid path' }); // never the root itself
     try {
       const { rename } = await import('fs/promises');
       await rename(absFrom, absTo);
@@ -356,7 +370,7 @@ export function createWorkspaceRouter(WORKSPACE_ROOT) {
     try {
       if (file) {
         const abs = resolveWorkspacePath(file);
-        if (!abs) return res.status(400).json({ error: 'Invalid path' });
+        if (!abs || (abs !== ROOT_ABS && !abs.startsWith(ROOT_PREFIX))) return res.status(400).json({ error: 'Invalid path' });
         await execFileAsync('git', ['--literal-pathspecs', 'checkout', '--', abs], { cwd: WORKSPACE_ROOT });
       } else {
         await execFileAsync('git', ['checkout', '--', '.'], { cwd: WORKSPACE_ROOT });
