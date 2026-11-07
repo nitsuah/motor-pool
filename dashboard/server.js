@@ -393,13 +393,19 @@ initSessionSnapshot(sessions, logStructured);
 
 const _baseUpsertSessionContext = upsertSessionContext;
 async function upsertSessionContextWithSnapshot(session, log) {
-  await _baseUpsertSessionContext(session, log);
-  scheduleSnapshotWrite(log);
+  try {
+    await _baseUpsertSessionContext(session, log);
+  } finally {
+    scheduleSnapshotWrite(log);
+  }
 }
 const _baseMarkSessionEnded = markSessionEnded;
 async function markSessionEndedWithSnapshot(sessionId, endedAt, log) {
-  await _baseMarkSessionEnded(sessionId, endedAt, log);
-  scheduleSnapshotWrite(log);
+  try {
+    await _baseMarkSessionEnded(sessionId, endedAt, log);
+  } finally {
+    scheduleSnapshotWrite(log);
+  }
 }
 
 // Plugin registry — scans dashboard/config/plugins/*.plugin.json at boot.

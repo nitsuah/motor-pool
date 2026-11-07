@@ -9,7 +9,10 @@
 const SAFE_METHODS = new Set(['GET', 'HEAD', 'OPTIONS']);
 
 function normalizeOrigin(value) {
-  return String(value || '').trim().replace(/\/+$/, '').toLowerCase();
+  const origin = String(value || '').trim();
+  let end = origin.length;
+  while (end > 0 && origin[end - 1] === '/') end--;
+  return origin.slice(0, end).toLowerCase();
 }
 
 // Hostname part of a Host header value or host[:port] entry (lowercased).

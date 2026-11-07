@@ -44,6 +44,8 @@ COPY index.html vite.config.js ./
 COPY scripts ./scripts
 COPY tests ./tests
 RUN npm run build
+# Bind all container interfaces; publish the port on 127.0.0.1 to keep it local.
+ENV HOST=0.0.0.0
 EXPOSE 3000
 HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
   CMD node -e "require('http').get('http://localhost:3000/api/health', (r) => { r.resume(); r.on('end', () => process.exit(r.statusCode === 200 ? 0 : 1)); }).on('error', () => process.exit(1))"

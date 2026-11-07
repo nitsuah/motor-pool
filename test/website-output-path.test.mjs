@@ -26,7 +26,7 @@ describe('safeOutputPath', () => {
 describe('SLUG_PATTERN', () => {
   it('accepts generated slugs and rejects path-like ones', () => {
     assert.ok(SLUG_PATTERN.test('acme-pizza-90210'));
-    for (const bad of ['', '..', '../x', 'a/b', 'A-b', '-a', 'a_b', 'a b', 'a\b']) {
+    for (const bad of ['', '..', '../x', 'a/b', 'A-b', '-a', 'a_b', 'a b', 'a\\b']) {
       assert.ok(!SLUG_PATTERN.test(bad), bad);
     }
   });

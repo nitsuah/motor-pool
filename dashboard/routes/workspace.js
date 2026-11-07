@@ -180,6 +180,7 @@ export function createWorkspaceRouter(WORKSPACE_ROOT) {
     if (!reqPath || content === undefined) {
       return res.status(400).json({ error: 'path and content are required' });
     }
+    if (typeof content !== 'string') return res.status(400).json({ error: 'content must be a string' });
     const abs = resolveWorkspacePath(reqPath);
     if (!abs || abs === ROOT_ABS) return res.status(400).json({ error: 'Invalid path' }); // the root itself is never a target (also when it is a filesystem root)
     if (!abs.startsWith(ROOT_PREFIX)) return res.status(400).json({ error: 'Invalid path' });
