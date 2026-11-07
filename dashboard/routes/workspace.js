@@ -233,7 +233,8 @@ export function createWorkspaceRouter(WORKSPACE_ROOT) {
   router.delete('/workspace/file', async (req, res) => {
     if (!WORKSPACE_ROOT) return res.status(503).json({ error: 'Workspace not configured' });
     const abs = resolveWorkspacePath(req.query.path || '');
-    if (!abs || (abs !== ROOT_ABS && !abs.startsWith(ROOT_PREFIX))) return res.status(400).json({ error: 'Invalid path' });
+    // strictly below the root: the workspace root itself is never deleted
+    if (!abs || !abs.startsWith(ROOT_PREFIX)) return res.status(400).json({ error: 'Invalid path' });
     try {
       const s = await stat(abs);
       if (s.isDirectory()) {
@@ -264,8 +265,8 @@ export function createWorkspaceRouter(WORKSPACE_ROOT) {
     const { from: fromPath, to: toPath } = req.body || {};
     const absFrom = resolveWorkspacePath(fromPath || '');
     const absTo = resolveWorkspacePath(toPath || '');
-    if (!absFrom || (absFrom !== ROOT_ABS && !absFrom.startsWith(ROOT_PREFIX))) return res.status(400).json({ error: 'Invalid path' });
-    if (!absTo || (absTo !== ROOT_ABS && !absTo.startsWith(ROOT_PREFIX))) return res.status(400).json({ error: 'Invalid path' });
+    if (!absFrom || !absFrom.startsWith(ROOT_PREFIX)) return res.status(400).json({ error: 'Invalid path' }); // never the root itself
+    if (!absTo || !absTo.startsWith(ROOT_PREFIX)) return res.status(400).json({ error: 'Invalid path' }); // never the root itself
     try {
       const { rename } = await import('fs/promises');
       await rename(absFrom, absTo);

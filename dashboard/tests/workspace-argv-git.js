@@ -192,6 +192,13 @@ try {
   assert.equal(res.status, 400, `delete above root refused: ${res.text}`);
   assert.equal(readFileSync(outside, 'utf8'), 'OUTSIDE', 'file above root not deleted');
 
+  // The workspace root itself can never be deleted or renamed.
+  res = await request(port, { method: 'DELETE', path: '/api/workspace/file' });
+  assert.equal(res.status, 400, `delete of the root refused: ${res.text}`);
+  assert.ok(existsSync(join(root, 'README.md')), 'workspace contents still present');
+  res = await request(port, { method: 'POST', path: '/api/workspace/rename', body: { from: '', to: 'moved' } });
+  assert.equal(res.status, 400, `rename of the root refused: ${res.text}`);
+
   console.log('✓ All workspace argv and containment tests passed');
 } catch (err) {
   console.error('✗ FAIL:', err.message);
