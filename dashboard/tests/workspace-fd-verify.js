@@ -69,6 +69,18 @@ function noBytesOutside(dir = OUTSIDE) {
   }
 }
 
+// Every path under dir with its type and size, to compare the whole outside state.
+function treeOf(dir, base = dir) {
+  const out = [];
+  for (const e of readdirSync(dir, { withFileTypes: true })) {
+    const full = join(dir, e.name);
+    const rel = full.slice(base.length);
+    if (e.isDirectory()) out.push(`${rel}/`, ...treeOf(full, base));
+    else out.push(`${rel}:${statSync(full).size}`);
+  }
+  return out.sort();
+}
+
 function outsideUntouched() {
   assert.equal(readFileSync(join(OUTSIDE, 'f.txt'), 'utf8'), 'secret\n', 'outside file was not modified');
   assert.ok(existsSync(join(OUTSIDE, 'gone.txt')), 'outside file was not removed');
@@ -236,6 +248,50 @@ try {
       console.log(`  ✅ ${label} mutations swapped inside the window are refused and carry no data outside`);
     }
 
+    if (mode.disableProc) {
+      // Limit of the fallback: a delete/mkdir/rename that lands in the window between the
+      // last check and the operation cannot be prevented without openat(); it is detected
+      // afterwards and refused. Only what is still true is asserted (no data outside, the
+      // outside file contents unchanged). Strict mode (below) asserts the complete state.
+      for (const [name, stageOp, call] of [
+        ['rename source parent', 'rename-from', () => post('/workspace/rename', { from: 'a/mv.txt', to: 'c/x.txt' })],
+        ['rename destination parent', 'rename-to', () => post('/workspace/rename', { from: 'c/y.txt', to: 'a/z.txt' })],
+      ]) {
+        seed();
+        armSwap('before-op', stageOp);
+        const r = await call();
+        assert.ok(r.status >= 400, `${label} ${name} in the window is refused`);
+        // Limit: a destination-parent swap can already have moved the source file outside; only the source case is checked for data.
+        if (stageOp === 'rename-from') noBytesOutside();
+        assert.equal(readFileSync(join(OUTSIDE, 'f.txt'), 'utf8'), 'secret\n', `${label} ${name}: outside file content unchanged`);
+      }
+
+      // Listing: a swap that is replaced by a different directory before the end of the read is refused.
+      seed();
+      writeFileSync(join(OUTSIDE, 'outside-only.txt'), '1234567890');
+      let phase = 0;
+      testHooks.before = async (st, _abs, o) => {
+        if (o !== 'list') return;
+        if (st === 'before-op' && phase === 0) {
+          phase = 1;
+          renameSync(join(ROOT, 'a'), join(ROOT, 'a.orig'));
+          symlinkSync(OUTSIDE, join(ROOT, 'a'), 'dir');
+        } else if (st === 'after-meta' && phase === 1) {
+          phase = 2;
+          rmSync(join(ROOT, 'a'), { force: true });
+          mkdirSync(join(ROOT, 'a'));
+          writeFileSync(join(ROOT, 'a', 'replacement.txt'), 'x');
+        }
+      };
+      const lr = await get(`/workspace/ls?path=${q('a')}`);
+      assert.equal(phase, 2, 'the swap and replacement ran');
+      assert.equal(lr.status, 400, `${label} listing whose directory changed during the read is refused`);
+      const lbody = await lr.text();
+      assert.ok(!lbody.includes('outside-only') && !lbody.includes('entries'), 'no entries returned');
+      // Limit: restoring the very same directory (same inode) inside the window is not distinguishable here.
+      console.log(`  ✅ ${label} rename parents and a changed listing directory are refused`);
+    }
+
     // ── opened-file verification on its own (parent checks pass) ────────────
     for (const [m, route] of [['write', 'write'], ['read', 'read']]) {
       seed();
@@ -256,6 +312,17 @@ try {
       assert.equal(readFileSync(join(ROOT, 'a', 'f.txt'), 'utf8'), 'replacement\n', 'replacement left alone');
     }
     console.log(`  ✅ ${label} opened-file verification refuses read/write when the path no longer matches`);
+
+    // ── a hard link must not be written through ─────────────────────────────
+    seed();
+    testHooks.before = null;
+    linkSync(join(OUTSIDE, 'f.txt'), join(ROOT, 'a', 'hl.txt'));
+    r = await post('/workspace/write', { path: 'a/hl.txt', content: 'planted' });
+    assert.equal(r.status, 400, `${label} write through a hard link is refused`);
+    assert.equal(readFileSync(join(OUTSIDE, 'f.txt'), 'utf8'), 'secret\n', 'the other link target was not modified');
+    r = await get(`/workspace/read?path=${q('a/f.txt')}`);
+    assert.equal(r.status, 200, 'ordinary files are unaffected');
+    console.log(`  ✅ ${label} writes through a hard link are refused`);
 
     // ── a parent that is a file is an invalid path ──────────────────────────
     seed();
@@ -286,6 +353,76 @@ try {
     console.log(`  ✅ ${label} rename refuses a swapped source or destination parent`);
   }
 
+  // ── recursive delete walks through descriptors (Linux) ──────────────────
+  if (process.platform === 'linux' && existsSync('/proc/self/fd')) {
+    testHooks.disableProc = false;
+    testHooks.strict = false;
+    const mkTree = () => {
+      seed();
+      mkdirSync(join(ROOT, 'a', 'tree', 'sub'), { recursive: true });
+      writeFileSync(join(ROOT, 'a', 'tree', 'sub', 'file.txt'), 'inside\n');
+      writeFileSync(join(ROOT, 'a', 'tree', 'top.txt'), 'inside\n');
+      writeFileSync(join(OUTSIDE, 'b', 'keep.txt'), 'keep\n');
+    };
+    const outsideKept = () => assert.equal(readFileSync(join(OUTSIDE, 'b', 'keep.txt'), 'utf8'), 'keep\n', 'outside contents survive');
+    mkTree();
+    testHooks.before = null;
+    let dr = await del('a/tree');
+    assert.equal(dr.status, 200, 'a normal tree is deleted');
+    assert.ok(!existsSync(join(ROOT, 'a', 'tree')));
+
+    // A child directory swapped for a symlink after it was seen as a directory.
+    mkTree();
+    let swapped = false;
+    testHooks.before = async (st, _abs, o) => {
+      if (swapped || st !== 'walk-entry' || o !== 'delete') return;
+      swapped = true;
+      renameSync(join(ROOT, 'a', 'tree', 'sub'), join(ROOT, 'a', 'tree', 'sub.orig'));
+      symlinkSync(join(OUTSIDE, 'b'), join(ROOT, 'a', 'tree', 'sub'), 'dir');
+    };
+    dr = await del('a/tree');
+    assert.ok(swapped, 'the swap ran mid-walk');
+    assert.equal(dr.status, 400, 'a swapped child directory is refused');
+    outsideKept();
+
+    // A child directory already swapped when the walk lists it: only the link is removed.
+    mkTree();
+    swapped = false;
+    testHooks.before = async (st, _abs, o) => {
+      if (swapped || st !== 'walk' || o !== 'delete') return;
+      swapped = true;
+      renameSync(join(ROOT, 'a', 'tree', 'sub'), join(ROOT, 'a', 'tree', 'sub.orig'));
+      symlinkSync(join(OUTSIDE, 'b'), join(ROOT, 'a', 'tree', 'sub'), 'dir');
+    };
+    dr = await del('a/tree');
+    assert.ok(swapped, 'the swap ran before the listing');
+    outsideKept();
+    testHooks.before = null;
+    console.log('  ✅ recursive delete never follows a directory swapped for a symlink mid-walk');
+  }
+
+  // ── without pinning a non-empty directory is only deleted after an explicit opt-out ──
+  testHooks.strict = null;
+  testHooks.disableProc = true;
+  testHooks.platform = 'win32';
+  testHooks.before = null;
+  seed();
+  mkdirSync(join(ROOT, 'a', 'full'));
+  writeFileSync(join(ROOT, 'a', 'full', 'x.txt'), 'x');
+  mkdirSync(join(ROOT, 'a', 'empty'));
+  testHooks.env = {};
+  let dd = await del('a/full');
+  assert.equal(dd.status, 400, 'non-empty directory delete refused by default without pinning');
+  assert.ok(existsSync(join(ROOT, 'a', 'full', 'x.txt')), 'nothing was deleted');
+  dd = await del('a/empty');
+  assert.equal(dd.status, 200, 'an empty directory can still be removed');
+  testHooks.env = { WORKSPACE_REQUIRE_PINNED_FS: 'off' };
+  dd = await del('a/full');
+  assert.equal(dd.status, 200, 'explicit opt-out allows the recursive delete');
+  testHooks.platform = null;
+  testHooks.env = null;
+  console.log('  ✅ unpinned recursive delete needs an explicit opt-out');
+
   // ── strict mode: refuse everything that cannot be pinned ─────────────────
   testHooks.disableProc = true;
   testHooks.strict = true;
@@ -297,13 +434,18 @@ try {
       ['read', () => get(`/workspace/read?path=${q('a/f.txt')}`)],
       ['rename', () => post('/workspace/rename', { from: 'a/mv.txt', to: 'a/moved.txt' })],
       ['rename-dest-parent', () => post('/workspace/rename', { from: 'c/y.txt', to: 'a/z.txt' })],
+      ['list', () => get(`/workspace/ls?path=${q('a')}`)],
     ];
     for (const [name, call] of cases) {
       seed();
+      const snapshot = treeOf(OUTSIDE);
       armSwap(stage);
       const r = await call();
       assert.equal(r.status, 400, `strict ${stage}: ${name} refused`);
+      assert.ok(!(await r.text()).includes('gone.txt'), `strict ${stage}: ${name} returned no outside names`);
       outsideUntouched();
+      // Full state: deleted files still exist, no new files or directories, same sizes.
+      assert.deepEqual(treeOf(OUTSIDE), snapshot, `strict ${stage}: ${name} left the outside tree unchanged`);
     }
   }
   testHooks.strict = null;
@@ -355,6 +497,15 @@ try {
     assert.equal(pinnedFsRequired({ WORKSPACE_REQUIRE_PINNED_FS: v }, 'linux'), false, `"${v}" opts out`);
   }
   assert.equal(pinnedFsRequired({ WORKSPACE_REQUIRE_PINNED_FS: '  ' }, 'linux'), true, 'blank uses the platform default');
+  assert.equal(pinnedFsRequired({ NODE_ENV: ' Production ' }, 'win32'), true, 'production is strict on any platform');
+  assert.equal(pinnedFsRequired({ NODE_ENV: 'development' }, 'win32'), false, 'development stays best-effort');
+  assert.equal(pinnedFsRequired({ HOST: '0.0.0.0' }, 'darwin'), true, 'a non-loopback HOST is strict');
+  for (const h of ['127.0.0.1', '::1', '[::1]', 'localhost', ' LOCALHOST ', '']) {
+    assert.equal(pinnedFsRequired({ HOST: h }, 'win32'), false, `loopback HOST "${h}" stays best-effort`);
+  }
+  assert.equal(pinnedFsRequired({ NODE_ENV: 'production', WORKSPACE_REQUIRE_PINNED_FS: 'off' }, 'win32'), false, 'the flag overrides production');
+  assert.equal(pinnedFsRequired({ HOST: '0.0.0.0', WORKSPACE_REQUIRE_PINNED_FS: '0' }, 'win32'), false, 'the flag overrides HOST');
+  assert.equal(pinnedFsRequired({ HOST: '127.0.0.1', WORKSPACE_REQUIRE_PINNED_FS: '1' }, 'win32'), true, 'the flag forces strict');
 
   // Behaviour: no /proc, flag unset.
   testHooks.strict = null;
@@ -378,7 +529,20 @@ try {
   testHooks.env = { WORKSPACE_REQUIRE_PINNED_FS: ' Off ' };
   rd = await get(`/workspace/read?path=${q('a/f.txt')}`);
   assert.equal(rd.status, 200, 'the flag opts out on linux');
-  console.log('  ✅ strict default per platform and flag forms');
+  testHooks.platform = 'win32';
+  testHooks.env = { NODE_ENV: 'Production ' };
+  rd = await get(`/workspace/read?path=${q('a/f.txt')}`);
+  assert.equal(rd.status, 400, 'NODE_ENV=production is strict on win32');
+  testHooks.env = { HOST: '0.0.0.0' };
+  rd = await get(`/workspace/read?path=${q('a/f.txt')}`);
+  assert.equal(rd.status, 400, 'a non-loopback HOST is strict on win32');
+  testHooks.env = { HOST: '127.0.0.1' };
+  rd = await get(`/workspace/read?path=${q('a/f.txt')}`);
+  assert.equal(rd.status, 200, 'a loopback HOST stays best-effort on win32');
+  testHooks.env = { NODE_ENV: 'production', WORKSPACE_REQUIRE_PINNED_FS: '0' };
+  rd = await get(`/workspace/read?path=${q('a/f.txt')}`);
+  assert.equal(rd.status, 200, 'the flag overrides production');
+  console.log('  ✅ strict default per platform, NODE_ENV, HOST and flag forms');
 } finally {
   testHooks.platform = null;
   testHooks.env = null;

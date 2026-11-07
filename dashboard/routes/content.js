@@ -1,7 +1,8 @@
 import express from 'express';
 import { join, sep, resolve as resolvePath } from 'path';
 import { readdir, stat } from 'fs/promises';
-import { existsSync } from 'fs';
+import { existsSync, constants as fsConstants } from 'fs';
+import { openInside, readdirInside } from '../modules/workspace-fs.js';
 
 export function createContentRouter({ WEBSITE_OUTPUT_DIR, WORKSPACE_ROOT }) {
   const router = express.Router();
@@ -65,26 +66,50 @@ export function createContentRouter({ WEBSITE_OUTPUT_DIR, WORKSPACE_ROOT }) {
   // ── Artifact API ────────────────────────────────────────────────────────
   router.get('/artifacts', async (req, res) => {
     if (!WORKSPACE_ROOT) return res.json([]);
-    const dir = join(WORKSPACE_ROOT, 'artifacts');
+    const root = resolvePath(join(WORKSPACE_ROOT, 'artifacts'));
+    const results = [];
+    // Each directory is listed through readdirInside; symlinks are never listed or followed.
+    async function walk(dirAbs, rel) {
+      if (dirAbs !== root && !dirAbs.startsWith(root + sep)) return;
+      const entries = await readdirInside(WORKSPACE_ROOT, dirAbs);
+      for (const e of entries) {
+        if (e.isSymbolicLink) continue;
+        const name = rel ? `${rel}/${e.name}` : e.name;
+        if (e.isDirectory) await walk(join(dirAbs, e.name), name);
+        else if (e.mtime) results.push({ name, size: e.size, createdAt: e.birthtime });
+      }
+    }
     try {
-      const files = await readdir(dir, { recursive: true }).catch(() => []);
-      const results = await Promise.all(files.map(async f => {
-        const full = join(dir, f);
-        const s = await stat(full).catch(() => null);
-        return (s && s.isFile()) ? { name: f, size: s.size, createdAt: s.birthtime } : null;
-      }));
-      res.json(results.filter(Boolean));
+      await walk(root, '');
+      res.json(results);
     } catch { res.json([]); }
   });
 
-  router.get('/artifacts/:name/download', (req, res) => {
+  router.get('/artifacts/:name/download', async (req, res) => {
     if (!WORKSPACE_ROOT) return res.status(503).end();
     const dir = resolvePath(join(WORKSPACE_ROOT, 'artifacts'));
     const safe = resolvePath(join(dir, req.params.name));
     if (safe === dir) return res.status(404).end(); // the directory itself is not a downloadable file
     if (!safe.startsWith(dir + sep)) return res.status(403).end();
-    if (!existsSync(safe)) return res.status(404).end();
-    res.download(safe);
+    let fh;
+    try {
+      // Stream from a verified handle that was opened without following symlinks.
+      fh = await openInside(WORKSPACE_ROOT, safe, fsConstants.O_RDONLY);
+      const st = await fh.stat();
+      if (!st.isFile()) {
+        await fh.close();
+        return res.status(404).end();
+      }
+      res.attachment(req.params.name);
+      res.setHeader('Content-Length', st.size);
+      const stream = fh.createReadStream();
+      stream.on('error', () => res.destroy());
+      stream.pipe(res);
+    } catch (err) {
+      await fh?.close().catch(() => {});
+      if (err.code === 'ENOENT') return res.status(404).end();
+      res.status(403).end();
+    }
   });
 
   router.get('/content/download/:slug/*splat', (req, res) => {

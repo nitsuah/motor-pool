@@ -12,21 +12,23 @@
  *    operation then runs relative to that descriptor (/proc/self/fd/N/name), so
  *    later changes to the path no longer matter. Opened files are verified the
  *    same way before any byte is read or written.
- *  - Elsewhere (Windows, macOS): the parent's realpath is checked immediately
- *    before and after the operation, and an opened file must have the same
- *    dev+ino as realpath(target), with realpath(target) inside the root. When
- *    the platform reports no usable inode (ino 0, as on some Windows volumes)
- *    the file is accepted only if no component below the root is a symlink.
- *    This mode cannot pin directories, so a change between the final check and
- *    the operation is detected afterwards rather than prevented. It is used
- *    only on win32 and darwin. On Linux a missing /proc makes every operation
- *    fail; WORKSPACE_REQUIRE_PINNED_FS=1 forces that behaviour on every
- *    platform and =0 (false/no/off) opts out of it explicitly.
+ *  - Without /proc (Windows and macOS developer machines only by default):
+ *    best-effort. The parent's realpath is checked right before and right
+ *    after the operation, and an opened file must match realpath(target) by
+ *    dev+ino and lie inside the root (with an unusable inode, only a
+ *    symlink-free path is accepted). Directories cannot be pinned here, so a
+ *    change inside the window between the last check and the operation is
+ *    NOT prevented; it is detected afterwards and the request fails, but the
+ *    operation itself may already have happened. Where that is not acceptable,
+ *    operations are refused instead: always on Linux, when NODE_ENV is
+ *    production, and when the dashboard HOST is not loopback.
+ *    WORKSPACE_REQUIRE_PINNED_FS=1 forces refusal on every platform and =0
+ *    (false/no/off) opts out explicitly.
  *
  * Opening never truncates: callers truncate after the descriptor is verified.
  * Nothing is ever removed by path outside the root after a failed check.
  */
-import { open, mkdir, readdir, rm, unlink, lstat, rename } from 'fs/promises';
+import { open, mkdir, readdir, rm, rmdir, unlink, lstat, rename } from 'fs/promises';
 import { realpathSync, lstatSync, statSync, readlinkSync, existsSync, constants as fsConstants } from 'fs';
 import { resolve, relative, dirname, basename, join, sep, isAbsolute } from 'path';
 
@@ -57,16 +59,30 @@ function procAvailable() {
   return !testHooks.disableProc && currentPlatform() === 'linux' && existsSync('/proc/self/fd');
 }
 
+const LOOPBACK_HOSTS = new Set(['127.0.0.1', '::1', '[::1]', 'localhost', '::ffff:127.0.0.1']);
+
 /**
  * Whether operations that cannot be pinned must be refused. The flag is read
  * trimmed and lowercased: false/0/no/off turn it off, any other value turns it
- * on; unset means on for Linux and off elsewhere.
+ * on. Unset means on for Linux, for NODE_ENV=production and for a non-loopback
+ * HOST, and off otherwise.
  */
 export function pinnedFsRequired(env = process.env, platform = process.platform) {
   const flag = String(env.WORKSPACE_REQUIRE_PINNED_FS ?? '').trim().toLowerCase();
   if (['false', '0', 'no', 'off'].includes(flag)) return false;
   if (flag !== '') return true;
-  return platform === 'linux';
+  if (platform === 'linux') return true;
+  if (String(env.NODE_ENV ?? '').trim().toLowerCase() === 'production') return true;
+  const host = String(env.HOST ?? '').trim().toLowerCase();
+  return host !== '' && !LOOPBACK_HOSTS.has(host);
+}
+
+/** True only when the operator explicitly turned strict mode off. */
+function explicitOptOut() {
+  if (testHooks.strict === false) return true;
+  if (testHooks.strict === true) return false;
+  const env = testHooks.env || process.env;
+  return ['false', '0', 'no', 'off'].includes(String(env.WORKSPACE_REQUIRE_PINNED_FS ?? '').trim().toLowerCase());
 }
 
 /** Fail closed when pinned operations are required and /proc is unavailable. */
@@ -210,6 +226,10 @@ export async function openInside(root, abs, flags, mode = 0o666) {
     }, 'open');
     await seam('after-open', abs, 'open');
     await verifyFd(fh, rootLex, rootReal, abs);
+    // A hard link could reach an inode that also lives outside the root: never write through one.
+    if (flags & (fsConstants.O_WRONLY | fsConstants.O_RDWR)) {
+      if ((await fh.stat()).nlink > 1) refuse();
+    }
   } catch (err) {
     await fh?.close().catch(() => {});
     throw err;
@@ -274,12 +294,55 @@ export async function mkdirInside(root, abs) {
 
 /** Removes a file or directory tree inside the root; refuses the root and symlinks. */
 export async function removeInside(root, abs) {
+  const rootReal = realRoot(root);
   return withParent(root, abs, async (p) => {
     const l = await lstat(p);
     if (l.isSymbolicLink()) refuse();
-    if (l.isDirectory()) await rm(p, { recursive: true, force: true });
-    else await unlink(p);
+    if (!l.isDirectory()) {
+      await unlink(p);
+      return;
+    }
+    if (procAvailable()) {
+      await removeTreeAt(p, rootReal);
+      return;
+    }
+    // Unpinned: a recursive walk by path cannot be made safe, so only an empty directory
+    // is removed unless the operator explicitly opted out of strict mode.
+    if ((await readdir(p)).length === 0) {
+      await rmdir(p);
+      return;
+    }
+    if (!explicitOptOut()) refuse();
+    await rm(p, { recursive: true, force: true });
   }, 'delete');
+}
+
+/**
+ * Removes the directory at dirPath (a /proc/self/fd/N/<name> path) by walking it through
+ * descriptors: every child directory is opened without following symlinks and its kernel
+ * path checked against the root, and entries are removed relative to that descriptor.
+ */
+async function removeTreeAt(dirPath, rootReal) {
+  const fh = await open(dirPath, fsConstants.O_RDONLY | O_DIRECTORY | O_NOFOLLOW);
+  try {
+    const kernelPath = procPathOfFd(fh.fd);
+    if (kernelPath === null || !insideReal(rootReal, kernelPath, false)) refuse();
+    const base = `/proc/self/fd/${fh.fd}`;
+    await seam('walk', kernelPath, 'delete');
+    for (const name of await readdir(base)) {
+      const child = join(base, name);
+      const l = await lstat(child);
+      if (l.isDirectory()) {
+        await seam('walk-entry', join(kernelPath, name), 'delete');
+        await removeTreeAt(child, rootReal);
+      } else {
+        await unlink(child);
+      }
+    }
+  } finally {
+    await fh.close().catch(() => {});
+  }
+  await rmdir(dirPath);
 }
 
 /** Renames inside the root; neither end may be the root or a symlink. */
@@ -316,23 +379,35 @@ export async function readdirInside(root, abs) {
     }
     base = `/proc/self/fd/${dirFh.fd}`;
   }
+  // Without pinning, the directory must be the same one before and after the entries are read.
+  const identity = () => {
+    const real = realpathSync(abs);
+    const st = statSync(real, { bigint: true });
+    return `${real}|${st.dev}:${st.ino}`;
+  };
+  const before = dirFh ? null : identity();
   try {
     await seam('before-op', abs, 'list');
     const entries = await readdir(base, { withFileTypes: true });
     const out = [];
     for (const e of entries) {
-      const info = { name: e.name, isDirectory: e.isDirectory() };
+      const info = { name: e.name, isDirectory: e.isDirectory(), isSymbolicLink: e.isSymbolicLink() };
       if (!info.isDirectory) {
         try {
           // lstat: a symlink entry reports itself, never its target.
           const st = await lstat(join(base, e.name));
           info.size = st.size;
           info.mtime = st.mtime;
+          info.birthtime = st.birthtime;
         } catch { /* entry vanished: list it without metadata */ }
       }
       out.push(info);
     }
-    if (!dirFh) assertRealInside(rootReal, abs, true);
+    if (!dirFh) {
+      await seam('after-meta', abs, 'list');
+      assertRealInside(rootReal, abs, true);
+      if (identity() !== before) refuse();
+    }
     return out;
   } finally {
     await dirFh?.close().catch(() => {});
