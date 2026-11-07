@@ -262,7 +262,7 @@ export function createAgentHelpers({ WORKSPACE_ROOT, execAsync, TOOL_SERVERS, TO
   async function callAgentTool(toolName, toolArgs, session) {
     try {
       if (toolName === 'bash') {
-        if (!shellExecEnabled()) return JSON.stringify({ error: 'Shell execution is disabled (WORKSPACE_EXEC is not set)' });
+        if (!shellExecEnabled()) return JSON.stringify({ error: 'Shell execution is disabled (WORKSPACE_EXEC is not enabled)' });
         if (!WORKSPACE_ROOT) return JSON.stringify({ error: 'Workspace not mounted (WORKSPACE_ROOT not set)' });
         const { command } = toolArgs;
         if (BASH_BLOCKLIST.some(p => String(command).includes(p))) {

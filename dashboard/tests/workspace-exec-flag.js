@@ -136,7 +136,7 @@ try {
   // Second layer: even if a bash call arrives with bash in the list, the executor refuses it.
   script = [bashCall, { content: 'done' }];
   out = await runAgent(DEVELOPER_TOOLS);
-  assert.equal(out.toolLog[0].result.error, 'Shell execution is disabled (WORKSPACE_EXEC is not set)',
+  assert.equal(out.toolLog[0].result.error, 'Shell execution is disabled (WORKSPACE_EXEC is not enabled)',
     'the executor refuses bash even when it is in the offered list');
   assert.equal(existsSync(marker), false, 'executor-level refusal did not run');
 
