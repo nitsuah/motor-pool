@@ -147,6 +147,7 @@ function buildServer() {
       const path = safeOutputPath(slug, subdir, filename);
       if (!dir.startsWith(OUTPUT_PREFIX)) return { content: [{ type: 'text', text: 'Invalid path' }] };
       if (!path.startsWith(OUTPUT_PREFIX)) return { content: [{ type: 'text', text: 'Invalid path' }] };
+      if (!path.startsWith(dir + sep)) return { content: [{ type: 'text', text: 'Invalid filename' }] };
       mkdirSync(dir, { recursive: true });
       writeFileSync(path, content, 'utf8');
       return { content: [{ type: 'text', text: `✓ Saved: ${path}` }] };
@@ -165,6 +166,7 @@ function buildServer() {
     async ({ slug, subdir, filename }) => {
       const path = safeOutputPath(slug, subdir, filename);
       if (!path.startsWith(OUTPUT_PREFIX)) return { content: [{ type: 'text', text: 'Invalid path' }] };
+      if (!path.startsWith(safeOutputPath(slug, subdir) + sep)) return { content: [{ type: 'text', text: 'Invalid filename' }] };
       if (!existsSync(path)) {
         return { content: [{ type: 'text', text: `File not found: ${path}` }] };
       }

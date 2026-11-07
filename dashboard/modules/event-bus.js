@@ -108,13 +108,19 @@ export const eventBus = {
 
 let wsEventServerAttached = false;
 
-export function attachEventWebSocketServer(server) {
+// verifyRequest(request) -> boolean, when given, must accept the upgrade (Host/Origin checks).
+export function attachEventWebSocketServer(server, verifyRequest) {
   if (!server || wsEventServerAttached) return;
 
   const wss = new WebSocketServer({ noServer: true });
 
   server.on('upgrade', (request, socket, head) => {
     if (!request.url?.startsWith('/ws/events')) {
+      socket.destroy();
+      return;
+    }
+    if (verifyRequest && !verifyRequest(request)) {
+      socket.write('HTTP/1.1 403 Forbidden\r\nConnection: close\r\n\r\n');
       socket.destroy();
       return;
     }

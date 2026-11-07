@@ -38,16 +38,40 @@ const BUILTIN_HOSTS = [
  * Allowed: loopback names (any port), the Compose service name, hostnames of
  * the CORS allowlist, and ALLOWED_HOSTS (comma-separated hostnames).
  */
-export function createHostGuard({ getCorsOrigins, getAllowedHosts }) {
+export function isHostAllowed(hostHeader, { getCorsOrigins, getAllowedHosts }) {
+  const host = hostnameOf(hostHeader);
+  const allowed = new Set(BUILTIN_HOSTS);
+  for (const h of getAllowedHosts() || []) allowed.add(hostnameOf(h));
+  for (const o of getCorsOrigins() || []) {
+    try { allowed.add(new URL(o).hostname.toLowerCase()); } catch { /* ignore bad entry */ }
+  }
+  return Boolean(host) && allowed.has(host);
+}
+
+// Same-host (Origin host equals Host header) or listed in the allowlist.
+export function isOriginAllowed(origin, hostHeader, allowedOrigins) {
+  let originHost = null;
+  try {
+    originHost = new URL(origin).host.toLowerCase();
+  } catch { /* unparseable (or "null"): only the allowlist can admit it */ }
+  const host = String(hostHeader || '').toLowerCase();
+  if (originHost && host && originHost === host) return true;
+  return (allowedOrigins || []).map(normalizeOrigin).includes(normalizeOrigin(origin));
+}
+
+export function createHostGuard(opts) {
   return function hostGuard(req, res, next) {
-    const host = hostnameOf(req.headers.host);
-    const allowed = new Set(BUILTIN_HOSTS);
-    for (const h of getAllowedHosts() || []) allowed.add(hostnameOf(h));
-    for (const o of getCorsOrigins() || []) {
-      try { allowed.add(new URL(o).hostname.toLowerCase()); } catch { /* ignore bad entry */ }
-    }
-    if (host && allowed.has(host)) return next();
+    if (isHostAllowed(req.headers.host, opts)) return next();
     return res.status(403).json({ success: false, error: 'Host not allowed' });
+  };
+}
+
+/** Verifier for WebSocket upgrades: known Host, and any Origin same-host or allowlisted. */
+export function createUpgradeVerifier({ getCorsOrigins, getAllowedHosts }) {
+  return function verifyUpgrade(request) {
+    if (!isHostAllowed(request.headers.host, { getCorsOrigins, getAllowedHosts })) return false;
+    const origin = request.headers.origin;
+    return !origin || isOriginAllowed(origin, request.headers.host, getCorsOrigins());
   };
 }
 
@@ -57,16 +81,7 @@ export function createOriginGuard(getAllowedOrigins) {
     const origin = req.headers.origin;
     if (!origin) return next();
 
-    let originHost = null;
-    try {
-      originHost = new URL(origin).host.toLowerCase();
-    } catch { /* unparseable (or "null"): only the allowlist can admit it */ }
-
-    const host = String(req.headers.host || '').toLowerCase();
-    if (originHost && host && originHost === host) return next();
-
-    const allowed = (getAllowedOrigins() || []).map(normalizeOrigin);
-    if (allowed.includes(normalizeOrigin(origin))) return next();
+    if (isOriginAllowed(origin, req.headers.host, getAllowedOrigins())) return next();
 
     return res.status(403).json({ success: false, error: 'Cross-origin request refused' });
   };
