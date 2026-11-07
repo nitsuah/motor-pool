@@ -10,6 +10,7 @@ import path from 'path';
 
 const router = Router();
 const TMP_ROOT = path.join(process.cwd(), 'tmp');
+const TMP_ROOT_ABS = path.resolve(TMP_ROOT);
 const SESSION_ID = /^[\w-]+$/;
 
 /**
@@ -44,8 +45,10 @@ router.get('/sessions/:id/outputs', async (req, res) => {
 router.get('/sessions/:id/outputs/:filename', (req, res) => {
   if (!SESSION_ID.test(req.params.id)) return res.status(400).end();
   const dir = path.resolve(TMP_ROOT, path.basename(req.params.id)); // id already validated; basename keeps the base-directory guard explicit
+  if (!dir.startsWith(TMP_ROOT_ABS + path.sep)) return res.status(403).end();
   const safe = path.resolve(dir, req.params.filename);
-  if (!safe.startsWith(dir + path.sep) && safe !== dir) return res.status(403).end();
+  if (safe === dir) return res.status(404).end(); // the session directory itself is not a file
+  if (!safe.startsWith(dir + path.sep)) return res.status(403).end();
   res.download(safe, (err) => {
     if (err && !res.headersSent) res.status(404).end();
   });

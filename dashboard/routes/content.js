@@ -34,13 +34,14 @@ export function createContentRouter({ WEBSITE_OUTPUT_DIR, WORKSPACE_ROOT }) {
     try {
       const files = [];
       async function walk(dir, prefix) {
+        if (dir !== clientDirAbs && !dir.startsWith(clientDirAbs + sep)) return;
         let entries;
         try { entries = await readdir(dir); } catch { return; }
         for (const entry of entries) {
           const full = resolvePath(dir, entry);
-          if (full !== clientDirAbs && !full.startsWith(clientDirAbs + sep)) continue;
           const rel  = prefix ? `${prefix}/${entry}` : entry;
           try {
+            if (full !== clientDirAbs && !full.startsWith(clientDirAbs + sep)) continue;
             const s = await stat(full);
             if (s.isDirectory()) {
               await walk(full, rel);
@@ -76,7 +77,8 @@ export function createContentRouter({ WEBSITE_OUTPUT_DIR, WORKSPACE_ROOT }) {
     if (!WORKSPACE_ROOT) return res.status(503).end();
     const dir = resolvePath(join(WORKSPACE_ROOT, 'artifacts'));
     const safe = resolvePath(join(dir, req.params.name));
-    if (!safe.startsWith(dir + sep) && safe !== dir) return res.status(403).end();
+    if (safe === dir) return res.status(404).end(); // the directory itself is not a downloadable file
+    if (!safe.startsWith(dir + sep)) return res.status(403).end();
     if (!existsSync(safe)) return res.status(404).end();
     res.download(safe);
   });

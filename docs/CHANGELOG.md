@@ -11,6 +11,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- Workspace, content and output routes check the resolved path at each file operation.
 - Workspace shell execution (`/workspace/exec` and the agent bash tool) is off unless `WORKSPACE_EXEC=1`.
 - **Workspace git and script calls use argument arrays** — the workspace routes (commit, add, checkout, discard, search, push, pull) and the website/content-gen PowerShell runners call `execFile` with argument lists; branch names starting with `-` or containing `..` are refused, and workspace, content-download and session-output paths are checked against their resolved base directory. New tests: `dashboard/tests/workspace-argv-git.js`, `dashboard/tests/content-download-containment.js`.
 

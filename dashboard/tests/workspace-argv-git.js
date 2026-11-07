@@ -178,6 +178,20 @@ try {
   assert.notEqual(res.status, 200, `checkout "." is not a pathspec: ${res.text}`);
   assert.equal(readFileSync(join(root, 'README.md'), 'utf8'), 'keep me\n');
 
+  // Mkdir, rename and delete: a value that resolves above the root is refused before any fs call.
+  res = await request(port, { method: 'POST', path: '/api/workspace/mkdir', body: { path: '../made-by-mkdir' } });
+  assert.equal(res.status, 400, `mkdir above root refused: ${res.text}`);
+  assert.equal(existsSync(join(base, 'made-by-mkdir')), false, 'mkdir created nothing outside the root');
+
+  res = await request(port, { method: 'POST', path: '/api/workspace/rename', body: { from: 'README.md', to: '../renamed-out.txt' } });
+  assert.equal(res.status, 400, `rename to a path above root refused: ${res.text}`);
+  assert.equal(existsSync(join(base, 'renamed-out.txt')), false, 'rename created nothing outside the root');
+  assert.equal(readFileSync(join(root, 'README.md'), 'utf8'), 'keep me\n', 'rename source untouched');
+
+  res = await request(port, { method: 'DELETE', path: '/api/workspace/file?path=../outside.txt' });
+  assert.equal(res.status, 400, `delete above root refused: ${res.text}`);
+  assert.equal(readFileSync(outside, 'utf8'), 'OUTSIDE', 'file above root not deleted');
+
   console.log('✓ All workspace argv and containment tests passed');
 } catch (err) {
   console.error('✗ FAIL:', err.message);
