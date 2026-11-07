@@ -40,6 +40,8 @@ describe('leadsFileName', () => {
 
   it('rejects path-like or malformed parts', () => {
     assert.equal(leadsFileName('90210', 'restaurants', '../../secrets'), null);
+    assert.equal(leadsFileName('90210', 'restaurants', '2026-0102'), null);
+    assert.equal(leadsFileName('90210', 'bars,french', '20260102'), 'leads-90210-bars,french-20260102.json');
     assert.equal(leadsFileName('90210', 'restaurants', '2026-01-02/../../x'), null);
     assert.equal(leadsFileName('90210', 'restaurants', '2026-01-02.json'), null);
     assert.equal(leadsFileName('../x', 'restaurants', '2026-01-02'), null);

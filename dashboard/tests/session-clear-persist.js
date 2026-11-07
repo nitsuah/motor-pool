@@ -3,7 +3,7 @@
  * on-disk session snapshot (not only the in-memory map).
  */
 import assert from 'node:assert/strict';
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
@@ -38,6 +38,12 @@ try {
   const snap = saved.sessions.find(s => s.id === 'sess_clear_persist');
   assert.ok(snap, 'session still present in snapshot');
   assert.deepEqual(snap.messages, [], 'snapshot has no messages after delete');
+
+  // A failed snapshot write must surface as a 500, not a silent success.
+  mkdirSync(snapshotPath + '.tmp');
+  const failRes = await fetch(`${base}/api/sessions/sess_clear_persist/messages`, { method: 'DELETE' });
+  assert.equal(failRes.status, 500, 'failed snapshot write returns 500');
+  assert.equal((await failRes.json()).success, false);
   console.log('Session clear-messages persistence test passed.');
 } catch (err) {
   console.error('Session clear-messages persistence test failed:', err.message);

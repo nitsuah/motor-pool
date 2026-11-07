@@ -39,8 +39,6 @@ mkdirSync(OUTPUT_DIR, { recursive: true });
 // Keep file ops inside OUTPUT_DIR.
 const safeOutputPath = makeSafeOutputPath(OUTPUT_DIR);
 const OUTPUT_PREFIX = resolve(OUTPUT_DIR) + sep;
-const LEADS_DIR = resolve(OUTPUT_DIR, '..');
-const LEADS_PREFIX = LEADS_DIR + sep;
 
 // ── Helpers ────────────────────────────────────────────────────────────────────
 
@@ -116,8 +114,8 @@ function buildServer() {
       if (date) {
         const name = leadsFileName(zip, category, date);
         if (!name) return { content: [{ type: 'text', text: 'Invalid zip, category or date' }] };
-        file = resolve(LEADS_DIR, name);
-        if (!file.startsWith(LEADS_PREFIX)) return { content: [{ type: 'text', text: 'Invalid path' }] };
+        file = resolve(OUTPUT_DIR, name);
+        if (!file.startsWith(OUTPUT_PREFIX)) return { content: [{ type: 'text', text: 'Invalid path' }] };
       } else {
         // find the most recent matching file
         const files = readdirSync(OUTPUT_DIR).filter(f =>
