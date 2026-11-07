@@ -721,6 +721,8 @@ Content-Type: application/json
 
 The workspace routes require `WORKSPACE_PATH` to be set in `.env` and the `docker-compose.workspace.yml` overlay to be applied. Paths are sandboxed to `WORKSPACE_ROOT` — attempts to escape via `..` are rejected.
 
+Shell execution (`POST /api/workspace/exec` and the agent `bash` tool) is off by default and returns `403` until `WORKSPACE_EXEC=1` (or `true`) is set.
+
 ### Status
 
 ```

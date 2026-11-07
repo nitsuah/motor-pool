@@ -4,6 +4,7 @@ import { resolve as resolvePath, relative as relativePath, dirname, basename, se
 import { realpathSync, lstatSync } from 'fs';
 import { exec, execFile } from 'child_process';
 import { promisify } from 'util';
+import { shellExecEnabled } from '../modules/exec-flag.js';
 
 const execAsync = promisify(exec);
 const execFileAsync = promisify(execFile);
@@ -203,6 +204,9 @@ export function createWorkspaceRouter(WORKSPACE_ROOT) {
   });
 
   router.post('/workspace/exec', express.json(), async (req, res) => {
+    if (!shellExecEnabled()) {
+      return res.status(403).json({ error: 'Shell execution is disabled. Set WORKSPACE_EXEC=1 to enable it.' });
+    }
     if (!WORKSPACE_ROOT) return res.status(503).json({ error: 'Workspace not configured' });
     const { command } = req.body || {};
     if (!command) return res.status(400).json({ error: 'command is required' });

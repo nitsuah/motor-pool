@@ -1,3 +1,6 @@
+// Bash-tool cases below exercise the shell path, so the WORKSPACE_EXEC opt-in is on for this file.
+process.env.WORKSPACE_EXEC = '1';
+
 /**
  * Tests for modules/agent-tools.js
  *
