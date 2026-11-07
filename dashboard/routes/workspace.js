@@ -108,7 +108,7 @@ export function createWorkspaceRouter(WORKSPACE_ROOT) {
         if (!e.isDirectory()) {
           try {
             const childAbs = resolvePath(abs, e.name);
-            if (childAbs !== ROOT_ABS && !childAbs.startsWith(ROOT_PREFIX)) return info;
+            if (!childAbs.startsWith(ROOT_PREFIX)) return info; // a file entry is always below the root
             const s = await stat(childAbs);
             info.size = s.size;
             info.modified = s.mtime.toISOString();
@@ -154,7 +154,10 @@ export function createWorkspaceRouter(WORKSPACE_ROOT) {
     if (parentAbs !== ROOT_ABS && !parentAbs.startsWith(ROOT_PREFIX)) return res.status(400).json({ error: 'Invalid path' });
 
     try {
-      await mkdir(parentAbs, { recursive: true });
+      if (parentAbs !== ROOT_ABS) {
+        if (!parentAbs.startsWith(ROOT_PREFIX)) return res.status(400).json({ error: 'Invalid path' });
+        await mkdir(parentAbs, { recursive: true });
+      }
       await writeFile(abs, content, 'utf8');
       res.json({ path: relativePath(WORKSPACE_ROOT, abs), bytes: Buffer.byteLength(content, 'utf8') });
     } catch (err) {
@@ -234,7 +237,7 @@ export function createWorkspaceRouter(WORKSPACE_ROOT) {
     if (!WORKSPACE_ROOT) return res.status(503).json({ error: 'Workspace not configured' });
     const abs = resolveWorkspacePath(req.query.path || '');
     // strictly below the root: the workspace root itself is never deleted
-    if (!abs || !abs.startsWith(ROOT_PREFIX)) return res.status(400).json({ error: 'Invalid path' });
+    if (!abs || abs === ROOT_ABS || !abs.startsWith(ROOT_PREFIX)) return res.status(400).json({ error: 'Invalid path' });
     try {
       const s = await stat(abs);
       if (s.isDirectory()) {
@@ -265,8 +268,8 @@ export function createWorkspaceRouter(WORKSPACE_ROOT) {
     const { from: fromPath, to: toPath } = req.body || {};
     const absFrom = resolveWorkspacePath(fromPath || '');
     const absTo = resolveWorkspacePath(toPath || '');
-    if (!absFrom || !absFrom.startsWith(ROOT_PREFIX)) return res.status(400).json({ error: 'Invalid path' }); // never the root itself
-    if (!absTo || !absTo.startsWith(ROOT_PREFIX)) return res.status(400).json({ error: 'Invalid path' }); // never the root itself
+    if (!absFrom || absFrom === ROOT_ABS || !absFrom.startsWith(ROOT_PREFIX)) return res.status(400).json({ error: 'Invalid path' }); // never the root itself
+    if (!absTo || absTo === ROOT_ABS || !absTo.startsWith(ROOT_PREFIX)) return res.status(400).json({ error: 'Invalid path' }); // never the root itself
     try {
       const { rename } = await import('fs/promises');
       await rename(absFrom, absTo);
