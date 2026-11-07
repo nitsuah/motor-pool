@@ -9,7 +9,7 @@
  * Both the /proc based mode (Linux) and the fallback mode are covered.
  */
 import assert from 'node:assert/strict';
-import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, rmSync, existsSync, realpathSync, symlinkSync, renameSync, readdirSync, statSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, rmSync, existsSync, realpathSync, symlinkSync, renameSync, readdirSync, statSync, linkSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import express from 'express';
@@ -34,6 +34,7 @@ const q = (p) => encodeURIComponent(p);
 function seed() {
   rmSync(join(ROOT, 'a'), { recursive: true, force: true });
   rmSync(join(ROOT, 'a.orig'), { recursive: true, force: true });
+  rmSync(join(ROOT, 'c'), { recursive: true, force: true });
   rmSync(OUTSIDE, { recursive: true, force: true });
   mkdirSync(join(ROOT, 'a', 'b'), { recursive: true });
   mkdirSync(OUTSIDE, { recursive: true });
@@ -44,17 +45,28 @@ function seed() {
   writeFileSync(join(OUTSIDE, 'gone.txt'), 'secret\n');
   writeFileSync(join(OUTSIDE, 'mv.txt'), 'secret\n');
   mkdirSync(join(OUTSIDE, 'b'));
+  mkdirSync(join(ROOT, 'c'), { recursive: true });
+  writeFileSync(join(ROOT, 'c', 'y.txt'), 'inside\n');
 }
 
 // Replaces ROOT/a with a symlink to OUTSIDE once, at the given stage.
-function armSwap(stage) {
+function armSwap(stage, op) {
   let done = false;
-  testHooks.before = async (s) => {
-    if (done || s !== stage) return;
+  testHooks.before = async (s, _abs, o) => {
+    if (done || s !== stage || (op && o !== op)) return;
     done = true;
     renameSync(join(ROOT, 'a'), join(ROOT, 'a.orig'));
     symlinkSync(OUTSIDE, join(ROOT, 'a'), 'dir');
   };
+}
+
+// A failed check may leave an empty file behind in the fallback mode; it must never hold bytes.
+function noBytesOutside(dir = OUTSIDE) {
+  for (const e of readdirSync(dir, { withFileTypes: true })) {
+    const full = join(dir, e.name);
+    if (e.isDirectory()) noBytesOutside(full);
+    else if (!['f.txt', 'gone.txt', 'mv.txt'].includes(e.name)) assert.equal(statSync(full).size, 0, `no bytes in ${full}`);
+  }
 }
 
 function outsideUntouched() {
@@ -179,26 +191,104 @@ try {
       outsideUntouched();
 
       seed();
+      writeFileSync(join(ROOT, 'a', 'inside-only.txt'), '');
+      writeFileSync(join(OUTSIDE, 'outside-only.txt'), '');
       armSwap('before-op');
       r = await get(`/workspace/ls?path=${q('a')}`);
-      assert.ok(!(await r.text()).includes('mv.txt') || existsSync(join(ROOT, 'a.orig', 'mv.txt')), 'pinned list reads the original directory');
+      if (r.ok) {
+        const names = (await r.json()).entries.map((e) => e.name);
+        assert.ok(names.includes('inside-only.txt'), 'pinned list includes the inside entry');
+        assert.ok(!names.includes('outside-only.txt'), 'pinned list excludes the outside entry');
+      }
       console.log(`  ✅ ${label} swap after the check: operations stay on the pinned directory`);
     } else {
-      // Without /proc the opened file itself is verified before any byte moves.
+      // Without /proc a new file is created through the swapped path at worst, never with data.
       seed();
-      armSwap('before-op');
-      r = await get(`/workspace/read?path=${q('a/f.txt')}`);
-      assert.ok(r.status >= 400, 'fallback read refused');
-      assert.ok(!(await r.text()).includes('secret'), 'fallback returned no outside bytes');
-
-      seed();
-      armSwap('before-op');
-      r = await post('/workspace/write', { path: 'a/f.txt', content: 'planted' });
-      assert.ok(r.status >= 400, 'fallback write refused');
-      outsideUntouched();
-      console.log(`  ✅ ${label} swap after the check: opened file is verified before read/write`);
+      armSwap('before-op', 'open');
+      r = await post('/workspace/write', { path: 'a/b/new.txt', content: 'planted' });
+      assert.ok(r.status >= 400, 'fallback new-file write refused');
+      noBytesOutside();
+      console.log(`  ✅ ${label} swap at the open seam: new-file write refused, no bytes outside`);
     }
+
+    // ── opened-file verification on its own (parent checks pass) ────────────
+    for (const [m, route] of [['write', 'write'], ['read', 'read']]) {
+      seed();
+      linkSync(join(ROOT, 'a', 'f.txt'), join(ROOT, 'a', 'keep.txt'));
+      writeFileSync(join(ROOT, 'a', 'other.txt'), 'replacement\n');
+      let done = false;
+      testHooks.before = async (s) => {
+        if (done || s !== 'after-open') return;
+        done = true;
+        renameSync(join(ROOT, 'a', 'other.txt'), join(ROOT, 'a', 'f.txt'));
+      };
+      r = m === 'write'
+        ? await post('/workspace/write', { path: 'a/f.txt', content: 'planted' })
+        : await get(`/workspace/read?path=${q('a/f.txt')}`);
+      assert.equal(r.status, 400, `${label} ${route}: opened file that no longer matches the path is refused`);
+      assert.ok(!(await r.text()).includes('inside'), 'no content returned');
+      assert.equal(readFileSync(join(ROOT, 'a', 'keep.txt'), 'utf8'), 'inside\n', 'opened file was not truncated');
+      assert.equal(readFileSync(join(ROOT, 'a', 'f.txt'), 'utf8'), 'replacement\n', 'replacement left alone');
+    }
+    console.log(`  ✅ ${label} opened-file verification refuses read/write when the path no longer matches`);
+
+    // ── a parent that is a file is an invalid path ──────────────────────────
+    seed();
+    testHooks.before = null;
+    for (const [name, call] of [
+      ['read', () => get(`/workspace/read?path=${q('a/f.txt/x')}`)],
+      ['write', () => post('/workspace/write', { path: 'a/f.txt/x', content: 'x' })],
+      ['delete', () => del('a/f.txt/x')],
+    ]) {
+      r = await call();
+      assert.equal(r.status, 400, `${label} ${name} under a file is 400`);
+      assert.equal((await r.json()).error, 'Invalid path');
+    }
+    console.log(`  ✅ ${label} paths below a regular file return 400 Invalid path`);
+
+    // ── rename: each parent checked separately ──────────────────────────────
+    seed();
+    armSwap('before-parent', 'rename-from');
+    r = await post('/workspace/rename', { from: 'a/mv.txt', to: 'c/x.txt' });
+    assert.ok(r.status >= 400, `${label} rename with a swapped source parent refused`);
+    outsideUntouched();
+    seed();
+    armSwap('before-parent', 'rename-to');
+    r = await post('/workspace/rename', { from: 'c/y.txt', to: 'a/z.txt' });
+    assert.ok(r.status >= 400, `${label} rename with a swapped destination parent refused`);
+    outsideUntouched();
+    assert.ok(existsSync(join(ROOT, 'c', 'y.txt')), 'source kept');
+    console.log(`  ✅ ${label} rename refuses a swapped source or destination parent`);
   }
+
+  // ── strict mode: refuse everything that cannot be pinned ─────────────────
+  testHooks.disableProc = true;
+  testHooks.strict = true;
+  for (const stage of ['before-parent', 'before-op']) {
+    seed();
+    armSwap(stage);
+    let r = await del('a/gone.txt');
+    assert.equal(r.status, 400, 'strict: delete refused');
+    seed();
+    armSwap(stage);
+    r = await post('/workspace/mkdir', { path: 'a/b/made' });
+    assert.equal(r.status, 400, 'strict: mkdir refused');
+    seed();
+    armSwap(stage);
+    r = await post('/workspace/write', { path: 'a/b/new.txt', content: 'planted' });
+    assert.equal(r.status, 400, 'strict: write refused');
+    seed();
+    armSwap(stage);
+    r = await get(`/workspace/read?path=${q('a/f.txt')}`);
+    assert.equal(r.status, 400, 'strict: read refused');
+    seed();
+    armSwap(stage);
+    r = await post('/workspace/rename', { from: 'a/mv.txt', to: 'a/moved.txt' });
+    assert.equal(r.status, 400, 'strict: rename refused');
+    outsideUntouched();
+  }
+  testHooks.strict = null;
+  console.log('  ✅ strict mode without /proc refuses delete/mkdir/write/read/rename even with a swap in the window');
 
   // ── zero inode: only symlink-free paths are accepted ─────────────────────
   testHooks.disableProc = true;
@@ -215,6 +305,7 @@ try {
   testHooks.before = null;
   testHooks.disableProc = false;
   testHooks.zeroIno = false;
+  testHooks.strict = null;
   server.close();
   rmSync(ROOT, { recursive: true, force: true });
   rmSync(OUTSIDE, { recursive: true, force: true });

@@ -1,7 +1,7 @@
 import axios from 'axios';
 import { randomUUID } from 'crypto';
 import { lstatSync, realpathSync, constants as fsConstants } from 'fs';
-import { resolve as resolvePath, dirname } from 'path';
+import { resolve as resolvePath, dirname, sep } from 'path';
 import { mcpRequest } from './mcp-helpers.js';
 import { shellExecEnabled } from './exec-flag.js';
 import { openInside, mkdirInside, readdirInside } from './workspace-fs.js';
@@ -151,13 +151,13 @@ const PLUGIN_RESPONSE_MAX_BYTES = 8 * 1024 * 1024;
 const PLUGIN_ARGS_MAX_BYTES = 256 * 1024;
 
 export function createAgentHelpers({ WORKSPACE_ROOT, execAsync, TOOL_SERVERS, TOOL_CALL_TIMEOUT_MS, pluginRegistry = null }) {
-  const ROOT_PREFIX = WORKSPACE_ROOT ? (WORKSPACE_ROOT.endsWith('/') ? WORKSPACE_ROOT : WORKSPACE_ROOT + '/') : null;
+  const ROOT_PREFIX = WORKSPACE_ROOT ? (WORKSPACE_ROOT.endsWith(sep) ? WORKSPACE_ROOT : WORKSPACE_ROOT + sep) : null;
 
   function resolveWorkspacePath(reqPath) {
     if (!WORKSPACE_ROOT) return null;
     const safe = reqPath ? reqPath.replace(/\\/g, '/').replace(/^\/+/, '') : '';
     const abs = resolvePath(WORKSPACE_ROOT, safe);
-    if (abs !== WORKSPACE_ROOT && !abs.startsWith(WORKSPACE_ROOT + '/')) return null;
+    if (abs !== WORKSPACE_ROOT && !abs.startsWith(ROOT_PREFIX)) return null;
     return isInsideWorkspaceReal(abs) ? abs : null;
   }
 
@@ -181,7 +181,7 @@ export function createAgentHelpers({ WORKSPACE_ROOT, execAsync, TOOL_SERVERS, TO
         }
       }
       const real = realpathSync(probe); // throws for a dangling symlink
-      return real === rootReal || real.startsWith(rootReal + '/');
+      return real === rootReal || real.startsWith(rootReal.endsWith(sep) ? rootReal : rootReal + sep);
     } catch {
       return false;
     }
@@ -329,7 +329,7 @@ export function createAgentHelpers({ WORKSPACE_ROOT, execAsync, TOOL_SERVERS, TO
         if (abs !== WORKSPACE_ROOT && !abs.startsWith(ROOT_PREFIX)) return JSON.stringify({ error: 'Invalid path' });
         try {
           const entries = await readdirInside(WORKSPACE_ROOT, abs);
-          return JSON.stringify({ entries: entries.map(e => ({ name: e.name, type: e.isDirectory() ? 'dir' : 'file' })) });
+          return JSON.stringify({ entries: entries.map(e => ({ name: e.name, type: e.isDirectory ? 'dir' : 'file' })) });
         } catch (err) {
           return JSON.stringify({ error: err.message });
         }

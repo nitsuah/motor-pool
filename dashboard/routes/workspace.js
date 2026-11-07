@@ -14,7 +14,7 @@ const execFileAsync = promisify(execFile);
 // descriptor (or the pinned parent directory) against the workspace root.
 // Where O_NOFOLLOW is unavailable (Windows) the lstat checks below and the
 // helper's fallback verification are the guard.
-const refused = (err) => err.code === 'ELOOP' || err.code === 'EWSVERIFY';
+const refused = (err) => err.code === 'ELOOP' || err.code === 'ENOTDIR' || err.code === 'EWSVERIFY';
 
 // True when the final component of abs is a symlink (a missing path is not).
 async function isSymlink(abs) {
@@ -128,19 +128,14 @@ export function createWorkspaceRouter(WORKSPACE_ROOT) {
 
     try {
       const entries = await readdirInside(WORKSPACE_ROOT, dir);
-      const result = await Promise.all(entries.map(async (e) => {
-        const info = { name: e.name, type: e.isDirectory() ? 'dir' : 'file' };
-        if (!e.isDirectory()) {
-          try {
-            const childAbs = resolvePath(abs, e.name);
-            if (!childAbs.startsWith(ROOT_PREFIX)) return info; // a file entry is always below the root
-            const s = await stat(childAbs);
-            info.size = s.size;
-            info.modified = s.mtime.toISOString();
-          } catch { /* ignore */ }
+      const result = entries.map((e) => {
+        const info = { name: e.name, type: e.isDirectory ? 'dir' : 'file' };
+        if (!e.isDirectory && e.mtime) {
+          info.size = e.size;
+          info.modified = e.mtime.toISOString();
         }
         return info;
-      }));
+      });
       result.sort((a, b) => {
         if (a.type !== b.type) return a.type === 'dir' ? -1 : 1;
         return a.name.localeCompare(b.name);

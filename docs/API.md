@@ -719,7 +719,7 @@ Content-Type: application/json
 
 ## Workspace File I/O
 
-The workspace routes require `WORKSPACE_PATH` to be set in `.env` and the `docker-compose.workspace.yml` overlay to be applied. Paths are sandboxed to `WORKSPACE_ROOT` — attempts to escape via `..` are rejected. Opened files and parent directories are also verified against the real workspace root before data is read or written (via `/proc/self/fd` on Linux; real-path and inode comparison on Windows and macOS), and a path that fails the check returns `400 Invalid path`.
+The workspace routes require `WORKSPACE_PATH` to be set in `.env` and the `docker-compose.workspace.yml` overlay to be applied. Paths are sandboxed to `WORKSPACE_ROOT` — attempts to escape via `..` are rejected. Opened files and parent directories are also verified against the real workspace root before data is read or written (via `/proc/self/fd` on Linux; real-path and inode comparison on Windows and macOS), and a path that fails the check returns `400 Invalid path`. Where `/proc` is unavailable the check is best-effort; set `WORKSPACE_REQUIRE_PINNED_FS=1` to refuse workspace file operations there instead.
 
 Shell execution (`POST /api/workspace/exec` and the agent `bash` tool) is off by default and returns `403` until `WORKSPACE_EXEC=1` (or `true`) is set.
 
