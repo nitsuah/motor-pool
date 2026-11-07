@@ -9,7 +9,9 @@ import http from 'node:http';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import express from 'express';
+import { execFileSync } from 'node:child_process';
 import { createContentRouter } from '../routes/content.js';
+import { testHooks } from '../modules/workspace-fs.js';
 
 const ROOT = realpathSync(mkdtempSync(join(tmpdir(), 'ab-art-root-')));
 const OUTSIDE = realpathSync(mkdtempSync(join(tmpdir(), 'ab-art-outside-')));
@@ -27,6 +29,14 @@ await new Promise((resolve) => server.once('listening', resolve));
 const BASE = `http://127.0.0.1:${server.address().port}/api`;
 
 try {
+  // Pinning needs /proc. Without it the strict default must refuse; the rest then runs under the explicit opt-out.
+  if (!(process.platform === 'linux' && existsSync('/proc/self/fd'))) {
+    const refusedList = await (await fetch(`${BASE}/artifacts`)).json();
+    assert.deepEqual(refusedList, [], 'listing is refused without pinning');
+    const refusedDl = await fetch(`${BASE}/artifacts/ok.txt/download`);
+    assert.ok(refusedDl.status >= 400, 'download is refused without pinning');
+    testHooks.strict = false;
+  }
   const list = await (await fetch(`${BASE}/artifacts`)).json();
   const names = list.map((f) => f.name).sort();
   assert.deepEqual(names, ['nested/deep.txt', 'ok.txt'], 'only real files inside the workspace are listed');
@@ -42,6 +52,16 @@ try {
     assert.ok(!(await bad.text()).includes('outside secret'), `${name} served no outside bytes`);
   }
   console.log('  \u2705 artifact download refuses a symlink pointing outside, serves ordinary files');
+
+  // A FIFO is neither listed nor served, and never hangs the request.
+  if (process.platform === 'linux') {
+    execFileSync('mkfifo', [join(ROOT, 'artifacts', 'pipe.fifo')]);
+    const names2 = (await (await fetch(`${BASE}/artifacts`)).json()).map((f) => f.name);
+    assert.ok(!names2.includes('pipe.fifo'), 'a FIFO is not listed');
+    const fifo = await fetch(`${BASE}/artifacts/pipe.fifo/download`, { signal: AbortSignal.timeout(5000) });
+    assert.equal(fifo.status, 404, 'a FIFO download is refused without blocking');
+    console.log('  \u2705 special files are not listed or served');
+  }
 
   // Aborted downloads must not leave file handles open.
   if (process.platform === 'linux' && existsSync('/proc/self/fd')) {
@@ -63,6 +83,7 @@ try {
     console.log('  \u2705 aborted downloads release their file handles');
   }
 } finally {
+  testHooks.strict = null;
   server.close();
   rmSync(ROOT, { recursive: true, force: true });
   rmSync(OUTSIDE, { recursive: true, force: true });

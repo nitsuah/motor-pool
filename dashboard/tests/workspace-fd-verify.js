@@ -403,8 +403,10 @@ try {
     seed();
     const deep = join(ROOT, 'a', 'deep', ...Array.from({ length: 70 }, (_, i) => `d${i}`));
     mkdirSync(deep, { recursive: true });
+    writeFileSync(join(ROOT, 'a', 'deep', 'aaa-top.txt'), 'keep');
     dr = await del('a/deep');
     assert.equal(dr.status, 400, 'a tree deeper than the cap is refused');
+    assert.ok(existsSync(join(ROOT, 'a', 'deep', 'aaa-top.txt')), 'a shallow file was not unlinked before the refusal');
     assert.ok(existsSync(deep), 'the deep levels were not touched');
     rmSync(join(ROOT, 'a', 'deep'), { recursive: true, force: true });
     console.log('  ✅ recursive delete never follows a directory swapped for a symlink mid-walk');
@@ -515,6 +517,27 @@ try {
     console.log('  ✅ a failed descriptor lookup with /proc present is a refusal, not a fallback');
   }
 
+  // ── /proc disappears after the strict check, before a listing reads anything ──
+  if (process.platform === 'linux' && existsSync('/proc/self/fd')) {
+    testHooks.env = {};
+    testHooks.strict = null;
+    testHooks.disableProc = false;
+    seed();
+    writeFileSync(join(OUTSIDE, 'outside-only.txt'), 'x');
+    let gone = false;
+    testHooks.before = async (st, _abs, o) => {
+      if (gone || st !== 'before-parent' || o !== 'list') return;
+      gone = true;
+      testHooks.disableProc = true;
+    };
+    const lr2 = await get(`/workspace/ls?path=${q('a')}`);
+    assert.ok(gone, 'pinning was lost before the listing');
+    assert.equal(lr2.status, 400, 'listing refused when pinning is lost after the strict check');
+    testHooks.before = null;
+    testHooks.disableProc = false;
+    console.log('  ✅ losing /proc after the strict check refuses a listing');
+  }
+
   // ── strict is the default everywhere; the opt-out is local development only ──
   for (const platform of ['linux', 'win32', 'darwin']) {
     assert.equal(pinnedFsRequired({}, platform), true, `${platform} is strict by default`);
@@ -603,6 +626,34 @@ try {
     testHooks.before = null;
     testHooks.disableProc = false;
     console.log('  ✅ losing /proc mid-run refuses (strict) instead of falling back');
+  }
+
+  // ── a symlinked workspace root works for files directly under it ─────────
+  testHooks.strict = null;
+  testHooks.disableProc = false;
+  testHooks.env = {};
+  testHooks.before = null;
+  if (process.platform === 'linux' && existsSync('/proc/self/fd')) {
+    const linkRoot = join(tmpdir(), `ab-ws-linkroot-${process.pid}`);
+    rmSync(linkRoot, { force: true });
+    symlinkSync(ROOT, linkRoot, 'dir');
+    writeFileSync(join(ROOT, 'top.txt'), 'top\n');
+    const app2 = express();
+    app2.use('/api', createWorkspaceRouter(linkRoot));
+    const srv2 = app2.listen(0, '127.0.0.1');
+    await new Promise((resolve) => srv2.once('listening', resolve));
+    const b2 = `http://127.0.0.1:${srv2.address().port}/api`;
+    try {
+      const rr = await fetch(`${b2}/workspace/read?path=top.txt`);
+      assert.equal(rr.status, 200, 'a file directly under a symlinked root can be read');
+      assert.equal((await rr.json()).content, 'top\n');
+      const ww = await fetch(`${b2}/workspace/write`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ path: 'top2.txt', content: 'x' }) });
+      assert.equal(ww.status, 200, 'a file directly under a symlinked root can be written');
+    } finally {
+      srv2.close();
+      rmSync(linkRoot, { force: true });
+    }
+    console.log('  ✅ a symlinked workspace root works');
   }
 } finally {
   testHooks.platform = null;

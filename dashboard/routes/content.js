@@ -76,8 +76,12 @@ export function createContentRouter({ WEBSITE_OUTPUT_DIR, WORKSPACE_ROOT }) {
       for (const e of entries) {
         if (e.isSymbolicLink) continue;
         const name = rel ? `${rel}/${e.name}` : e.name;
-        if (e.isDirectory) await walk(join(dirAbs, e.name), name);
-        else if (e.mtime) results.push({ name, size: e.size, createdAt: e.birthtime });
+        if (e.isDirectory) {
+          // A directory that cannot be listed is skipped; artifacts already collected are kept.
+          await walk(join(dirAbs, e.name), name).catch(() => {});
+        } else if (e.isFile) {
+          results.push({ name, size: e.size, createdAt: e.birthtime });
+        }
       }
     }
     try {
@@ -95,15 +99,23 @@ export function createContentRouter({ WEBSITE_OUTPUT_DIR, WORKSPACE_ROOT }) {
     let fh;
     try {
       // Stream from a verified handle that was opened without following symlinks.
-      fh = await openInside(WORKSPACE_ROOT, safe, fsConstants.O_RDONLY);
+      // O_NONBLOCK: opening a FIFO or similar special file must never hang; only regular files are served.
+      fh = await openInside(WORKSPACE_ROOT, safe, fsConstants.O_RDONLY | (fsConstants.O_NONBLOCK || 0));
       const st = await fh.stat();
       if (!st.isFile()) {
         await fh.close();
         return res.status(404).end();
       }
+      if (st.size === 0) {
+        await fh.close();
+        res.attachment(req.params.name);
+        return res.end();
+      }
       res.attachment(req.params.name);
       res.setHeader('Content-Length', st.size);
-      const stream = fh.createReadStream();
+      res.setTimeout(60_000, () => res.destroy()); // a stalled client cannot hold the handle open
+      // Bounded to the size that was checked, even if the file grows while it is read.
+      const stream = fh.createReadStream({ start: 0, end: st.size - 1 });
       // pipeline closes the file handle when the client goes away mid-download.
       pipeline(stream, res, (err) => { if (err) res.destroy(); });
     } catch (err) {

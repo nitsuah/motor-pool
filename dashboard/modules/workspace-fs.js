@@ -199,7 +199,8 @@ async function withParent(root, abs, fn, op = 'op') {
   let dirFh = null;
   let base = parent;
   if (procAvailable()) {
-    dirFh = await open(parent, fsConstants.O_RDONLY | O_DIRECTORY | O_NOFOLLOW);
+    // Resolve the parent first so a symlinked workspace root works; the opened descriptor is still verified.
+    dirFh = await open(realpathSync(parent), fsConstants.O_RDONLY | O_DIRECTORY | O_NOFOLLOW);
     const kernelPath = procPathOfFd(dirFh.fd);
     if (kernelPath === null || !insideReal(rootReal, kernelPath, true)) {
       await dirFh.close().catch(() => {});
@@ -217,6 +218,11 @@ async function withParent(root, abs, fn, op = 'op') {
     await seam('before-op', abs, op);
     const result = await fn(join(base, basename(abs)));
     if (!dirFh) assertRealInside(rootReal, parent, true);
+    else {
+      // The pinned directory may have been moved while the operation ran: do not report success then.
+      const after = procPathOfFd(dirFh.fd);
+      if (after === null || after.endsWith(' (deleted)') || !insideReal(rootReal, after, true)) refuse();
+    }
     return result;
   } finally {
     await dirFh?.close().catch(() => {});
@@ -293,7 +299,11 @@ export async function mkdirInside(root, abs) {
       if (kernelPath === null || !insideReal(rootReal, kernelPath, true)) refuse();
       await seam('before-op', abs, 'mkdir');
       const childPath = join(`/proc/self/fd/${dirFh.fd}`, name);
-      await mkdir(childPath);
+      try {
+        await mkdir(childPath);
+      } catch (err) {
+        if (err.code !== 'EEXIST') throw err; // created concurrently: it is opened (and verified) below
+      }
       const next = await open(childPath, fsConstants.O_RDONLY | O_DIRECTORY | O_NOFOLLOW);
       await dirFh.close().catch(() => {});
       dirFh = next;
@@ -318,6 +328,8 @@ export async function removeInside(root, abs) {
       return;
     }
     if (procAvailable()) {
+      // Read-only pass first: refuse (too deep, outside the root, swapped) before anything is unlinked.
+      await checkTreeAt(p, rootReal);
       await removeTreeAt(p, rootReal);
       return;
     }
@@ -333,6 +345,23 @@ export async function removeInside(root, abs) {
  * path checked against the root, and entries are removed relative to that descriptor.
  */
 const MAX_DELETE_DEPTH = 64;
+
+/** Read-only walk with the same descriptor checks as removeTreeAt; nothing is changed. */
+async function checkTreeAt(dirPath, rootReal, depth = 0) {
+  if (depth >= MAX_DELETE_DEPTH) refuse();
+  const fh = await open(dirPath, fsConstants.O_RDONLY | O_DIRECTORY | O_NOFOLLOW);
+  try {
+    const kernelPath = procPathOfFd(fh.fd);
+    if (kernelPath === null || !insideReal(rootReal, kernelPath, false)) refuse();
+    const base = `/proc/self/fd/${fh.fd}`;
+    for (const name of await readdir(base)) {
+      const child = join(base, name);
+      if ((await lstat(child)).isDirectory()) await checkTreeAt(child, rootReal, depth + 1);
+    }
+  } finally {
+    await fh.close().catch(() => {});
+  }
+}
 
 async function removeTreeAt(dirPath, rootReal, depth = 0) {
   if (depth >= MAX_DELETE_DEPTH) refuse();
@@ -384,6 +413,7 @@ export async function readdirInside(root, abs) {
   assertRealInside(rootReal, abs, true);
   let dirFh = null;
   let base = abs;
+  if (!procAvailable()) requirePin();
   if (procAvailable()) {
     dirFh = await open(realpathSync(abs), fsConstants.O_RDONLY | O_DIRECTORY | O_NOFOLLOW);
     const kernelPath = procPathOfFd(dirFh.fd);
@@ -413,12 +443,14 @@ export async function readdirInside(root, abs) {
           info.size = st.size;
           info.mtime = st.mtime;
           info.birthtime = st.birthtime;
+          info.isFile = st.isFile();
         } catch { /* entry vanished: list it without metadata */ }
       }
       out.push(info);
     }
     if (!dirFh) {
       await seam('after-meta', abs, 'list');
+      requirePin();
       assertRealInside(rootReal, abs, true);
       if (identity() !== before) refuse();
     }
