@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'vitest';
 import { resolve, join } from 'node:path';
-import { makeSafeOutputPath, SLUG_PATTERN } from '../tools/website/output-path.js';
+import { makeSafeOutputPath, leadsFileName, SLUG_PATTERN } from '../tools/website/output-path.js';
 
 describe('safeOutputPath', () => {
   const base = resolve('/tmp/site-output');
@@ -29,5 +29,21 @@ describe('SLUG_PATTERN', () => {
     for (const bad of ['', '..', '../x', 'a/b', 'A-b', '-a', 'a_b', 'a b', 'a\\b']) {
       assert.ok(!SLUG_PATTERN.test(bad), bad);
     }
+  });
+});
+
+describe('leadsFileName', () => {
+  it('builds the expected name for plain inputs', () => {
+    assert.equal(leadsFileName('90210', 'Restaurants', '2026-01-02'), 'leads-90210-restaurants-2026-01-02.json');
+    assert.equal(leadsFileName('90210', 'auto body', '20260102'), 'leads-90210-auto body-20260102.json');
+  });
+
+  it('rejects path-like or malformed parts', () => {
+    assert.equal(leadsFileName('90210', 'restaurants', '../../secrets'), null);
+    assert.equal(leadsFileName('90210', 'restaurants', '2026-01-02/../../x'), null);
+    assert.equal(leadsFileName('90210', 'restaurants', '2026-01-02.json'), null);
+    assert.equal(leadsFileName('../x', 'restaurants', '2026-01-02'), null);
+    assert.equal(leadsFileName('90210', '../x', '2026-01-02'), null);
+    assert.equal(leadsFileName('90210', 'a/b', '2026-01-02'), null);
   });
 });

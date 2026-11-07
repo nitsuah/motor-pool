@@ -33,8 +33,7 @@ try {
   assert.equal(res.status, 200);
   assert.equal(body.cleared, 1, 'restored session had one message');
 
-  // Wait past the snapshot debounce (2s) without forcing a flush.
-  await new Promise(r => setTimeout(r, 3000));
+  // Read immediately: the snapshot must already be written, no debounce wait.
   const saved = JSON.parse(readFileSync(snapshotPath, 'utf8'));
   const snap = saved.sessions.find(s => s.id === 'sess_clear_persist');
   assert.ok(snap, 'session still present in snapshot');

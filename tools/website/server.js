@@ -21,7 +21,7 @@ import { dirname, join, resolve, sep } from 'path';
 import { existsSync, mkdirSync, readFileSync, writeFileSync, readdirSync, statSync } from 'fs';
 import dotenv from 'dotenv';
 import { z } from 'zod';
-import { makeSafeOutputPath, SLUG_PATTERN } from './output-path.js';
+import { makeSafeOutputPath, leadsFileName, SLUG_PATTERN } from './output-path.js';
 
 dotenv.config();
 
@@ -39,6 +39,8 @@ mkdirSync(OUTPUT_DIR, { recursive: true });
 // Keep file ops inside OUTPUT_DIR.
 const safeOutputPath = makeSafeOutputPath(OUTPUT_DIR);
 const OUTPUT_PREFIX = resolve(OUTPUT_DIR) + sep;
+const LEADS_DIR = resolve(OUTPUT_DIR, '..');
+const LEADS_PREFIX = LEADS_DIR + sep;
 
 // ── Helpers ────────────────────────────────────────────────────────────────────
 
@@ -112,7 +114,10 @@ function buildServer() {
     async ({ zip, category, date }) => {
       let file;
       if (date) {
-        file = join(OUTPUT_DIR, '..', `leads-${zip}-${category.toLowerCase()}-${date}.json`);
+        const name = leadsFileName(zip, category, date);
+        if (!name) return { content: [{ type: 'text', text: 'Invalid zip, category or date' }] };
+        file = resolve(LEADS_DIR, name);
+        if (!file.startsWith(LEADS_PREFIX)) return { content: [{ type: 'text', text: 'Invalid path' }] };
       } else {
         // find the most recent matching file
         const files = readdirSync(OUTPUT_DIR).filter(f =>

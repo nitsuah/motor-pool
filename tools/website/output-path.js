@@ -15,3 +15,11 @@ export function makeSafeOutputPath(outputDir) {
     return p;
   };
 }
+
+// File name for a dated leads file, or null when any part is not a plain token.
+export function leadsFileName(zip, category, date) {
+  if (!/^[A-Za-z0-9-]+$/.test(zip)) return null;
+  if (!/^[A-Za-z0-9 _-]+$/.test(category)) return null;
+  if (!/^\d{4}-?\d{2}-?\d{2}$/.test(date)) return null;
+  return `leads-${zip}-${category.toLowerCase()}-${date}.json`;
+}
