@@ -12,6 +12,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Changed
 
 - Workspace, content and output routes check the resolved path at each file operation.
+- Workspace file routes (read, write, mkdir, git add/discard of a file) refuse the workspace root itself with `400 Invalid path`; previously a root read returned `400 Path is a directory`, a root mkdir returned success, and a root git add/discard acted on the whole tree. `/workspace/ls` still lists the root.
 - Workspace shell execution (`/workspace/exec` and the agent bash tool) is off unless `WORKSPACE_EXEC=1`.
 - **Workspace git and script calls use argument arrays** — the workspace routes (commit, add, checkout, discard, search, push, pull) and the website/content-gen PowerShell runners call `execFile` with argument lists; branch names starting with `-` or containing `..` are refused, and workspace, content-download and session-output paths are checked against their resolved base directory. New tests: `dashboard/tests/workspace-argv-git.js`, `dashboard/tests/content-download-containment.js`.
 

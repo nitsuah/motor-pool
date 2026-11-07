@@ -34,14 +34,18 @@ export function createContentRouter({ WEBSITE_OUTPUT_DIR, WORKSPACE_ROOT }) {
     try {
       const files = [];
       async function walk(dir, prefix) {
-        if (dir !== clientDirAbs && !dir.startsWith(clientDirAbs + sep)) return;
+        // The client directory is replaced by the trusted constant; any other directory must sit below it.
+        let d;
+        if (dir === clientDirAbs) d = clientDirAbs;
+        else if (dir.startsWith(clientDirAbs + sep)) d = dir;
+        else return;
         let entries;
-        try { entries = await readdir(dir); } catch { return; }
+        try { entries = await readdir(d); } catch { return; }
         for (const entry of entries) {
           const full = resolvePath(dir, entry);
           const rel  = prefix ? `${prefix}/${entry}` : entry;
           try {
-            if (full !== clientDirAbs && !full.startsWith(clientDirAbs + sep)) continue;
+            if (!full.startsWith(clientDirAbs + sep)) continue;
             const s = await stat(full);
             if (s.isDirectory()) {
               await walk(full, rel);

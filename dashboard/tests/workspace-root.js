@@ -58,6 +58,29 @@ try {
   assert.deepStrictEqual(lsSub.entries.map(e => e.name), ['nested.txt'], 'lists a subdirectory');
   console.log('  ✅ /api/workspace/ls lists root and subdirectories with types');
 
+  // ── base-directory checks: root listing and top-level writes ──────────────
+  const lsRootEmpty = await (await get('/api/workspace/ls?path=')).json();
+  assert.ok(lsRootEmpty.entries.map(e => e.name).includes('readme.md'), 'ls with an empty path returns the root entries');
+  assert.strictEqual(lsRootEmpty.path, '.', 'root listing reports "."');
+
+  const topWrite = await post('/api/workspace/write', { path: 'top-level.txt', content: 'top\n' });
+  assert.strictEqual(topWrite.status, 200, 'top-level write succeeds');
+  assert.strictEqual(
+    (await (await get('/api/workspace/read?path=top-level.txt')).json()).content, 'top\n',
+    'top-level write reads back'
+  );
+  const lsAfterTopWrite = await (await get('/api/workspace/ls?path=')).json();
+  assert.ok(lsAfterTopWrite.entries.some(e => e.name === 'top-level.txt'), 'top-level write appears in the root listing');
+
+  // The workspace root itself is never a read, mkdir or delete target.
+  assert.strictEqual((await get('/api/workspace/read?path=')).status, 400, 'reading the root is refused');
+  assert.strictEqual((await post('/api/workspace/mkdir', { path: '' })).status, 400, 'mkdir of the root is refused');
+  assert.strictEqual(
+    (await fetch(`${BASE}/api/workspace/file?path=`, { method: 'DELETE' })).status, 400, 'deleting the root is refused'
+  );
+  assert.ok(existsSync(join(ROOT, 'readme.md')), 'root contents are untouched by refused root operations');
+  console.log('  ✅ ls of the root with an empty path lists entries, top-level writes work, root-only targets are refused');
+
   // ── read ──────────────────────────────────────────────────────────────────
   const read = await (await get('/api/workspace/read?path=readme.md')).json();
   assert.strictEqual(read.content, '# hello\n', 'reads file content');
