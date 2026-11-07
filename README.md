@@ -419,6 +419,8 @@ default. Set `WORKSPACE_EXEC=1` in `.env` to enable it.
 
 ### Runtime Config
 
+- `HOST` — Interface the dashboard binds to (default `127.0.0.1`). The Compose stack sets `0.0.0.0` inside the container and publishes the port on `127.0.0.1` only.
+- `CORS_ALLOWED_ORIGINS` — Comma-separated browser origins allowed to call the API cross-origin; other non-GET requests carrying a foreign `Origin` get a 403.
 - `PRIMARY_LLM_URL` — Default primary Ollama URL fallback.
 - `PRIMARY_LLM_URL_CANDIDATES` — Comma-separated discovery candidates for primary Ollama URL resolution.
 - `AGENT_BOARD_ENABLE_DOCKER_CONTROL` — Set `true` to enable service action API endpoints.

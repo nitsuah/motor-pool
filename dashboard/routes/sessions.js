@@ -379,6 +379,8 @@ export function createSessionsRouter({
     const count = session.messages.length;
     session.messages = [];
     session.updatedAt = new Date();
+    // Persist the cleared state so the on-disk snapshot drops the old messages.
+    upsertSessionContext(session, logStructured);
     logStructured?.('info', 'session_messages_cleared', { sessionId: session.id, cleared: count });
     eventBus.emit('session_messages_cleared', {
       session_id: session.id, user_id: session.userId,

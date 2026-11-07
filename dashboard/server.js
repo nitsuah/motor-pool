@@ -1,5 +1,6 @@
 import express from 'express';
 import cors from 'cors';
+import { createOriginGuard } from './modules/origin-guard.js';
 import axios from 'axios';
 import dotenv from 'dotenv';
 import { fileURLToPath } from 'url';
@@ -318,6 +319,12 @@ async function ensureRunnableModelForSession(session) {
 }
 
 async function prepareSessionForLlmCall(session) {
+  // The API key is read from the current endpoint config at call time, so the
+  // URL must come from the same config rather than a value cached on the session
+  // (for example one restored from a snapshot).
+  if (session.endpoint !== 'primary' && LLM_CONFIG[session.endpoint]) {
+    session.llmUrl = await resolveEndpointUrl(session.endpoint);
+  }
   let llmUrl = session.llmUrl;
   let apiStyle = LLM_CONFIG[session.endpoint]?.apiStyle || 'ollama';
   const modelResolution = await ensureRunnableModelForSession(session);
@@ -465,6 +472,8 @@ app.use(cors({
   credentials: true,
   allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With'],
 }));
+// Non-read requests from a browser origin must be same-host or allowlisted.
+app.use(createOriginGuard(() => parseUrlListEnv(process.env.CORS_ALLOWED_ORIGINS)));
 // Rate limiting middleware to prevent DoS
 // Localhost is exempt: this is a single-user local dashboard, and legitimate
 // local tooling (tests, dev clients) makes many requests in quick succession.
@@ -733,8 +742,11 @@ if (process.env.AGENT_DASHBOARD_DISABLE_LISTEN !== '1') {
     }
   }
 
-  const server = app.listen(PORT, () => {
+  // Loopback by default; containers set HOST=0.0.0.0 and publish the port on 127.0.0.1.
+  const HOST = process.env.HOST || '127.0.0.1';
+  const server = app.listen(PORT, HOST, () => {
     logStructured('info', 'server_started', {
+      host: HOST,
       port: PORT,
       endpoints: Object.fromEntries(Object.entries(LLM_CONFIG).map(([key, config]) => [key, config.url])),
       nemoClawUrl: NEMOCLAW_URL,
