@@ -388,6 +388,10 @@ To let agents edit a real project instead, set `WORKSPACE_PATH` in `.env` and
 apply the `docker-compose.workspace.yml` overlay (it sets `WORKSPACE_SANDBOX=false`).
 Paths are always confined to the workspace root to prevent traversal, and opened
 files are verified against the real root before any data is read or written.
+This needs descriptor pinning (`/proc` on Linux); without it, workspace file operations
+are refused on every platform. For local development only, `WORKSPACE_REQUIRE_PINNED_FS=0`
+selects an unpinned best-effort check; it is ignored under `NODE_ENV=production` or a
+non-loopback `HOST`. Under the opt-out, a delete, mkdir or rename can change files outside the workspace before the request fails, and a directory swapped and restored during a listing is not detected; it is for local development only.
 
 Shell execution (the `/workspace/exec` route and the agent `bash` tool) is off by
 default. Set `WORKSPACE_EXEC=1` in `.env` to enable it.

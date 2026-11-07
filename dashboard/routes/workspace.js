@@ -5,7 +5,7 @@ import { realpathSync, lstatSync, constants as fsConstants } from 'fs';
 import { exec, execFile } from 'child_process';
 import { promisify } from 'util';
 import { shellExecEnabled } from '../modules/exec-flag.js';
-import { openInside, mkdirInside, removeInside, renameInside, readdirInside } from '../modules/workspace-fs.js';
+import { openInside, mkdirInside, removeInside, renameInside, readdirInside, warnIfPinningOptOut } from '../modules/workspace-fs.js';
 
 const execAsync = promisify(exec);
 const execFileAsync = promisify(execFile);
@@ -70,6 +70,7 @@ function isRealPathInside(root, abs) {
 
 export function createWorkspaceRouter(WORKSPACE_ROOT) {
   const router = express.Router();
+  if (WORKSPACE_ROOT) warnIfPinningOptOut();
   const ROOT_ABS = WORKSPACE_ROOT ? resolvePath(WORKSPACE_ROOT) : null;
   const ROOT_PREFIX = ROOT_ABS && (ROOT_ABS.endsWith(sep) ? ROOT_ABS : ROOT_ABS + sep);
 

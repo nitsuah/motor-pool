@@ -4,7 +4,7 @@ import { lstatSync, realpathSync, constants as fsConstants } from 'fs';
 import { resolve as resolvePath, dirname, sep } from 'path';
 import { mcpRequest } from './mcp-helpers.js';
 import { shellExecEnabled } from './exec-flag.js';
-import { openInside, mkdirInside, readdirInside } from './workspace-fs.js';
+import { openInside, mkdirInside, readdirInside, warnIfPinningOptOut } from './workspace-fs.js';
 
 export const DEVELOPER_TOOLS = [
   {
@@ -151,6 +151,7 @@ const PLUGIN_RESPONSE_MAX_BYTES = 8 * 1024 * 1024;
 const PLUGIN_ARGS_MAX_BYTES = 256 * 1024;
 
 export function createAgentHelpers({ WORKSPACE_ROOT, execAsync, TOOL_SERVERS, TOOL_CALL_TIMEOUT_MS, pluginRegistry = null }) {
+  if (WORKSPACE_ROOT) warnIfPinningOptOut();
   const ROOT_PREFIX = WORKSPACE_ROOT ? (WORKSPACE_ROOT.endsWith(sep) ? WORKSPACE_ROOT : WORKSPACE_ROOT + sep) : null;
 
   function resolveWorkspacePath(reqPath) {

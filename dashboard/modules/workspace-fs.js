@@ -12,24 +12,26 @@
  *    operation then runs relative to that descriptor (/proc/self/fd/N/name), so
  *    later changes to the path no longer matter. Opened files are verified the
  *    same way before any byte is read or written.
- *  - Without /proc (Windows and macOS developer machines only by default):
- *    best-effort. The parent's realpath is checked right before and right
- *    after the operation, and an opened file must match realpath(target) by
- *    dev+ino and lie inside the root (with an unusable inode, only a
- *    symlink-free path is accepted). Directories cannot be pinned here, so a
- *    change inside the window between the last check and the operation is
- *    NOT prevented; it is detected afterwards and the request fails, but the
- *    operation itself may already have happened. Where that is not acceptable,
- *    operations are refused instead: always on Linux, when NODE_ENV is
- *    production, and when the dashboard HOST is not loopback.
- *    WORKSPACE_REQUIRE_PINNED_FS=1 forces refusal on every platform and =0
- *    (false/no/off) opts out explicitly.
+ *  - Without /proc: every operation is refused by default, on every platform.
+ *    Setting WORKSPACE_REQUIRE_PINNED_FS to 0/false/no/off (local development
+ *    only) selects a best-effort mode instead: the parent's realpath is checked
+ *    right before and right after the operation, and an opened file must
+ *    match realpath(target) by dev+ino and lie inside the root (with an
+ *    unusable inode, only a symlink-free path is accepted). Directories cannot
+ *    be pinned there, so a change inside the window between the last check and
+ *    the operation is NOT prevented: a delete, mkdir or rename can change files
+ *    outside the workspace before the request fails, and a directory that is
+ *    swapped and restored (same inode) during a listing is not detected. The
+ *    opt-out is ignored, and operations stay refused, when NODE_ENV is
+ *    production or the dashboard HOST is not loopback. It is checked on every
+ *    call, so losing /proc mid-run refuses instead of falling back.
  *
  * Opening never truncates: callers truncate after the descriptor is verified.
  * Nothing is ever removed by path outside the root after a failed check.
  */
 import { open, mkdir, readdir, rm, rmdir, unlink, lstat, rename } from 'fs/promises';
 import { realpathSync, lstatSync, statSync, readlinkSync, existsSync, constants as fsConstants } from 'fs';
+import { logStructured } from './logger.js';
 import { resolve, relative, dirname, basename, join, sep, isAbsolute } from 'path';
 
 const O_NOFOLLOW = fsConstants.O_NOFOLLOW || 0;
@@ -60,34 +62,40 @@ function procAvailable() {
 }
 
 const LOOPBACK_HOSTS = new Set(['127.0.0.1', '::1', '[::1]', 'localhost', '::ffff:127.0.0.1']);
+const OFF_VALUES = ['false', '0', 'no', 'off'];
 
 /**
- * Whether operations that cannot be pinned must be refused. The flag is read
- * trimmed and lowercased: false/0/no/off turn it off, any other value turns it
- * on. Unset means on for Linux, for NODE_ENV=production and for a non-loopback
- * HOST, and off otherwise.
+ * Whether operations that cannot be pinned must be refused. Strict is the
+ * default everywhere. WORKSPACE_REQUIRE_PINNED_FS=0/false/no/off (trimmed,
+ * case-insensitive) opts out for local development, but the opt-out is ignored
+ * when NODE_ENV is production or HOST is not a loopback address.
  */
-export function pinnedFsRequired(env = process.env, platform = process.platform) {
-  const flag = String(env.WORKSPACE_REQUIRE_PINNED_FS ?? '').trim().toLowerCase();
-  if (['false', '0', 'no', 'off'].includes(flag)) return false;
-  if (flag !== '') return true;
-  if (platform === 'linux') return true;
+export function pinnedFsRequired(env = process.env) {
   if (String(env.NODE_ENV ?? '').trim().toLowerCase() === 'production') return true;
   const host = String(env.HOST ?? '').trim().toLowerCase();
-  return host !== '' && !LOOPBACK_HOSTS.has(host);
+  if (host !== '' && !LOOPBACK_HOSTS.has(host)) return true;
+  return !OFF_VALUES.includes(String(env.WORKSPACE_REQUIRE_PINNED_FS ?? '').trim().toLowerCase());
 }
 
-/** True only when the operator explicitly turned strict mode off. */
-function explicitOptOut() {
-  if (testHooks.strict === false) return true;
-  if (testHooks.strict === true) return false;
-  const env = testHooks.env || process.env;
-  return ['false', '0', 'no', 'off'].includes(String(env.WORKSPACE_REQUIRE_PINNED_FS ?? '').trim().toLowerCase());
+let optOutWarned = false;
+
+/** Logs one warning when the local-development opt-out is active. Returns true when it logged. */
+export function warnIfPinningOptOut(log = logStructured) {
+  if (optOutWarned || pinnedFsRequired(testHooks.env || process.env)) return false;
+  optOutWarned = true;
+  log('warn', 'workspace_pinning_opt_out', {
+    message: 'WORKSPACE_REQUIRE_PINNED_FS is off: workspace file operations use unpinned checks (local development only).',
+  });
+  return true;
+}
+
+export function resetOptOutWarning() {
+  optOutWarned = false;
 }
 
 /** Fail closed when pinned operations are required and /proc is unavailable. */
 function requirePin() {
-  const strict = testHooks.strict ?? pinnedFsRequired(testHooks.env || process.env, currentPlatform());
+  const strict = testHooks.strict ?? pinnedFsRequired(testHooks.env || process.env);
   if (strict && !procAvailable()) refuse();
 }
 
@@ -156,7 +164,9 @@ async function verifyFd(fh, rootLex, rootReal, abs) {
     if (kernelPath === null || kernelPath.endsWith(' (deleted)') || !insideReal(rootReal, kernelPath, false)) refuse();
     return;
   }
-  // Fallback: same file as realpath(target), and that path is inside the root.
+  // Fallback: only reachable under the explicit opt-out; strict mode refuses if /proc went away mid-run.
+  requirePin();
+  // Same file as realpath(target), and that path is inside the root.
   let real;
   try {
     real = realpathSync(abs);
@@ -200,7 +210,10 @@ async function withParent(root, abs, fn, op = 'op') {
     assertRealInside(rootReal, parent, true);
   }
   try {
-    if (!dirFh) assertRealInside(rootReal, parent, true);
+    if (!dirFh) {
+      requirePin();
+      assertRealInside(rootReal, parent, true);
+    }
     await seam('before-op', abs, op);
     const result = await fn(join(base, basename(abs)));
     if (!dirFh) assertRealInside(rootReal, parent, true);
@@ -266,6 +279,7 @@ export async function mkdirInside(root, abs) {
     return;
   }
   if (!procAvailable()) {
+    requirePin();
     await seam('before-op', abs, 'mkdir');
     await mkdir(abs, { recursive: true });
     assertRealInside(rootReal, abs, true);
@@ -294,6 +308,7 @@ export async function mkdirInside(root, abs) {
 
 /** Removes a file or directory tree inside the root; refuses the root and symlinks. */
 export async function removeInside(root, abs) {
+  requirePin();
   const rootReal = realRoot(root);
   return withParent(root, abs, async (p) => {
     const l = await lstat(p);
@@ -306,13 +321,8 @@ export async function removeInside(root, abs) {
       await removeTreeAt(p, rootReal);
       return;
     }
-    // Unpinned: a recursive walk by path cannot be made safe, so only an empty directory
-    // is removed unless the operator explicitly opted out of strict mode.
-    if ((await readdir(p)).length === 0) {
-      await rmdir(p);
-      return;
-    }
-    if (!explicitOptOut()) refuse();
+    // Unpinned (explicit local-development opt-out only): the walk is by path and cannot be made safe.
+    requirePin();
     await rm(p, { recursive: true, force: true });
   }, 'delete');
 }
@@ -322,7 +332,10 @@ export async function removeInside(root, abs) {
  * descriptors: every child directory is opened without following symlinks and its kernel
  * path checked against the root, and entries are removed relative to that descriptor.
  */
-async function removeTreeAt(dirPath, rootReal) {
+const MAX_DELETE_DEPTH = 64;
+
+async function removeTreeAt(dirPath, rootReal, depth = 0) {
+  if (depth >= MAX_DELETE_DEPTH) refuse();
   const fh = await open(dirPath, fsConstants.O_RDONLY | O_DIRECTORY | O_NOFOLLOW);
   try {
     const kernelPath = procPathOfFd(fh.fd);
@@ -334,7 +347,7 @@ async function removeTreeAt(dirPath, rootReal) {
       const l = await lstat(child);
       if (l.isDirectory()) {
         await seam('walk-entry', join(kernelPath, name), 'delete');
-        await removeTreeAt(child, rootReal);
+        await removeTreeAt(child, rootReal, depth + 1);
       } else {
         await unlink(child);
       }
@@ -347,6 +360,7 @@ async function removeTreeAt(dirPath, rootReal) {
 
 /** Renames inside the root; neither end may be the root or a symlink. */
 export async function renameInside(root, from, to) {
+  requirePin();
   return withParent(root, from, (pFrom) => withParent(root, to, async (pTo) => {
     if ((await lstat(pFrom)).isSymbolicLink()) refuse();
     try {

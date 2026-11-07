@@ -1,5 +1,6 @@
 import express from 'express';
 import { join, sep, resolve as resolvePath } from 'path';
+import { pipeline } from 'node:stream';
 import { readdir, stat } from 'fs/promises';
 import { existsSync, constants as fsConstants } from 'fs';
 import { openInside, readdirInside } from '../modules/workspace-fs.js';
@@ -103,8 +104,8 @@ export function createContentRouter({ WEBSITE_OUTPUT_DIR, WORKSPACE_ROOT }) {
       res.attachment(req.params.name);
       res.setHeader('Content-Length', st.size);
       const stream = fh.createReadStream();
-      stream.on('error', () => res.destroy());
-      stream.pipe(res);
+      // pipeline closes the file handle when the client goes away mid-download.
+      pipeline(stream, res, (err) => { if (err) res.destroy(); });
     } catch (err) {
       await fh?.close().catch(() => {});
       if (err.code === 'ENOENT') return res.status(404).end();

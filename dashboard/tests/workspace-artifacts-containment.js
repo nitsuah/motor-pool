@@ -4,7 +4,8 @@
  * listed or served, ordinary artifacts still work.
  */
 import assert from 'node:assert/strict';
-import { mkdtempSync, mkdirSync, writeFileSync, rmSync, realpathSync, symlinkSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, writeFileSync, rmSync, realpathSync, symlinkSync, readdirSync, existsSync } from 'node:fs';
+import http from 'node:http';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import express from 'express';
@@ -41,6 +42,26 @@ try {
     assert.ok(!(await bad.text()).includes('outside secret'), `${name} served no outside bytes`);
   }
   console.log('  \u2705 artifact download refuses a symlink pointing outside, serves ordinary files');
+
+  // Aborted downloads must not leave file handles open.
+  if (process.platform === 'linux' && existsSync('/proc/self/fd')) {
+    writeFileSync(join(ROOT, 'artifacts', 'big.bin'), Buffer.alloc(40 * 1024 * 1024, 1));
+    const port = server.address().port;
+    const abortOnce = () => new Promise((resolve) => {
+      const req = http.get({ host: '127.0.0.1', port, path: '/api/artifacts/big.bin/download' }, (res) => {
+        res.once('data', () => { req.destroy(); resolve(); });
+      });
+      req.on('error', () => {});
+    });
+    const fdCount = () => readdirSync('/proc/self/fd').length;
+    await abortOnce();
+    await new Promise((r) => setTimeout(r, 500));
+    const baseline = fdCount();
+    for (let i = 0; i < 20; i++) await abortOnce();
+    await new Promise((r) => setTimeout(r, 1000));
+    assert.ok(fdCount() <= baseline + 1, `descriptors returned to baseline (${baseline} -> ${fdCount()})`);
+    console.log('  \u2705 aborted downloads release their file handles');
+  }
 } finally {
   server.close();
   rmSync(ROOT, { recursive: true, force: true });

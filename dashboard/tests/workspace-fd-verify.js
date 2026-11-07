@@ -14,7 +14,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import express from 'express';
 import { createWorkspaceRouter } from '../routes/workspace.js';
-import { testHooks, pinnedFsRequired } from '../modules/workspace-fs.js';
+import { testHooks, pinnedFsRequired, warnIfPinningOptOut, resetOptOutWarning } from '../modules/workspace-fs.js';
 
 const ROOT = realpathSync(mkdtempSync(join(tmpdir(), 'ab-ws-fd-root-')));
 const OUTSIDE = realpathSync(mkdtempSync(join(tmpdir(), 'ab-ws-fd-outside-')));
@@ -398,30 +398,38 @@ try {
     assert.ok(swapped, 'the swap ran before the listing');
     outsideKept();
     testHooks.before = null;
+
+    // A tree deeper than the cap is refused before the deeper levels are opened.
+    seed();
+    const deep = join(ROOT, 'a', 'deep', ...Array.from({ length: 70 }, (_, i) => `d${i}`));
+    mkdirSync(deep, { recursive: true });
+    dr = await del('a/deep');
+    assert.equal(dr.status, 400, 'a tree deeper than the cap is refused');
+    assert.ok(existsSync(deep), 'the deep levels were not touched');
+    rmSync(join(ROOT, 'a', 'deep'), { recursive: true, force: true });
     console.log('  ✅ recursive delete never follows a directory swapped for a symlink mid-walk');
   }
 
-  // ── without pinning a non-empty directory is only deleted after an explicit opt-out ──
+  // ── without pinning, a recursive delete runs only under the explicit opt-out ──
   testHooks.strict = null;
   testHooks.disableProc = true;
-  testHooks.platform = 'win32';
   testHooks.before = null;
   seed();
   mkdirSync(join(ROOT, 'a', 'full'));
   writeFileSync(join(ROOT, 'a', 'full', 'x.txt'), 'x');
-  mkdirSync(join(ROOT, 'a', 'empty'));
   testHooks.env = {};
   let dd = await del('a/full');
-  assert.equal(dd.status, 400, 'non-empty directory delete refused by default without pinning');
+  assert.equal(dd.status, 400, 'delete refused by default without pinning');
   assert.ok(existsSync(join(ROOT, 'a', 'full', 'x.txt')), 'nothing was deleted');
-  dd = await del('a/empty');
-  assert.equal(dd.status, 200, 'an empty directory can still be removed');
+  testHooks.env = { NODE_ENV: 'production', WORKSPACE_REQUIRE_PINNED_FS: 'off' };
+  dd = await del('a/full');
+  assert.equal(dd.status, 400, 'the opt-out is ignored in production');
+  assert.ok(existsSync(join(ROOT, 'a', 'full', 'x.txt')), 'nothing was deleted in production');
   testHooks.env = { WORKSPACE_REQUIRE_PINNED_FS: 'off' };
   dd = await del('a/full');
-  assert.equal(dd.status, 200, 'explicit opt-out allows the recursive delete');
-  testHooks.platform = null;
+  assert.equal(dd.status, 200, 'the explicit opt-out allows the recursive delete');
   testHooks.env = null;
-  console.log('  ✅ unpinned recursive delete needs an explicit opt-out');
+  console.log('  ✅ unpinned recursive delete runs only under the explicit opt-out');
 
   // ── strict mode: refuse everything that cannot be pinned ─────────────────
   testHooks.disableProc = true;
@@ -448,8 +456,29 @@ try {
       assert.deepEqual(treeOf(OUTSIDE), snapshot, `strict ${stage}: ${name} left the outside tree unchanged`);
     }
   }
+  // A swap that is replaced by a different directory (or restored) during a listing: strict never reads it.
+  seed();
+  writeFileSync(join(OUTSIDE, 'outside-only.txt'), '1234567890');
+  let phase = 0;
+  testHooks.before = async (st, _abs, o) => {
+    if (o !== 'list') return;
+    if (st === 'before-op' && phase === 0) {
+      phase = 1;
+      renameSync(join(ROOT, 'a'), join(ROOT, 'a.orig'));
+      symlinkSync(OUTSIDE, join(ROOT, 'a'), 'dir');
+    } else if (st === 'after-meta' && phase === 1) {
+      phase = 2;
+      rmSync(join(ROOT, 'a'), { force: true });
+      renameSync(join(ROOT, 'a.orig'), join(ROOT, 'a'));
+    }
+  };
+  const sr = await get(`/workspace/ls?path=${q('a')}`);
+  assert.equal(sr.status, 400, 'strict listing without pinning is refused');
+  assert.ok(!(await sr.text()).includes('outside-only'), 'no outside names returned');
+  assert.equal(phase, 0, 'the listing was refused before any read');
+  testHooks.before = null;
   testHooks.strict = null;
-  console.log('  ✅ strict mode without /proc refuses delete/mkdir/write/read/rename even with a swap in the window');
+  console.log('  ✅ strict mode without /proc refuses delete/mkdir/write/read/rename/list even with a swap in the window');
 
   // ── zero inode: only symlink-free paths are accepted ─────────────────────
   testHooks.strict = false;
@@ -486,63 +515,95 @@ try {
     console.log('  ✅ a failed descriptor lookup with /proc present is a refusal, not a fallback');
   }
 
-  // ── strict default per platform and flag forms ───────────────────────────
-  assert.equal(pinnedFsRequired({}, 'linux'), true, 'linux default is strict');
-  assert.equal(pinnedFsRequired({}, 'win32'), false, 'win32 default is best-effort');
-  assert.equal(pinnedFsRequired({}, 'darwin'), false, 'darwin default is best-effort');
-  for (const v of ['1', 'true', 'yes', 'on', ' TRUE ', 'On']) {
-    assert.equal(pinnedFsRequired({ WORKSPACE_REQUIRE_PINNED_FS: v }, 'win32'), true, `"${v}" forces strict`);
+  // ── strict is the default everywhere; the opt-out is local development only ──
+  for (const platform of ['linux', 'win32', 'darwin']) {
+    assert.equal(pinnedFsRequired({}, platform), true, `${platform} is strict by default`);
   }
   for (const v of ['0', 'false', 'no', 'off', ' OFF ', 'False']) {
-    assert.equal(pinnedFsRequired({ WORKSPACE_REQUIRE_PINNED_FS: v }, 'linux'), false, `"${v}" opts out`);
+    assert.equal(pinnedFsRequired({ WORKSPACE_REQUIRE_PINNED_FS: v }), false, `"${v}" opts out`);
   }
-  assert.equal(pinnedFsRequired({ WORKSPACE_REQUIRE_PINNED_FS: '  ' }, 'linux'), true, 'blank uses the platform default');
-  assert.equal(pinnedFsRequired({ NODE_ENV: ' Production ' }, 'win32'), true, 'production is strict on any platform');
-  assert.equal(pinnedFsRequired({ NODE_ENV: 'development' }, 'win32'), false, 'development stays best-effort');
-  assert.equal(pinnedFsRequired({ HOST: '0.0.0.0' }, 'darwin'), true, 'a non-loopback HOST is strict');
+  for (const v of ['1', 'true', 'yes', 'on', ' TRUE ', '  ', 'bogus']) {
+    assert.equal(pinnedFsRequired({ WORKSPACE_REQUIRE_PINNED_FS: v }), true, `"${v}" stays strict`);
+  }
+  assert.equal(pinnedFsRequired({ NODE_ENV: ' Production ', WORKSPACE_REQUIRE_PINNED_FS: 'off' }), true, 'the opt-out is ignored in production');
+  assert.equal(pinnedFsRequired({ NODE_ENV: 'development', WORKSPACE_REQUIRE_PINNED_FS: 'off' }), false, 'the opt-out works in development');
+  assert.equal(pinnedFsRequired({ HOST: '0.0.0.0', WORKSPACE_REQUIRE_PINNED_FS: '0' }), true, 'the opt-out is ignored for a non-loopback HOST');
   for (const h of ['127.0.0.1', '::1', '[::1]', 'localhost', ' LOCALHOST ', '']) {
-    assert.equal(pinnedFsRequired({ HOST: h }, 'win32'), false, `loopback HOST "${h}" stays best-effort`);
+    assert.equal(pinnedFsRequired({ HOST: h, WORKSPACE_REQUIRE_PINNED_FS: 'off' }), false, `loopback HOST "${h}" allows the opt-out`);
   }
-  assert.equal(pinnedFsRequired({ NODE_ENV: 'production', WORKSPACE_REQUIRE_PINNED_FS: 'off' }, 'win32'), false, 'the flag overrides production');
-  assert.equal(pinnedFsRequired({ HOST: '0.0.0.0', WORKSPACE_REQUIRE_PINNED_FS: '0' }, 'win32'), false, 'the flag overrides HOST');
-  assert.equal(pinnedFsRequired({ HOST: '127.0.0.1', WORKSPACE_REQUIRE_PINNED_FS: '1' }, 'win32'), true, 'the flag forces strict');
 
-  // Behaviour: no /proc, flag unset.
+  // Behaviour without /proc.
   testHooks.strict = null;
   testHooks.disableProc = true;
   testHooks.before = null;
-  testHooks.env = {};
   seed();
-  testHooks.platform = 'linux';
-  let rd = await get(`/workspace/read?path=${q('a/f.txt')}`);
-  assert.equal(rd.status, 400, 'linux without /proc refuses by default');
-  testHooks.platform = 'win32';
-  rd = await get(`/workspace/read?path=${q('a/f.txt')}`);
-  assert.equal(rd.status, 200, 'win32 keeps the best-effort fallback');
-  testHooks.platform = 'darwin';
-  rd = await get(`/workspace/read?path=${q('a/f.txt')}`);
-  assert.equal(rd.status, 200, 'darwin keeps the best-effort fallback');
-  testHooks.env = { WORKSPACE_REQUIRE_PINNED_FS: '1' };
-  rd = await get(`/workspace/read?path=${q('a/f.txt')}`);
-  assert.equal(rd.status, 400, 'the flag forces strict on darwin');
-  testHooks.platform = 'linux';
-  testHooks.env = { WORKSPACE_REQUIRE_PINNED_FS: ' Off ' };
-  rd = await get(`/workspace/read?path=${q('a/f.txt')}`);
-  assert.equal(rd.status, 200, 'the flag opts out on linux');
-  testHooks.platform = 'win32';
-  testHooks.env = { NODE_ENV: 'Production ' };
-  rd = await get(`/workspace/read?path=${q('a/f.txt')}`);
-  assert.equal(rd.status, 400, 'NODE_ENV=production is strict on win32');
-  testHooks.env = { HOST: '0.0.0.0' };
-  rd = await get(`/workspace/read?path=${q('a/f.txt')}`);
-  assert.equal(rd.status, 400, 'a non-loopback HOST is strict on win32');
-  testHooks.env = { HOST: '127.0.0.1' };
-  rd = await get(`/workspace/read?path=${q('a/f.txt')}`);
-  assert.equal(rd.status, 200, 'a loopback HOST stays best-effort on win32');
-  testHooks.env = { NODE_ENV: 'production', WORKSPACE_REQUIRE_PINNED_FS: '0' };
-  rd = await get(`/workspace/read?path=${q('a/f.txt')}`);
-  assert.equal(rd.status, 200, 'the flag overrides production');
-  console.log('  ✅ strict default per platform, NODE_ENV, HOST and flag forms');
+  const readOk = async () => (await get(`/workspace/read?path=${q('a/f.txt')}`)).status;
+  for (const platform of ['linux', 'win32', 'darwin']) {
+    testHooks.platform = platform;
+    testHooks.env = {};
+    assert.equal(await readOk(), 400, `${platform} without /proc refuses by default`);
+    testHooks.env = { WORKSPACE_REQUIRE_PINNED_FS: ' Off ' };
+    assert.equal(await readOk(), 200, `${platform}: the explicit opt-out uses the fallback`);
+    testHooks.env = { NODE_ENV: 'Production ', WORKSPACE_REQUIRE_PINNED_FS: '0' };
+    assert.equal(await readOk(), 400, `${platform}: the opt-out is ignored in production`);
+    testHooks.env = { HOST: '0.0.0.0', WORKSPACE_REQUIRE_PINNED_FS: '0' };
+    assert.equal(await readOk(), 400, `${platform}: the opt-out is ignored for a non-loopback HOST`);
+    testHooks.env = { HOST: '127.0.0.1', WORKSPACE_REQUIRE_PINNED_FS: 'false' };
+    assert.equal(await readOk(), 200, `${platform}: a loopback HOST allows the opt-out`);
+  }
+  testHooks.platform = null;
+  console.log('  ✅ strict by default on every platform; opt-out ignored in production and for a non-loopback HOST');
+
+  // ── one startup warning when the opt-out is active ───────────────────────
+  const logged = [];
+  resetOptOutWarning();
+  testHooks.env = {};
+  assert.equal(warnIfPinningOptOut((...a) => logged.push(a)), false, 'no warning in the default');
+  testHooks.env = { NODE_ENV: 'production', WORKSPACE_REQUIRE_PINNED_FS: 'off' };
+  assert.equal(warnIfPinningOptOut((...a) => logged.push(a)), false, 'no warning when the opt-out is ignored');
+  testHooks.env = { WORKSPACE_REQUIRE_PINNED_FS: 'off' };
+  assert.equal(warnIfPinningOptOut((...a) => logged.push(a)), true, 'warns when the opt-out is active');
+  assert.equal(warnIfPinningOptOut((...a) => logged.push(a)), false, 'warns only once');
+  assert.equal(logged.length, 1);
+  assert.equal(logged[0][0], 'warn');
+  resetOptOutWarning();
+  console.log('  ✅ the opt-out logs a single warning');
+
+  // ── /proc disappearing mid-run: strict refuses instead of falling back ───
+  if (process.platform === 'linux' && existsSync('/proc/self/fd')) {
+    testHooks.env = {};
+    testHooks.strict = null;
+    testHooks.disableProc = false;
+    seed();
+    let lost = false;
+    testHooks.before = async (st, _abs, o) => {
+      if (lost || st !== 'after-open' || o !== 'open') return;
+      lost = true;
+      testHooks.disableProc = true;
+    };
+    let tr = await post('/workspace/write', { path: 'a/f.txt', content: 'planted' });
+    assert.ok(lost, 'pinning was lost mid-request');
+    assert.equal(tr.status, 400, 'write refused when pinning is lost after the open');
+    assert.equal(readFileSync(join(ROOT, 'a', 'f.txt'), 'utf8'), 'inside\n', 'file untouched');
+
+    testHooks.disableProc = false;
+    seed();
+    mkdirSync(join(ROOT, 'a', 'tree', 'sub'), { recursive: true });
+    writeFileSync(join(ROOT, 'a', 'tree', 'sub', 'file.txt'), 'inside\n');
+    lost = false;
+    testHooks.before = async (st, _abs, o) => {
+      if (lost || st !== 'before-op' || o !== 'delete') return;
+      lost = true;
+      testHooks.disableProc = true;
+    };
+    tr = await del('a/tree');
+    assert.ok(lost, 'pinning was lost mid-delete');
+    assert.equal(tr.status, 400, 'delete refused when pinning is lost');
+    assert.ok(existsSync(join(ROOT, 'a', 'tree', 'sub', 'file.txt')), 'nothing was deleted');
+    testHooks.before = null;
+    testHooks.disableProc = false;
+    console.log('  ✅ losing /proc mid-run refuses (strict) instead of falling back');
+  }
 } finally {
   testHooks.platform = null;
   testHooks.env = null;
