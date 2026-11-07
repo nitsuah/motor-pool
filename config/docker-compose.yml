@@ -473,7 +473,7 @@ services:
       - tools
       - prebuild
     ports:
-      - "3201:3201"
+      - "127.0.0.1:3201:3201"
     # No env_file here deliberately: this container handles untrusted
     # website-generation and lead-discovery input, so it gets only the
     # specific variables it needs below (including NETLIFY_AUTH_TOKEN, which

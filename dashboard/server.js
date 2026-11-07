@@ -1,6 +1,6 @@
 import express from 'express';
 import cors from 'cors';
-import { createOriginGuard } from './modules/origin-guard.js';
+import { createHostGuard, createOriginGuard } from './modules/origin-guard.js';
 import axios from 'axios';
 import dotenv from 'dotenv';
 import { fileURLToPath } from 'url';
@@ -471,6 +471,11 @@ app.use(cors({
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
   credentials: true,
   allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With'],
+}));
+// Only known Host names are served (loopback, compose service, CORS/ALLOWED_HOSTS entries).
+app.use(createHostGuard({
+  getCorsOrigins: () => parseUrlListEnv(process.env.CORS_ALLOWED_ORIGINS),
+  getAllowedHosts: () => String(process.env.ALLOWED_HOSTS || '').split(',').map(h => h.trim()).filter(Boolean),
 }));
 // Non-read requests from a browser origin must be same-host or allowlisted.
 app.use(createOriginGuard(() => parseUrlListEnv(process.env.CORS_ALLOWED_ORIGINS)));

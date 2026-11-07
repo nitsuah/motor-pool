@@ -17,7 +17,7 @@ import express from 'express';
 import { execFile } from 'child_process';
 import { promisify } from 'util';
 import { fileURLToPath } from 'url';
-import { dirname, join } from 'path';
+import { dirname, join, resolve, sep } from 'path';
 import { existsSync, mkdirSync, readFileSync, writeFileSync, readdirSync, statSync } from 'fs';
 import dotenv from 'dotenv';
 import { z } from 'zod';
@@ -38,6 +38,7 @@ mkdirSync(OUTPUT_DIR, { recursive: true });
 
 // Keep file ops inside OUTPUT_DIR.
 const safeOutputPath = makeSafeOutputPath(OUTPUT_DIR);
+const OUTPUT_PREFIX = resolve(OUTPUT_DIR) + sep;
 
 // ── Helpers ────────────────────────────────────────────────────────────────────
 
@@ -144,6 +145,8 @@ function buildServer() {
     async ({ slug, subdir, filename, content }) => {
       const dir  = safeOutputPath(slug, subdir);
       const path = safeOutputPath(slug, subdir, filename);
+      if (!dir.startsWith(OUTPUT_PREFIX)) return { content: [{ type: 'text', text: 'Invalid path' }] };
+      if (!path.startsWith(OUTPUT_PREFIX)) return { content: [{ type: 'text', text: 'Invalid path' }] };
       mkdirSync(dir, { recursive: true });
       writeFileSync(path, content, 'utf8');
       return { content: [{ type: 'text', text: `✓ Saved: ${path}` }] };
@@ -161,6 +164,7 @@ function buildServer() {
     },
     async ({ slug, subdir, filename }) => {
       const path = safeOutputPath(slug, subdir, filename);
+      if (!path.startsWith(OUTPUT_PREFIX)) return { content: [{ type: 'text', text: 'Invalid path' }] };
       if (!existsSync(path)) {
         return { content: [{ type: 'text', text: `File not found: ${path}` }] };
       }
@@ -175,13 +179,16 @@ function buildServer() {
     { slug: z.string().regex(SLUG_PATTERN) },
     async ({ slug }) => {
       const clientDir = safeOutputPath(slug);
+      if (!clientDir.startsWith(OUTPUT_PREFIX)) return { content: [{ type: 'text', text: 'Invalid path' }] };
       if (!existsSync(clientDir)) {
         return { content: [{ type: 'text', text: `No output found for slug: ${slug}` }] };
       }
       const lines = [];
       function walk(dir, prefix = '') {
+        if (!dir.startsWith(OUTPUT_PREFIX)) return;
         for (const entry of readdirSync(dir)) {
           const full = join(dir, entry);
+          if (!full.startsWith(OUTPUT_PREFIX)) continue;
           const stat = statSync(full);
           if (stat.isDirectory()) {
             lines.push(`${prefix}${entry}/`);
