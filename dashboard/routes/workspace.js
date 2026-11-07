@@ -1,13 +1,27 @@
 import express from 'express';
-import { readdir, readFile, writeFile, mkdir, stat, unlink, rm } from 'fs/promises';
+import { readdir, mkdir, stat, unlink, rm, open, lstat } from 'fs/promises';
 import { resolve as resolvePath, relative as relativePath, dirname, basename, sep } from 'path';
-import { realpathSync, lstatSync } from 'fs';
+import { realpathSync, lstatSync, constants as fsConstants } from 'fs';
 import { exec, execFile } from 'child_process';
 import { promisify } from 'util';
 import { shellExecEnabled } from '../modules/exec-flag.js';
 
 const execAsync = promisify(exec);
 const execFileAsync = promisify(execFile);
+
+// O_NOFOLLOW makes open() fail on a symlink final component. It is undefined on
+// some platforms (Windows); there the lstat checks below are the only guard.
+const O_NOFOLLOW = fsConstants.O_NOFOLLOW || 0;
+
+// True when the final component of abs is a symlink (a missing path is not).
+async function isSymlink(abs) {
+  try {
+    return (await lstat(abs)).isSymbolicLink();
+  } catch (err) {
+    if (err.code === 'ENOENT') return false;
+    throw err;
+  }
+}
 
 const BASH_BLOCKLIST = ['rm -rf /', 'dd if=', ':(){ :|:& };:', '> /dev/sd', 'mkfs'];
 
@@ -140,14 +154,23 @@ export function createWorkspaceRouter(WORKSPACE_ROOT) {
     if (!abs || abs === ROOT_ABS) return res.status(400).json({ error: 'Invalid path' }); // the root itself is never a target (also when it is a filesystem root)
     if (!abs.startsWith(ROOT_PREFIX)) return res.status(400).json({ error: 'Invalid path' });
 
+    let fh;
     try {
-      const s = await stat(abs);
+      const l = await lstat(abs);
+      if (l.isSymbolicLink()) return res.status(400).json({ error: 'Invalid path' });
+      if (l.isDirectory()) return res.status(400).json({ error: 'Path is a directory' });
+      // Read through the handle that was opened without following symlinks.
+      fh = await open(abs, fsConstants.O_RDONLY | O_NOFOLLOW);
+      const s = await fh.stat();
       if (s.isDirectory()) return res.status(400).json({ error: 'Path is a directory' });
       if (s.size > 1024 * 1024) return res.status(413).json({ error: 'File too large (> 1 MB)' });
-      const content = await readFile(abs, 'utf8');
+      const content = await fh.readFile('utf8');
       res.json({ path: relativePath(WORKSPACE_ROOT, abs), content });
     } catch (err) {
+      if (err.code === 'ELOOP') return res.status(400).json({ error: 'Invalid path' });
       res.status(404).json({ error: err.message });
+    } finally {
+      await fh?.close().catch(() => {});
     }
   });
 
@@ -157,20 +180,29 @@ export function createWorkspaceRouter(WORKSPACE_ROOT) {
     if (!reqPath || content === undefined) {
       return res.status(400).json({ error: 'path and content are required' });
     }
+    if (typeof content !== 'string') return res.status(400).json({ error: 'content must be a string' });
     const abs = resolveWorkspacePath(reqPath);
     if (!abs || abs === ROOT_ABS) return res.status(400).json({ error: 'Invalid path' }); // the root itself is never a target (also when it is a filesystem root)
     if (!abs.startsWith(ROOT_PREFIX)) return res.status(400).json({ error: 'Invalid path' });
     const parentAbs = resolvePath(abs, '..');
 
+    let fh;
     try {
       if (parentAbs !== ROOT_ABS) {
         if (!parentAbs.startsWith(ROOT_PREFIX)) return res.status(400).json({ error: 'Invalid path' });
+        if (!isRealPathInside(WORKSPACE_ROOT, parentAbs)) return res.status(400).json({ error: 'Invalid path' });
         await mkdir(parentAbs, { recursive: true });
       }
-      await writeFile(abs, content, 'utf8');
+      if (await isSymlink(abs)) return res.status(400).json({ error: 'Invalid path' });
+      // Write through the handle that was opened without following symlinks.
+      fh = await open(abs, fsConstants.O_WRONLY | fsConstants.O_CREAT | fsConstants.O_TRUNC | O_NOFOLLOW, 0o666);
+      await fh.writeFile(content, 'utf8');
       res.json({ path: relativePath(WORKSPACE_ROOT, abs), bytes: Buffer.byteLength(content, 'utf8') });
     } catch (err) {
+      if (err.code === 'ELOOP') return res.status(400).json({ error: 'Invalid path' });
       res.status(500).json({ error: err.message });
+    } finally {
+      await fh?.close().catch(() => {});
     }
   });
 
@@ -250,6 +282,9 @@ export function createWorkspaceRouter(WORKSPACE_ROOT) {
     if (!abs || abs === ROOT_ABS) return res.status(400).json({ error: 'Invalid path' }); // the root itself is never a target (also when it is a filesystem root)
     if (!abs.startsWith(ROOT_PREFIX)) return res.status(400).json({ error: 'Invalid path' });
     try {
+      // Re-check right before the destructive call; never delete through a symlink.
+      if (!isRealPathInside(WORKSPACE_ROOT, abs)) return res.status(400).json({ error: 'Invalid path' });
+      if (await isSymlink(abs)) return res.status(400).json({ error: 'Invalid path' });
       const s = await stat(abs);
       if (s.isDirectory()) {
         await rm(abs, { recursive: true, force: true });
@@ -286,6 +321,11 @@ export function createWorkspaceRouter(WORKSPACE_ROOT) {
     if (!absTo.startsWith(ROOT_PREFIX)) return res.status(400).json({ error: 'Invalid path' });
     try {
       const { rename } = await import('fs/promises');
+      // Re-check right before the move; neither end may be a symlink.
+      if (!isRealPathInside(WORKSPACE_ROOT, absFrom) || !isRealPathInside(WORKSPACE_ROOT, absTo)) {
+        return res.status(400).json({ error: 'Invalid path' });
+      }
+      if (await isSymlink(absFrom) || await isSymlink(absTo)) return res.status(400).json({ error: 'Invalid path' });
       await rename(absFrom, absTo);
       res.json({ from: relativePath(WORKSPACE_ROOT, absFrom), to: relativePath(WORKSPACE_ROOT, absTo) });
     } catch (err) {

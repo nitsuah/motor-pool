@@ -330,6 +330,8 @@ services:
       - TOKEN_ECONOMIZER_URL=http://tool-tokeneconomizer:3202
       - AGENT_BOARD_ENABLE_DOCKER_CONTROL=${AGENT_BOARD_ENABLE_DOCKER_CONTROL:-false}
       - PORT=3000
+      # Bind all container interfaces; the port is published on 127.0.0.1 only (see ports)
+      - HOST=0.0.0.0
       - DATABASE_URL=postgresql://agent:agent@agent-db:5432/agent_board
       - OTEL_ENABLED=${OTEL_ENABLED:-false}
       - OTEL_ENDPOINT=${OTEL_ENDPOINT:-http://jaeger:4318}
@@ -471,7 +473,7 @@ services:
       - tools
       - prebuild
     ports:
-      - "3201:3201"
+      - "127.0.0.1:3201:3201"
     # No env_file here deliberately: this container handles untrusted
     # website-generation and lead-discovery input, so it gets only the
     # specific variables it needs below (including NETLIFY_AUTH_TOKEN, which

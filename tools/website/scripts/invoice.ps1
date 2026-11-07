@@ -16,6 +16,10 @@ param(
 )
 
 $ErrorActionPreference = "Stop"
+if ($Slug -cnotmatch '^[a-z0-9][a-z0-9-]{0,99}$') {
+    Write-Error "Invalid -Slug: use lowercase letters, digits and hyphens only."
+    exit 1
+}
 $outputRoot  = if ($OutputDir) { $OutputDir } else { Join-Path $PSScriptRoot ".." "output" }
 $invoiceDir  = Join-Path $outputRoot $Slug "invoice"
 New-Item -ItemType Directory -Force $invoiceDir | Out-Null

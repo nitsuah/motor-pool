@@ -10,6 +10,10 @@ param(
 )
 
 $ErrorActionPreference = "Stop"
+if ($Slug -cnotmatch '^[a-z0-9][a-z0-9-]{0,99}$') {
+    Write-Error "Invalid -Slug: use lowercase letters, digits and hyphens only."
+    exit 1
+}
 $outputRoot = if ($OutputDir) { $OutputDir } else { Join-Path $PSScriptRoot ".." "output" }
 $siteDir    = Join-Path $outputRoot $Slug "site"
 

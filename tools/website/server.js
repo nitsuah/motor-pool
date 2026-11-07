@@ -17,10 +17,11 @@ import express from 'express';
 import { execFile } from 'child_process';
 import { promisify } from 'util';
 import { fileURLToPath } from 'url';
-import { dirname, join, resolve } from 'path';
+import { dirname, join, resolve, sep } from 'path';
 import { existsSync, mkdirSync, readFileSync, writeFileSync, readdirSync, statSync } from 'fs';
 import dotenv from 'dotenv';
 import { z } from 'zod';
+import { makeSafeOutputPath, SLUG_PATTERN } from './output-path.js';
 
 dotenv.config();
 
@@ -35,14 +36,9 @@ const PORT = parseInt(process.env.WEBSITE_PORT || '3201', 10);
 // Ensure output dir exists
 mkdirSync(OUTPUT_DIR, { recursive: true });
 
-// ── Security: restrict file ops to OUTPUT_DIR ──────────────────────────────────
-function safeOutputPath(slug, ...parts) {
-  const p = resolve(OUTPUT_DIR, slug, ...parts);
-  if (!p.startsWith(resolve(OUTPUT_DIR))) {
-    throw new Error(`Path traversal attempt blocked: ${p}`);
-  }
-  return p;
-}
+// Keep file ops inside OUTPUT_DIR.
+const safeOutputPath = makeSafeOutputPath(OUTPUT_DIR);
+const OUTPUT_PREFIX = resolve(OUTPUT_DIR) + sep;
 
 // ── Helpers ────────────────────────────────────────────────────────────────────
 
@@ -141,7 +137,7 @@ function buildServer() {
     'Save Claude-generated content (pitch deck HTML, site HTML, email text, etc.) to a client output folder. ' +
     'Always use this after Claude generates website or pitch content.',
     {
-      slug:    z.string().regex(/^[\w-]+$/).describe('Client slug (e.g. "acme-pizza-90210")'),
+      slug:    z.string().regex(SLUG_PATTERN).describe('Client slug (e.g. "acme-pizza-90210")'),
       subdir:  z.enum(['pitch', 'site', 'invoice', 'scrape']).describe('Output sub-folder'),
       filename: z.string().describe('File name (e.g. "index.html", "cold-email.txt")'),
       content: z.string().describe('File content to write'),
@@ -149,6 +145,9 @@ function buildServer() {
     async ({ slug, subdir, filename, content }) => {
       const dir  = safeOutputPath(slug, subdir);
       const path = safeOutputPath(slug, subdir, filename);
+      if (!dir.startsWith(OUTPUT_PREFIX)) return { content: [{ type: 'text', text: 'Invalid path' }] };
+      if (!path.startsWith(OUTPUT_PREFIX)) return { content: [{ type: 'text', text: 'Invalid path' }] };
+      if (!path.startsWith(dir + sep)) return { content: [{ type: 'text', text: 'Invalid filename' }] };
       mkdirSync(dir, { recursive: true });
       writeFileSync(path, content, 'utf8');
       return { content: [{ type: 'text', text: `✓ Saved: ${path}` }] };
@@ -160,12 +159,14 @@ function buildServer() {
     'read_file',
     'Read a previously saved client file (e.g. to review generated site HTML or leads data).',
     {
-      slug:     z.string().regex(/^[\w-]+$/),
+      slug:     z.string().regex(SLUG_PATTERN),
       subdir:   z.enum(['pitch', 'site', 'invoice', 'scrape']),
       filename: z.string(),
     },
     async ({ slug, subdir, filename }) => {
       const path = safeOutputPath(slug, subdir, filename);
+      if (!path.startsWith(OUTPUT_PREFIX)) return { content: [{ type: 'text', text: 'Invalid path' }] };
+      if (!path.startsWith(safeOutputPath(slug, subdir) + sep)) return { content: [{ type: 'text', text: 'Invalid filename' }] };
       if (!existsSync(path)) {
         return { content: [{ type: 'text', text: `File not found: ${path}` }] };
       }
@@ -177,16 +178,19 @@ function buildServer() {
   server.tool(
     'list_client_files',
     'List all generated files for a client slug.',
-    { slug: z.string().regex(/^[\w-]+$/) },
+    { slug: z.string().regex(SLUG_PATTERN) },
     async ({ slug }) => {
       const clientDir = safeOutputPath(slug);
+      if (!clientDir.startsWith(OUTPUT_PREFIX)) return { content: [{ type: 'text', text: 'Invalid path' }] };
       if (!existsSync(clientDir)) {
         return { content: [{ type: 'text', text: `No output found for slug: ${slug}` }] };
       }
       const lines = [];
       function walk(dir, prefix = '') {
+        if (!dir.startsWith(OUTPUT_PREFIX)) return;
         for (const entry of readdirSync(dir)) {
           const full = join(dir, entry);
+          if (!full.startsWith(OUTPUT_PREFIX)) continue;
           const stat = statSync(full);
           if (stat.isDirectory()) {
             lines.push(`${prefix}${entry}/`);
@@ -206,7 +210,7 @@ function buildServer() {
     'deploy_site',
     'Deploy a generated site to Netlify. Requires `netlify login` to have been run on the host.',
     {
-      slug:      z.string().regex(/^[\w-]+$/).describe('Client slug matching the output/{slug}/site/ directory'),
+      slug:      z.string().regex(SLUG_PATTERN).describe('Client slug matching the output/{slug}/site/ directory'),
       site_name: z.string().optional().describe('Custom Netlify subdomain (slug used if blank)'),
       draft:     z.boolean().default(false).describe('Preview deploy instead of production'),
     },
@@ -225,7 +229,7 @@ function buildServer() {
     'create_invoice',
     'Generate a professional HTML invoice for a client. Open in browser and print to PDF.',
     {
-      slug:        z.string().regex(/^[\w-]+$/).describe('Client slug'),
+      slug:        z.string().regex(SLUG_PATTERN).describe('Client slug'),
       client_name: z.string().describe('Business name shown on the invoice'),
       amount:      z.number().default(500).describe('Invoice amount in USD'),
       description: z.string().optional().describe('Line item description'),
