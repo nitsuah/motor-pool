@@ -165,12 +165,13 @@ describe('runTeCommand output cap', () => {
 });
 
 describe('runTeCommand timeout escalation', () => {
-  it('sends SIGTERM, then SIGKILL when the child ignores it, and returns 504', async () => {
+  // POSIX signal handlers do not run on Windows; the service only ships in Linux containers.
+  it.skipIf(process.platform === 'win32')('sends SIGTERM, then SIGKILL when the child ignores it, and returns 504', async () => {
     const dir = mkdtempSync(join(tmpdir(), 'te-term-'));
     const marker = join(dir, 'sigterm');
     const prev = process.env.TOKEN_ECONOMIZER_TIMEOUT_MS;
-    // Generous deadline so the child has installed its handler long before SIGTERM.
-    const timeoutMs = 1500;
+    // Generous deadline so the child has installed its handler long before SIGTERM, even on a slow runner.
+    const timeoutMs = 3000;
     process.env.TOKEN_ECONOMIZER_TIMEOUT_MS = String(timeoutMs);
     const script =
       `const fs = require('fs');` +
@@ -191,5 +192,5 @@ describe('runTeCommand timeout escalation', () => {
       else process.env.TOKEN_ECONOMIZER_TIMEOUT_MS = prev;
       rmSync(dir, { recursive: true, force: true });
     }
-  });
+  }, 15000);
 });
