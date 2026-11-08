@@ -45,7 +45,10 @@ describe('tokeneconomizer read-only HTTP surface', () => {
 
   it('ignores prompt/arguments in the body; argv is fixed', async () => {
     calls.length = 0;
-    const r = await post('/status', { prompt: 'config', arguments: { a: 'set', b: 'k=v' }, json: true });
+    const rej = await post('/status', { prompt: 'config', arguments: { a: 'set', b: 'k=v' }, json: true });
+    assert.equal(rej.status, 400);
+    assert.equal(calls.length, 0);
+    const r = await post('/status', { json: true });
     assert.equal(r.status, 200);
     assert.deepEqual(calls, [['status', '--json']]);
     assert.equal(r.json.command, 'status');
@@ -58,7 +61,8 @@ describe('tokeneconomizer read-only HTTP surface', () => {
     await post('/toolprune', { action: 'measure' });
     await post('/config', {});
     await post('/repos', {});
-    await post('/doctor', { arguments: ['--evil'] });
+    assert.equal((await post('/doctor', { arguments: ['--evil'] })).status, 400);
+    await post('/doctor', {});
     assert.deepEqual(calls, [
       ['toolprune', 'show'],
       ['toolprune', 'measure'],
@@ -139,5 +143,28 @@ describe('runTeCommand output cap', () => {
       (err) => err.status === 500 && err.error === 'te output too large' && !('output' in err),
     );
     assert.ok(Date.now() - started < 10000);
+  });
+});
+
+describe('runTeCommand timeout escalation', () => {
+  it('sends SIGTERM, then SIGKILL when the child ignores it, and returns 504', async () => {
+    const prev = process.env.TOKEN_ECONOMIZER_TIMEOUT_MS;
+    process.env.TOKEN_ECONOMIZER_TIMEOUT_MS = '200';
+    const started = Date.now();
+    try {
+      await assert.rejects(
+        runTeCommand(['-e', 'process.on("SIGTERM", () => {}); setTimeout(() => {}, 30000);'], {
+          cmd: process.execPath,
+          killGraceMs: 300,
+        }),
+        (err) => err.status === 504,
+      );
+    } finally {
+      if (prev === undefined) delete process.env.TOKEN_ECONOMIZER_TIMEOUT_MS;
+      else process.env.TOKEN_ECONOMIZER_TIMEOUT_MS = prev;
+    }
+    const elapsed = Date.now() - started;
+    assert.ok(elapsed >= 450, `escalated too early: ${elapsed}ms`);
+    assert.ok(elapsed < 10000, `child outlived escalation: ${elapsed}ms`);
   });
 });

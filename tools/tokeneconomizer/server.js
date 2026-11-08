@@ -80,6 +80,11 @@ const MUTATING = new Set([
   'set', 'unset', 'migrate', 'merge', 'refresh',
 ]);
 
+const ALLOWED = {
+  status: ['json'], microskills: [], toolprune: ['action'], config: ['operation'],
+  repomap: [], repos: ['operation'], doctor: [],
+};
+
 const bad = (error) => ({ status: 400, body: { success: false, error } });
 const disabled = (what) => ({ status: 403, body: { success: false, error: `${what} is disabled over HTTP` } });
 
@@ -127,6 +132,10 @@ export function createApp({ run = runTeCommand } = {}) {
     const body = req.body === undefined ? {} : req.body;
     if (body === null || typeof body !== 'object' || Array.isArray(body)) {
       return res.status(400).json({ success: false, error: 'Request body must be a JSON object' });
+    }
+    const unknown = Object.keys(body).filter((k) => !ALLOWED[req.params.command].includes(k));
+    if (unknown.length) {
+      return res.status(400).json({ success: false, error: 'Unknown request properties' });
     }
     const plan = build(body);
     if (!plan.argv) return res.status(plan.status).json(plan.body);

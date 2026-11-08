@@ -1024,7 +1024,9 @@ Requires the `tool-tokeneconomizer` service running (enable with `--profile tool
 The wrapper publishes no host port and listens only on the private `tokeneconomizer-network`, which
 only the dashboard joins. Outside a container it binds to `127.0.0.1` unless `TOKEN_ECONOMIZER_HOST`
 is set. There is no generic `/exec` route; request bodies only select from the enums below and are never
-passed to the CLI. Mutating operations return `403`; other invalid input returns `400`.
+passed to the CLI. The wrapper answers mutating operations with `403` and other invalid input (including
+unknown properties) with `400`. Through the dashboard invoke route, any non-2xx wrapper response is returned
+as HTTP `502`, with the wrapper's status in the response body's `status` field.
 
 ### TokenEconomizer Tools
 
@@ -1041,7 +1043,7 @@ All endpoints: `POST /api/plugins/tokeneconomizer/tools/<tool>/invoke`
 | `doctor` | Run diagnostics on TE installation | `{}` |
 
 `toolprune apply|restore|refresh-catalog`, `config set|unset` and `repos migrate|merge` are disabled over HTTP
-(`403`); run them with the `te` CLI directly.
+(wrapper status `403`); run them with the `te` CLI directly.
 
 ### Example Usage
 
