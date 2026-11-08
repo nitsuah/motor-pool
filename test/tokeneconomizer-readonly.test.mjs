@@ -1,4 +1,7 @@
 import assert from 'node:assert/strict';
+import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { afterAll, beforeAll, describe, it } from 'vitest';
 import { createApp, DEFAULT_HOST, runTeCommand } from '../tools/tokeneconomizer/server.js';
 
@@ -45,8 +48,23 @@ describe('tokeneconomizer read-only HTTP surface', () => {
 
   it('ignores prompt/arguments in the body; argv is fixed', async () => {
     calls.length = 0;
-    const rej = await post('/status', { prompt: 'config', arguments: { a: 'set', b: 'k=v' }, json: true });
-    assert.equal(rej.status, 400);
+    for (const body of [
+      { prompt: 'config', json: true },
+      { arguments: { a: 'set', b: 'k=v' }, json: true },
+    ]) {
+      assert.equal((await post('/status', body)).status, 400);
+    }
+    for (const path of ['/microskills', '/repomap', '/doctor']) {
+      assert.equal((await post(path, { arguments: ['x'] })).status, 400, path);
+      assert.equal((await post(path, { prompt: 'config' })).status, 400, path);
+    }
+    assert.equal(calls.length, 0);
+    const text = await fetch(`${base}/toolprune`, {
+      method: 'POST',
+      headers: { 'content-type': 'text/plain' },
+      body: '{"action":"apply"}',
+    });
+    assert.equal(text.status, 415);
     assert.equal(calls.length, 0);
     const r = await post('/status', { json: true });
     assert.equal(r.status, 200);
@@ -148,23 +166,30 @@ describe('runTeCommand output cap', () => {
 
 describe('runTeCommand timeout escalation', () => {
   it('sends SIGTERM, then SIGKILL when the child ignores it, and returns 504', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'te-term-'));
+    const marker = join(dir, 'sigterm');
     const prev = process.env.TOKEN_ECONOMIZER_TIMEOUT_MS;
-    process.env.TOKEN_ECONOMIZER_TIMEOUT_MS = '200';
+    // Generous deadline so the child has installed its handler long before SIGTERM.
+    const timeoutMs = 1500;
+    process.env.TOKEN_ECONOMIZER_TIMEOUT_MS = String(timeoutMs);
+    const script =
+      `const fs = require('fs');` +
+      `process.on('SIGTERM', () => fs.appendFileSync(${JSON.stringify(marker)}, 'TERM'));` +
+      `setTimeout(() => {}, 30000);`;
     const started = Date.now();
     try {
       await assert.rejects(
-        runTeCommand(['-e', 'process.on("SIGTERM", () => {}); setTimeout(() => {}, 30000);'], {
-          cmd: process.execPath,
-          killGraceMs: 300,
-        }),
+        runTeCommand(['-e', script], { cmd: process.execPath, killGraceMs: 300 }),
         (err) => err.status === 504,
       );
+      const elapsed = Date.now() - started;
+      assert.equal(readFileSync(marker, 'utf8'), 'TERM', 'child should have received SIGTERM');
+      assert.ok(elapsed >= timeoutMs + 250, `escalated too early: ${elapsed}ms`);
+      assert.ok(elapsed < 10000, `child outlived escalation: ${elapsed}ms`);
     } finally {
       if (prev === undefined) delete process.env.TOKEN_ECONOMIZER_TIMEOUT_MS;
       else process.env.TOKEN_ECONOMIZER_TIMEOUT_MS = prev;
+      rmSync(dir, { recursive: true, force: true });
     }
-    const elapsed = Date.now() - started;
-    assert.ok(elapsed >= 450, `escalated too early: ${elapsed}ms`);
-    assert.ok(elapsed < 10000, `child outlived escalation: ${elapsed}ms`);
   });
 });

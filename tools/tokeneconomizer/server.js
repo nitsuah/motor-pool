@@ -129,6 +129,11 @@ export function createApp({ run = runTeCommand } = {}) {
   app.post('/:command', async (req, res) => {
     const build = Object.hasOwn(COMMANDS, req.params.command) ? COMMANDS[req.params.command] : null;
     if (!build) return res.status(404).json({ success: false, error: 'Not found' });
+    // A non-empty body must be JSON (other types are not parsed, so they must not be ignored).
+    const hasBody = Number(req.headers['content-length']) > 0 || req.headers['transfer-encoding'] !== undefined;
+    if (hasBody && !req.is('application/json')) {
+      return res.status(415).json({ success: false, error: 'Content-Type must be application/json' });
+    }
     const body = req.body === undefined ? {} : req.body;
     if (body === null || typeof body !== 'object' || Array.isArray(body)) {
       return res.status(400).json({ success: false, error: 'Request body must be a JSON object' });
