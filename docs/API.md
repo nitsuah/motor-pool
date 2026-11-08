@@ -1018,8 +1018,13 @@ Valid `event` values: `ci_pass`, `ci_fail`, `deploy`, `deploy_fail`, `alert`, `r
 
 ## TokenEconomizer Plugin
 
-The TokenEconomizer plugin exposes Microsoft's TokenEconomizer CLI as HTTP tools.
+The TokenEconomizer plugin exposes a **read-only** subset of Microsoft's TokenEconomizer CLI as HTTP tools.
 Requires the `tool-tokeneconomizer` service running (enable with `--profile tools`).
+
+The wrapper publishes no host port and listens only on the private `tokeneconomizer-network`, which
+only the dashboard joins. Outside a container it binds to `127.0.0.1` unless `TOKEN_ECONOMIZER_HOST`
+is set. There is no generic `/exec` route; request bodies only select from the enums below and are never
+passed to the CLI. Mutating operations return `403`; other invalid input returns `400`.
 
 ### TokenEconomizer Tools
 
@@ -1027,44 +1032,35 @@ All endpoints: `POST /api/plugins/tokeneconomizer/tools/<tool>/invoke`
 
 | Tool | Description | Parameters |
 |------|-------------|------------|
-| `status` | Show TE status: learned facts, actions, costs | `{ scope?: "repo" \| "global" \| "none" }` |
-| `microskills` | List injected and forming micro-skill facts | `{ format?: "json" \| "text" }` |
-| `toolprune` | Tool pruning: denied tools, apply/restore/refresh | `{ action?: "measure" \| "apply" \| "restore" \| "refresh-catalog", measure?: object }` |
-| `config` | View or set TE config | `{ operation?: "list" \| "set" \| "unset", key?: string, value?: string }` |
+| `status` | Show TE status: learned facts, actions, costs | `{ json?: boolean }` |
+| `microskills` | List injected and forming micro-skill facts | `{}` |
+| `toolprune` | Show the proposed deny list, or measure it | `{ action?: "show" \| "measure" }` |
+| `config` | Show TE config | `{ operation?: "show" }` |
 | `repomap` | Show representation map for current repo | `{}` |
-| `repos` | List managed repos or migrate/merge | `{ operation?: "list" \| "migrate" \| "merge" }` |
+| `repos` | List repos with TE state | `{ operation?: "list" }` |
 | `doctor` | Run diagnostics on TE installation | `{}` |
+
+`toolprune apply|restore|refresh-catalog`, `config set|unset` and `repos migrate|merge` are disabled over HTTP
+(`403`); run them with the `te` CLI directly.
 
 ### Example Usage
 
 ```bash
 # Show TokenEconomizer status
-curl -X POST http://localhost:3000/api/plugins/tokeneconomizer/tools/status/invoke \
-  -H 'Content-Type: application/json' \
-  -d '{"arguments": {}}'
+curl -X POST http://localhost:3000/api/plugins/tokeneconomizer/tools/status/invoke   -H 'Content-Type: application/json'   -d '{"arguments": {}}'
 
-# List micro-skills
-curl -X POST http://localhost:3000/api/plugins/tokeneconomizer/tools/microskills/invoke \
-  -H 'Content-Type: application/json' \
-  -d '{"arguments": {"format": "json"}}'
-
-# Apply tool pruning
-curl -X POST http://localhost:3000/api/plugins/tokeneconomizer/tools/toolprune/invoke \
-  -H 'Content-Type: application/json' \
-  -d '{"arguments": {"action": "apply"}}'
+# Show the proposed tool deny list
+curl -X POST http://localhost:3000/api/plugins/tokeneconomizer/tools/toolprune/invoke   -H 'Content-Type: application/json'   -d '{"arguments": {"action": "show"}}'
 
 # Run diagnostics
-curl -X POST http://localhost:3000/api/plugins/tokeneconomizer/tools/doctor/invoke \
-  -H 'Content-Type: application/json' \
-  -d '{"arguments": {}}'
+curl -X POST http://localhost:3000/api/plugins/tokeneconomizer/tools/doctor/invoke   -H 'Content-Type: application/json'   -d '{"arguments": {}}'
 ```
 
 ### TokenEconomizer Events
 
 The plugin emits events on the `plugins` channel:
-- `tokeneconomizer.invoked` â€” tool called
-- `tokeneconomizer.failed` â€” tool failed
-- `tokeneconomizer.toolprune-applied` â€” tool pruning applied
+- `tokeneconomizer.invoked` — tool called
+- `tokeneconomizer.failed` — tool failed
 
 Subscribe via WebSocket `/ws/events` or query history: `GET /api/channels/plugins/history`.
 | POST | `/api/worktrees` | Launch an agent in a tmux worktree |

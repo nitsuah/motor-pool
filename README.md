@@ -295,8 +295,9 @@ docker compose --env-file .env -f config/docker-compose.yml --profile tools up -
 TokenEconomizer runs model calls through your existing agent on the same plan/login —
 no API keys needed. All data stays in the `tokeneconomizer_data` volume.
 
-The plugin exposes CLI commands as HTTP tools: `status`, `microskills`, `toolprune`,
-`config`, `repomap`, `repos`, `doctor`. See the plugin manifest at
+The plugin exposes read-only CLI commands as HTTP tools: `status`, `microskills`, `toolprune`
+(show/measure), `config` (show), `repomap`, `repos` (list), `doctor`. Mutating operations are
+disabled over HTTP, and the service has no published host port (private `tokeneconomizer-network`). See the plugin manifest at
 `dashboard/config/plugins/tokeneconomizer.plugin.json`.
 
 ### Docker control & model pulls (opt-in)
