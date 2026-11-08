@@ -22,33 +22,54 @@ export const DEFAULT_HOST = '127.0.0.1';
 // te CLI installed via pip3 at /usr/local/bin/te
 const TE_CMD = '/usr/local/bin/te';
 
+export const MAX_OUTPUT_BYTES = 1024 * 1024;
+export const KILL_GRACE_MS = 5000;
+
 // Execute the te CLI with a fixed argv (never built from request data).
-export async function runTeCommand(teArgs) {
+// `cmd` is injectable for tests only; the server always uses the default.
+export async function runTeCommand(teArgs, { cmd = TE_CMD, maxBytes = MAX_OUTPUT_BYTES, killGraceMs = KILL_GRACE_MS } = {}) {
   return new Promise((resolve, reject) => {
-    const proc = spawn(TE_CMD, teArgs, { stdio: 'pipe', cwd: __dirname });
+    const proc = spawn(cmd, teArgs, { stdio: 'pipe', cwd: __dirname });
 
     let stdout = '';
     let stderr = '';
     let timedOut = false;
+    let overflowed = false;
+    let killTimer = null;
 
     const timeoutMs = parseInt(process.env.TOKEN_ECONOMIZER_TIMEOUT_MS || '60000', 10);
     const timeout = setTimeout(() => {
-      proc.kill('SIGTERM');
       timedOut = true;
+      proc.kill('SIGTERM');
+      killTimer = setTimeout(() => proc.kill('SIGKILL'), killGraceMs);
     }, timeoutMs);
 
-    proc.stdout.on('data', (data) => { stdout += data.toString(); });
-    proc.stderr.on('data', (data) => { stderr += data.toString(); });
+    const collect = (which) => (data) => {
+      if (overflowed) return;
+      const next = (which === 'out' ? stdout : stderr) + data.toString();
+      if (Buffer.byteLength(next) > maxBytes) {
+        overflowed = true;
+        proc.kill('SIGKILL');
+        return;
+      }
+      if (which === 'out') stdout = next;
+      else stderr = next;
+    };
+    proc.stdout.on('data', collect('out'));
+    proc.stderr.on('data', collect('err'));
 
     proc.on('close', (code) => {
       clearTimeout(timeout);
+      if (killTimer) clearTimeout(killTimer);
       if (timedOut) return reject({ status: 504, error: 'te command timed out' });
+      if (overflowed) return reject({ status: 500, error: 'te output too large' });
       if (code !== 0) return reject({ status: 500, error: 'te command failed' });
       resolve({ output: stdout || stderr });
     });
 
     proc.on('error', () => {
       clearTimeout(timeout);
+      if (killTimer) clearTimeout(killTimer);
       reject({ status: 500, error: 'Failed to spawn te process' });
     });
   });

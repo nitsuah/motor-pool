@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { afterAll, beforeAll, describe, it } from 'vitest';
-import { createApp, DEFAULT_HOST } from '../tools/tokeneconomizer/server.js';
+import { createApp, DEFAULT_HOST, runTeCommand } from '../tools/tokeneconomizer/server.js';
 
 const calls = [];
 let server;
@@ -125,5 +125,19 @@ describe('tokeneconomizer read-only HTTP surface', () => {
 
   it('defaults to binding loopback', () => {
     assert.equal(DEFAULT_HOST, '127.0.0.1');
+  });
+});
+
+describe('runTeCommand output cap', () => {
+  it('rejects with a fixed error and kills the child when output exceeds the cap', async () => {
+    const started = Date.now();
+    await assert.rejects(
+      runTeCommand(['-e', 'setInterval(() => process.stdout.write("x".repeat(4096)), 1)'], {
+        cmd: process.execPath,
+        maxBytes: 64 * 1024,
+      }),
+      (err) => err.status === 500 && err.error === 'te output too large' && !('output' in err),
+    );
+    assert.ok(Date.now() - started < 10000);
   });
 });

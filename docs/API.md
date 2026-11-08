@@ -1047,20 +1047,26 @@ All endpoints: `POST /api/plugins/tokeneconomizer/tools/<tool>/invoke`
 
 ```bash
 # Show TokenEconomizer status
-curl -X POST http://localhost:3000/api/plugins/tokeneconomizer/tools/status/invoke   -H 'Content-Type: application/json'   -d '{"arguments": {}}'
+curl -X POST http://localhost:3000/api/plugins/tokeneconomizer/tools/status/invoke \
+  -H 'Content-Type: application/json' \
+  -d '{"arguments": {}}'
 
 # Show the proposed tool deny list
-curl -X POST http://localhost:3000/api/plugins/tokeneconomizer/tools/toolprune/invoke   -H 'Content-Type: application/json'   -d '{"arguments": {"action": "show"}}'
+curl -X POST http://localhost:3000/api/plugins/tokeneconomizer/tools/toolprune/invoke \
+  -H 'Content-Type: application/json' \
+  -d '{"arguments": {"action": "show"}}'
 
 # Run diagnostics
-curl -X POST http://localhost:3000/api/plugins/tokeneconomizer/tools/doctor/invoke   -H 'Content-Type: application/json'   -d '{"arguments": {}}'
+curl -X POST http://localhost:3000/api/plugins/tokeneconomizer/tools/doctor/invoke \
+  -H 'Content-Type: application/json' \
+  -d '{"arguments": {}}'
 ```
 
 ### TokenEconomizer Events
 
 The plugin emits events on the `plugins` channel:
-- `tokeneconomizer.invoked` — tool called
-- `tokeneconomizer.failed` — tool failed
+- `tokeneconomizer.invoked` â€” tool called
+- `tokeneconomizer.failed` â€” tool failed
 
 Subscribe via WebSocket `/ws/events` or query history: `GET /api/channels/plugins/history`.
 | POST | `/api/worktrees` | Launch an agent in a tmux worktree |
