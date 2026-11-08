@@ -367,6 +367,7 @@ services:
         condition: service_completed_successfully
     networks:
       - agent-network
+      - tokeneconomizer-network
 
   # One-shot: seeds the agent sandbox volume from a read-only mount of the repo
   # (git clone + current working tree, never .env files), then exits. It is the
@@ -526,12 +527,13 @@ services:
     profiles:
       - tools
       - prebuild
-    ports:
-      - "3202:3202"
     # TokenEconomizer runs model calls through your existing agent on same plan/login.
     # No API keys needed. Data stays in ~/.tokeneconomizer volume.
     environment:
       - TOKEN_ECONOMIZER_PORT=3202
+      # Loopback is the code default; bind all container interfaces here. No host
+      # port is published and only the dashboard shares tokeneconomizer-network.
+      - TOKEN_ECONOMIZER_HOST=0.0.0.0
       - TE_PYTHON=${TE_PYTHON:-python3}
       - TOKEN_ECONOMIZER_DATA_DIR=${TOKEN_ECONOMIZER_DATA_DIR:-/home/nodeapp/.tokeneconomizer}
     volumes:
@@ -544,7 +546,7 @@ services:
       start_period: 10s
       retries: 3
     networks:
-      - agent-network
+      - tokeneconomizer-network
 
   # ===== TEST (unit — no stack required) =====
   test:
@@ -578,5 +580,9 @@ volumes:
 networks:
   agent-network:
     name: agent-network
+    driver: bridge
+    external: false
+  tokeneconomizer-network:
+    name: tokeneconomizer-network
     driver: bridge
     external: false

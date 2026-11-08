@@ -2,171 +2,173 @@
 /**
  * TokenEconomizer HTTP wrapper service
  *
- * Exposes TokenEconomizer CLI commands (te) as HTTP endpoints.
- * Runs on http://localhost:MakeAbsolute(plugin-port)
- * Mounts TE_PYTHON env var + ~/.tokeneconomizer volume.
+ * Exposes a fixed, read-only set of TokenEconomizer CLI (te) commands over HTTP.
+ * Request bodies only choose from enums; they never reach the CLI argv.
+ * Binds to loopback unless TOKEN_ECONOMIZER_HOST says otherwise (compose sets
+ * 0.0.0.0 inside the container, on a dedicated private network).
  */
 
 import { spawn } from 'child_process';
 import express from 'express';
-import { fileURLToPath } from 'url';
-import { dirname, join } from 'path';
-import { readFileSync } from 'fs';
+import { fileURLToPath, pathToFileURL } from 'url';
+import { dirname } from 'path';
 import { safeTeError } from './safe-error.mjs';
 
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = dirname(__filename);
+const __dirname = dirname(fileURLToPath(import.meta.url));
 
 const PORT = parseInt(process.env.TOKEN_ECONOMIZER_PORT || '3202', 10);
-const TE_PYTHON = process.env.TE_PYTHON || process.env.TOKEN_ECONOMIZER_PYTHON || '';
+export const DEFAULT_HOST = '127.0.0.1';
 
 // te CLI installed via pip3 at /usr/local/bin/te
 const TE_CMD = '/usr/local/bin/te';
 
-const app = express();
-app.use(express.json({ limit: '1MB' }));
+export const MAX_OUTPUT_BYTES = 1024 * 1024;
+export const KILL_GRACE_MS = 5000;
 
-// Root health endpoint
-app.get('/health', (req, res) => {
-  res.json({
-    service: 'tokeneconomizer',
-    python: TE_PYTHON || 'auto',
-    volume: process.env.TOKEN_ECONOMIZER_DATA_DIR || '~/.tokeneconomizer',
-  });
-});
-
-// Internal function to execute te CLI
-async function runTeCommand(teArgs) {
+// Execute the te CLI with a fixed argv (never built from request data).
+// `cmd` is injectable for tests only; the server always uses the default.
+export async function runTeCommand(teArgs, { cmd = TE_CMD, maxBytes = MAX_OUTPUT_BYTES, killGraceMs = KILL_GRACE_MS } = {}) {
   return new Promise((resolve, reject) => {
-    const proc = spawn(TE_CMD, teArgs, {
-      stdio: 'pipe',
-      cwd: __dirname,
-    });
+    const proc = spawn(cmd, teArgs, { stdio: 'pipe', cwd: __dirname });
 
     let stdout = '';
     let stderr = '';
     let timedOut = false;
+    let overflowed = false;
+    let killTimer = null;
 
     const timeoutMs = parseInt(process.env.TOKEN_ECONOMIZER_TIMEOUT_MS || '60000', 10);
-
     const timeout = setTimeout(() => {
-      proc.kill('SIGTERM');
       timedOut = true;
+      proc.kill('SIGTERM');
+      killTimer = setTimeout(() => proc.kill('SIGKILL'), killGraceMs);
     }, timeoutMs);
 
-    proc.stdout.on('data', (data) => {
-      stdout += data.toString();
-    });
-
-    proc.stderr.on('data', (data) => {
-      stderr += data.toString();
-    });
+    const collect = (which) => (data) => {
+      if (overflowed) return;
+      const next = (which === 'out' ? stdout : stderr) + data.toString();
+      if (Buffer.byteLength(next) > maxBytes) {
+        overflowed = true;
+        proc.kill('SIGKILL');
+        return;
+      }
+      if (which === 'out') stdout = next;
+      else stderr = next;
+    };
+    proc.stdout.on('data', collect('out'));
+    proc.stderr.on('data', collect('err'));
 
     proc.on('close', (code) => {
       clearTimeout(timeout);
-      if (timedOut) {
-        return reject({
-          status: 504,
-          error: `te command timed out after ${timeoutMs}ms`,
-        });
-      }
-
-      if (code !== 0) {
-        return reject({
-          status: 500,
-          error: `te ${teArgs.join(' ')} failed:`,
-          output: stdout || stderr,
-        });
-      }
-
-      resolve({
-        success: true,
-        command: teArgs.join(' '),
-        output: stdout || stderr,
-      });
+      if (killTimer) clearTimeout(killTimer);
+      if (timedOut) return reject({ status: 504, error: 'te command timed out' });
+      if (overflowed) return reject({ status: 500, error: 'te output too large' });
+      if (code !== 0) return reject({ status: 500, error: 'te command failed' });
+      resolve({ output: stdout || stderr });
     });
 
-    proc.on('error', (err) => {
+    proc.on('error', () => {
       clearTimeout(timeout);
-      reject({
-        status: 500,
-        error: 'Failed to spawn te process',
-        details: err.message,
-      });
+      if (killTimer) clearTimeout(killTimer);
+      reject({ status: 500, error: 'Failed to spawn te process' });
     });
   });
 }
 
-// Proxy to te CLI
-app.post('/exec', async (req, res) => {
-  try {
-    const { args = [] } = req.body;
-    const teArgs = Array.isArray(args) ? args : [args];
-    const result = await runTeCommand(teArgs);
-    res.json(result);
-  } catch (err) {
-    const status = err.status || 500;
-    // Keep command arguments and CLI output server-side; errors may contain secrets.
-    res.status(status).json({ success: false, ...safeTeError(err) });
-  }
-});
+const MUTATING = new Set([
+  'apply', 'restore', 'refresh-catalog', 'apply-pending',
+  'set', 'unset', 'migrate', 'merge', 'refresh',
+]);
 
-// TokenEconomizer commands
-const TE_COMMANDS = [
-  'status',
-  'microskills',
-  'toolprune',
-  'toolprune measure',
-  'toolprune restore',
-  'toolprune refresh-catalog',
-  'config',
-  'config set',
-  'config unset',
-  'repomap',
-  'repos',
-  'repos migrate',
-  'repos merge',
-  'doctor',
-];
+const ALLOWED = {
+  status: ['json'], microskills: [], toolprune: ['action'], config: ['operation'],
+  repomap: [], repos: ['operation'], doctor: [],
+};
 
-// Map high-level commands to runTeCommand directly
-TE_COMMANDS.forEach((cmd) => {
-  const parts = cmd.split(' ');
-  const subCmd = parts[0];
-  const arg = parts[1];
+const bad = (error) => ({ status: 400, body: { success: false, error } });
+const disabled = (what) => ({ status: 403, body: { success: false, error: `${what} is disabled over HTTP` } });
 
-  app.post(`/${subCmd}`, async (req, res) => {
+// Fixed command table: validated body -> constant argv, or a rejection.
+const COMMANDS = {
+  status: (b) => {
+    if (b.json !== undefined && typeof b.json !== 'boolean') return bad('json must be a boolean');
+    return { argv: b.json ? ['status', '--json'] : ['status'] };
+  },
+  microskills: () => ({ argv: ['microskills'] }),
+  toolprune: (b) => {
+    const action = b.action === undefined ? 'show' : b.action;
+    if (typeof action === 'string' && MUTATING.has(action)) return disabled(`toolprune ${action}`);
+    if (action === 'show') return { argv: ['toolprune', 'show'] };
+    if (action === 'measure') return { argv: ['toolprune', 'measure'] };
+    return bad('action must be show or measure');
+  },
+  config: (b) => {
+    const op = b.operation === undefined ? 'show' : b.operation;
+    if (typeof op === 'string' && MUTATING.has(op)) return disabled(`config ${op}`);
+    if (op === 'show') return { argv: ['config', 'show'] };
+    return bad('operation must be show');
+  },
+  repomap: () => ({ argv: ['repomap'] }),
+  repos: (b) => {
+    const op = b.operation === undefined ? 'list' : b.operation;
+    if (typeof op === 'string' && MUTATING.has(op)) return disabled(`repos ${op}`);
+    if (op === 'list') return { argv: ['repos', 'list'] };
+    return bad('operation must be list');
+  },
+  doctor: () => ({ argv: ['doctor'] }),
+};
+
+export function createApp({ run = runTeCommand } = {}) {
+  const app = express();
+  app.use(express.json({ limit: '16kb' }));
+
+  app.get('/health', (req, res) => {
+    res.json({ service: 'tokeneconomizer', ok: true });
+  });
+
+  app.post('/:command', async (req, res) => {
+    const build = Object.hasOwn(COMMANDS, req.params.command) ? COMMANDS[req.params.command] : null;
+    if (!build) return res.status(404).json({ success: false, error: 'Not found' });
+    // A non-empty body must be JSON (other types are not parsed, so they must not be ignored).
+    const hasBody = Number(req.headers['content-length']) > 0 || req.headers['transfer-encoding'] !== undefined;
+    if (hasBody && !req.is('application/json')) {
+      return res.status(415).json({ success: false, error: 'Content-Type must be application/json' });
+    }
+    const body = req.body === undefined ? {} : req.body;
+    if (body === null || typeof body !== 'object' || Array.isArray(body)) {
+      return res.status(400).json({ success: false, error: 'Request body must be a JSON object' });
+    }
+    const unknown = Object.keys(body).filter((k) => !ALLOWED[req.params.command].includes(k));
+    if (unknown.length) {
+      return res.status(400).json({ success: false, error: 'Unknown request properties' });
+    }
+    const plan = build(body);
+    if (!plan.argv) return res.status(plan.status).json(plan.body);
     try {
-      const execArgs = [subCmd, ...(arg ? [arg] : [])];
-      if (req.body?.arguments) {
-        execArgs.push(...Object.values(req.body.arguments));
-      }
-
-      // Execute with custom prompt if provided
-      if (req.body?.prompt) {
-        execArgs.unshift(req.body.prompt);
-      }
-
-      const result = await runTeCommand(execArgs);
-      res.json(result);
+      const result = await run(plan.argv);
+      res.json({ success: true, command: req.params.command, output: result.output });
     } catch (err) {
-      const status = err.status || 500;
       // Keep command arguments and CLI output server-side; errors may contain secrets.
-      res.status(status).json({ success: false, ...safeTeError(err) });
+      res.status(err?.status || 500).json({ success: false, ...safeTeError(err) });
     }
   });
-});
 
-// Enable CORS for other services
-app.get('/*', (req, res) => {
-  res.json({
-    error: 'Not found. Use /health or POST to /exec with { command, args }',
-    commands: TE_COMMANDS,
-    docs: 'POST /{status|microskills|toolprune|...} — execute TokenEconomizer CLI',
+  // Malformed JSON, oversized bodies, etc.
+  app.use((err, req, res, next) => {
+    if (res.headersSent) return next(err);
+    res.status(err?.status === 413 ? 413 : 400).json({ success: false, error: 'Invalid request' });
   });
-});
 
-app.listen(PORT, '0.0.0.0', () => {
-  console.log(`TokenEconomizer HTTP wrapper listening on port ${PORT}`);
-  console.log(`Serving ${TE_COMMANDS.length} commands: ${TE_COMMANDS.join(', ')}`);
-});
+  app.use((req, res) => {
+    res.status(404).json({ success: false, error: 'Not found' });
+  });
+
+  return app;
+}
+
+if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
+  const host = process.env.TOKEN_ECONOMIZER_HOST || DEFAULT_HOST;
+  createApp().listen(PORT, host, () => {
+    console.log(`TokenEconomizer HTTP wrapper listening on ${host}:${PORT}`);
+  });
+}

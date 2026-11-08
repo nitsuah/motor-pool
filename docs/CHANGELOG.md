@@ -206,6 +206,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Security
 
+- **TokenEconomizer wrapper is read-only and private.** Removed `POST /exec` and the generic per-subcommand routes; the service now exposes a fixed table of read-only commands (`status`, `microskills`, `toolprune` show/measure, `config` show, `repomap`, `repos` list, `doctor`) selected only by enum values, with mutating operations returning `403`. `/health` no longer reports paths or settings. It binds to `127.0.0.1` by default; in compose it publishes no host port and sits on a dedicated `tokeneconomizer-network` shared only with the dashboard. New tests: `test/tokeneconomizer-readonly.test.mjs`.
 - **`POST /api/sessions/:id/stream` bypassed the safety layer.** The chat UI
   streams by default, but the stream route never ran prompt handlers, input
   classification/blocking, PII redaction or output sanitization — injections

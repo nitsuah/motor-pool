@@ -9,7 +9,7 @@
   "tools": [
     {
       "name": "status",
-      "description": "Show TokenEconomizer status: learned facts, actions, costs.",
+      "description": "Show TokenEconomizer status: learned facts, actions, costs (read-only).",
       "transport": "http",
       "method": "POST",
       "path": "/status",
@@ -17,27 +17,30 @@
       "parameters": {
         "type": "object",
         "properties": {
-          "scope": { "type": "string", "description": "repo, global, or none" }
-        }
+          "json": {
+            "type": "boolean",
+            "description": "return machine-readable output"
+          }
+        },
+        "additionalProperties": false
       }
     },
     {
       "name": "microskills",
-      "description": "List injected and forming facts from micro-skills.",
+      "description": "List injected and forming facts from micro-skills (read-only).",
       "transport": "http",
       "method": "POST",
       "path": "/microskills",
       "timeoutMs": 30000,
       "parameters": {
         "type": "object",
-        "properties": {
-          "format": { "type": "string", "description": "json or text" }
-        }
+        "properties": {},
+        "additionalProperties": false
       }
     },
     {
       "name": "toolprune",
-      "description": "Tool pruning: show denied tools and evidence, or apply/prune/restore.",
+      "description": "Show the proposed tool deny list and evidence, or measure it. Apply/restore/refresh are disabled over HTTP.",
       "transport": "http",
       "method": "POST",
       "path": "/toolprune",
@@ -45,14 +48,21 @@
       "parameters": {
         "type": "object",
         "properties": {
-          "action": { "type": "string", "enum": ["measure", "apply", "restore", "refresh-catalog"], "description": "tool pruning action" },
-          "measure": { "type": "object", "description": "measure options" }
-        }
+          "action": {
+            "type": "string",
+            "enum": [
+              "show",
+              "measure"
+            ],
+            "description": "read-only tool pruning action (default show)"
+          }
+        },
+        "additionalProperties": false
       }
     },
     {
       "name": "config",
-      "description": "View or set TokenEconomizer config.",
+      "description": "Show TokenEconomizer config (read-only; set/unset are disabled over HTTP).",
       "transport": "http",
       "method": "POST",
       "path": "/config",
@@ -60,10 +70,15 @@
       "parameters": {
         "type": "object",
         "properties": {
-          "operation": { "type": "string", "enum": ["list", "set", "unset"], "description": "config action" },
-          "key": { "type": "string", "description": "config key" },
-          "value": { "type": "string", "description": "config value (for set)" }
-        }
+          "operation": {
+            "type": "string",
+            "enum": [
+              "show"
+            ],
+            "description": "config action (default show)"
+          }
+        },
+        "additionalProperties": false
       }
     },
     {
@@ -72,11 +87,16 @@
       "transport": "http",
       "method": "POST",
       "path": "/repomap",
-      "timeoutMs": 60000
+      "timeoutMs": 60000,
+      "parameters": {
+        "type": "object",
+        "properties": {},
+        "additionalProperties": false
+      }
     },
     {
       "name": "repos",
-      "description": "List managed repositories or migrate/merge them.",
+      "description": "List repositories with TokenEconomizer state (read-only; migrate/merge are disabled over HTTP).",
       "transport": "http",
       "method": "POST",
       "path": "/repos",
@@ -84,8 +104,15 @@
       "parameters": {
         "type": "object",
         "properties": {
-          "operation": { "type": "string", "enum": ["list", "migrate", "merge"], "description": "repo operation" }
-        }
+          "operation": {
+            "type": "string",
+            "enum": [
+              "list"
+            ],
+            "description": "repo operation (default list)"
+          }
+        },
+        "additionalProperties": false
       }
     },
     {
@@ -94,11 +121,19 @@
       "transport": "http",
       "method": "POST",
       "path": "/doctor",
-      "timeoutMs": 60000
+      "timeoutMs": 60000,
+      "parameters": {
+        "type": "object",
+        "properties": {},
+        "additionalProperties": false
+      }
     }
   ],
   "events": {
     "channel": "plugins",
-    "emits": ["tokeneconomizer.invoked", "tokeneconomizer.failed", "tokeneconomizer.toolprune-applied"]
+    "emits": [
+      "tokeneconomizer.invoked",
+      "tokeneconomizer.failed"
+    ]
   }
 }
