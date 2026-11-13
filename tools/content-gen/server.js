@@ -23,7 +23,7 @@ import { z } from 'zod';
 
 const execFileAsync = promisify(execFile);
 
-dotenv.config();
+dotenv.config({ quiet: true });
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const SCRIPTS_DIR = join(__dirname, 'scripts');

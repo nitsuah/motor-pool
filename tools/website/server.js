@@ -23,7 +23,7 @@ import dotenv from 'dotenv';
 import { z } from 'zod';
 import { makeSafeOutputPath, leadsFileName, SLUG_PATTERN } from './output-path.js';
 
-dotenv.config();
+dotenv.config({ quiet: true });
 
 const execFileAsync = promisify(execFile);
 const __dirname = dirname(fileURLToPath(import.meta.url));
