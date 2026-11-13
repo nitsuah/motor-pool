@@ -11,7 +11,7 @@ Nightly "AI user" journeys: the happy paths an operator or developer takes in th
 Baselines are Linux-only. Always use the Playwright image (same version as `@playwright/test`):
 
 ```sh
-docker run --rm -v "$PWD:/w" -w /w mcr.microsoft.com/playwright:v1.64.0-jammy \
+docker run --rm -v "$PWD:/w" -w /w mcr.microsoft.com/playwright:v1.65.0-jammy \
   sh -c "npm ci && npm run test:journeys -- --update-snapshots"
 ```
 

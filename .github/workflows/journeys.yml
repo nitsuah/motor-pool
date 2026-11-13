@@ -34,12 +34,12 @@ jobs:
     uses: nitsuah/.github/.github/workflows/journeys.yml@b0a9f894a450790450aaecb2b1fb1b2ea524f64d # main 2026-10-15
     with:
       # Keep in step with @playwright/test in package.json.
-      image: mcr.microsoft.com/playwright:v1.64.0-jammy
+      image: mcr.microsoft.com/playwright:v1.65.0-jammy
       command: npm run test:journeys
       features: promo/spots.json
       kit-ref: b0a9f894a450790450aaecb2b1fb1b2ea524f64d # same commit as the workflow ref above; bump both together
       repro: |
-        docker run --rm -v "$PWD:/w" -w /w -e CI=true mcr.microsoft.com/playwright:v1.64.0-jammy \
+        docker run --rm -v "$PWD:/w" -w /w -e CI=true mcr.microsoft.com/playwright:v1.65.0-jammy \
           sh -c "npm ci && npm run test:journeys"
 
   # Nightly and manual runs file and close bot:journey issues and update the
@@ -52,10 +52,10 @@ jobs:
     uses: nitsuah/.github/.github/workflows/journeys.yml@b0a9f894a450790450aaecb2b1fb1b2ea524f64d # main 2026-10-15
     with:
       # Keep in step with @playwright/test in package.json.
-      image: mcr.microsoft.com/playwright:v1.64.0-jammy
+      image: mcr.microsoft.com/playwright:v1.65.0-jammy
       command: npm run test:journeys
       features: promo/spots.json
       kit-ref: b0a9f894a450790450aaecb2b1fb1b2ea524f64d # same commit as the workflow ref above; bump both together
       repro: |
-        docker run --rm -v "$PWD:/w" -w /w -e CI=true mcr.microsoft.com/playwright:v1.64.0-jammy \
+        docker run --rm -v "$PWD:/w" -w /w -e CI=true mcr.microsoft.com/playwright:v1.65.0-jammy \
           sh -c "npm ci && npm run test:journeys"
