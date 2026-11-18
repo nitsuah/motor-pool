@@ -459,8 +459,16 @@ const tasksRouter = createTasksRouter({ tasks, sessions, eventBus, logStructured
 const workspaceRouter = createWorkspaceRouter(WORKSPACE_ROOT);
 
 // Middleware
+const DEFAULT_CORS_ORIGINS = [
+  'http://localhost:3000', 'http://127.0.0.1:3000',
+  'http://localhost:5173', 'http://127.0.0.1:5173',
+];
+// Exact-origin allowlist: CORS_ALLOWED_ORIGINS when set, else the local dev origins. Never a wildcard.
+function corsAllowedOrigins() {
+  return parseUrlListEnv(process.env.CORS_ALLOWED_ORIGINS, process.env.CORS_ALLOWED_ORIGINS ? [] : DEFAULT_CORS_ORIGINS);
+}
 function isAllowedCorsOrigin(origin) {
-  return parseUrlListEnv(process.env.CORS_ALLOWED_ORIGINS).includes(origin);
+  return corsAllowedOrigins().includes(origin);
 }
 
 // CORS middleware - reads allowed origins dynamically at request time
@@ -475,17 +483,17 @@ app.use(cors({
     return callback(null, false);
   },
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
-  credentials: true,
+  credentials: false,
   allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With'],
 }));
 // Only known Host names are served (loopback, compose service, CORS/ALLOWED_HOSTS entries).
 const hostGuardOptions = {
-  getCorsOrigins: () => parseUrlListEnv(process.env.CORS_ALLOWED_ORIGINS),
+  getCorsOrigins: () => corsAllowedOrigins(),
   getAllowedHosts: () => String(process.env.ALLOWED_HOSTS || '').split(',').map(h => h.trim()).filter(Boolean),
 };
 app.use(createHostGuard(hostGuardOptions));
 // Non-read requests from a browser origin must be same-host or allowlisted.
-app.use(createOriginGuard(() => parseUrlListEnv(process.env.CORS_ALLOWED_ORIGINS)));
+app.use(createOriginGuard(() => corsAllowedOrigins()));
 // Rate limiting middleware to prevent DoS
 // Localhost is exempt: this is a single-user local dashboard, and legitimate
 // local tooling (tests, dev clients) makes many requests in quick succession.
