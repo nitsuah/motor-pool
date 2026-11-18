@@ -34,7 +34,7 @@ and `ROADMAP.md` 2027 Q1 for the condensed record._
 
 ### P2 - Medium
 
-- [ ] **Measure dashboard startup and assess UI bundle splitting** — the three-sample local Ollama comparison for Developer, Research, and Website is recorded in `docs/METRICS.md`; it reduced visible first-token latency by 45.6–62.6%. The production build reports one 934.07 KB minified JS chunk (249.11 KB gzipped) and warns above its 500 KB chunk threshold. Collect a browser startup baseline before splitting heavy panels ([#116](https://github.com/nitsuah/motor-pool/issues/116)).
+- [ ] **Measure dashboard startup and assess UI bundle splitting** — Partial 2026-11-18: three.js now lazy-loads as a separate chunk; the browser startup baseline is still not collected. The three-sample local Ollama comparison for Developer, Research, and Website is recorded in `docs/METRICS.md`; it reduced visible first-token latency by 45.6–62.6%. The production build reports one 934.07 KB minified JS chunk (249.11 KB gzipped) and warns above its 500 KB chunk threshold. Collect a browser startup baseline before splitting heavy panels ([#116](https://github.com/nitsuah/motor-pool/issues/116)).
 - [ ] **Dashboard decomposition follow-up** — scope a staged refactor of `dashboard/src/App.jsx`, `dashboard/src/LiminalDashboard.jsx`, and `dashboard/server.js`; keep behavior-preserving extractions separate from feature work and define tests before implementation.
   - Context: the 2026-10-08 TIRE LOC report flagged these high-LOC files for deeper review. This TIRE-kick records the finding; it does not attempt a broad architectural rewrite.
 

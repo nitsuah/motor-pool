@@ -11,6 +11,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- The 3D home dashboard (`three.js`) now loads as a separate chunk instead of shipping in the initial dashboard bundle (#116).
 - Repo-health workflow pinned to shared kit `nitsuah/.github@a0df883`; the older `7d3c243` kit shipped its own `uv.lock` with msgpack 1.2.1, which the scan reported as this repo's advisory (GHSA-j586-36cw-2gc2).
 - Journeys workflow container bumped to `playwright:v1.65.0-jammy` to match `@playwright/test` 1.65.0.
 - **Dependencies** — Express 5 everywhere (root, dashboard, `tools/content-gen`, `tools/website`, `tools/tokeneconomizer`); dotenv 18 in the MCP tool servers (loaded with `quiet: true` to keep startup output unchanged); `hono` lockfile fix (moderate advisory) in the tool servers; Playwright 1.65, Vitest 5.1, three 0.187, Vite 8.3.6.
