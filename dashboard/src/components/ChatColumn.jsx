@@ -1,7 +1,6 @@
 import React, { Suspense, lazy, useEffect, useState } from 'react';
 import MessageList from './MessageList.jsx';
 import ToolWorkbench from './ToolWorkbench.jsx';
-
 import SessionHeader from './SessionHeader.jsx';
 import MessageComposer from './MessageComposer.jsx';
 import ReplayPanel from './ReplayPanel.jsx';
@@ -199,27 +198,27 @@ export default function ChatColumn({
       ) : (
         <Suspense fallback={null}>
           <LiminalDashboard
-          systemServices={systemServices}
-          dockerStatus={dockerStatus}
-          sessions={sessions}
-          allEndpointMeta={allEndpointMeta}
-          selectableEndpointKeys={selectableEndpointKeys}
-          runningServices={runningServices}
-          totalServices={totalServices}
-          wsConnected={wsConnected}
-          onSelectSession={setActiveSession}
-          onCreateSession={createSession}
-          selectedExperience={selectedExperience}
-          EXPERIENCE_META={EXPERIENCE_META}
-          onRunServiceAction={runServiceAction}
-          serviceActionsInFlight={serviceActionsInFlight}
-          modelPulls={modelPulls}
-          onPullModel={onPullModel}
-          knownModels={knownModels}
-          activeSessionId={activeSession}
-          loading={loading}
-          sessionPendingReply={sessionPendingReply}
-          sessionErrors={sessionErrors}
+            systemServices={systemServices}
+            dockerStatus={dockerStatus}
+            sessions={sessions}
+            allEndpointMeta={allEndpointMeta}
+            selectableEndpointKeys={selectableEndpointKeys}
+            runningServices={runningServices}
+            totalServices={totalServices}
+            wsConnected={wsConnected}
+            onSelectSession={setActiveSession}
+            onCreateSession={createSession}
+            selectedExperience={selectedExperience}
+            EXPERIENCE_META={EXPERIENCE_META}
+            onRunServiceAction={runServiceAction}
+            serviceActionsInFlight={serviceActionsInFlight}
+            modelPulls={modelPulls}
+            onPullModel={onPullModel}
+            knownModels={knownModels}
+            activeSessionId={activeSession}
+            loading={loading}
+            sessionPendingReply={sessionPendingReply}
+            sessionErrors={sessionErrors}
           />
         </Suspense>
       )}
