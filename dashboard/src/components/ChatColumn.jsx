@@ -1,11 +1,13 @@
-import React, { useEffect, useState } from 'react';
+import React, { Suspense, lazy, useEffect, useState } from 'react';
 import MessageList from './MessageList.jsx';
 import ToolWorkbench from './ToolWorkbench.jsx';
-import LiminalDashboard from './LiminalDashboard.jsx';
+
 import SessionHeader from './SessionHeader.jsx';
 import MessageComposer from './MessageComposer.jsx';
 import ReplayPanel from './ReplayPanel.jsx';
 import { toast } from './Toast.jsx';
+
+const LiminalDashboard = lazy(() => import('./LiminalDashboard.jsx'));
 
 export default function ChatColumn({
   renameSession,
@@ -195,7 +197,8 @@ export default function ChatColumn({
           )}
         </>
       ) : (
-        <LiminalDashboard
+        <Suspense fallback={null}>
+          <LiminalDashboard
           systemServices={systemServices}
           dockerStatus={dockerStatus}
           sessions={sessions}
@@ -217,7 +220,8 @@ export default function ChatColumn({
           loading={loading}
           sessionPendingReply={sessionPendingReply}
           sessionErrors={sessionErrors}
-        />
+          />
+        </Suspense>
       )}
 
       {replayMode && replayData && replaySessionId === activeSession && (
