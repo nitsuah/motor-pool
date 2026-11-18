@@ -6,15 +6,16 @@
 import assert from 'node:assert/strict';
 
 process.env.AGENT_DASHBOARD_DISABLE_LISTEN = '1';
-delete process.env.CORS_ALLOWED_ORIGINS;
 const { app } = await import('../server.js');
+// Delete after import: dotenv in server.js would otherwise restore it from dashboard/.env.
+delete process.env.CORS_ALLOWED_ORIGINS;
 
 const server = app.listen(0, '127.0.0.1');
 await new Promise((r) => server.once('listening', r));
 const base = `http://127.0.0.1:${server.address().port}`;
 
 async function head(origin) {
-  const res = await fetch(`${base}/api/health`, { headers: { Origin: origin } });
+  const res = await fetch(`${base}/api/demo-mode`, { headers: { Origin: origin } });
   return {
     allow: res.headers.get('access-control-allow-origin'),
     creds: res.headers.get('access-control-allow-credentials'),
@@ -28,6 +29,9 @@ try {
     assert.equal(r.creds, null, 'credentials not advertised');
   }
   assert.equal((await head('https://evil.example')).allow, null, 'unlisted origin denied');
+
+  process.env.CORS_ALLOWED_ORIGINS = '';
+  assert.equal((await head('http://localhost:5173')).allow, null, 'explicit empty allowlist allows none');
 
   process.env.CORS_ALLOWED_ORIGINS = 'http://allowed.example, not a url, *';
   assert.equal((await head('http://allowed.example')).allow, 'http://allowed.example', 'override origin allowed');

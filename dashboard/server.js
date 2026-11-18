@@ -463,9 +463,11 @@ const DEFAULT_CORS_ORIGINS = [
   'http://localhost:3000', 'http://127.0.0.1:3000',
   'http://localhost:5173', 'http://127.0.0.1:5173',
 ];
-// Exact-origin allowlist: CORS_ALLOWED_ORIGINS when set, else the local dev origins. Never a wildcard.
+// Exact-origin allowlist: CORS_ALLOWED_ORIGINS when set (an empty value allows none),
+// else the local dev origins. Never a wildcard.
 function corsAllowedOrigins() {
-  return parseUrlListEnv(process.env.CORS_ALLOWED_ORIGINS, process.env.CORS_ALLOWED_ORIGINS ? [] : DEFAULT_CORS_ORIGINS);
+  const raw = process.env.CORS_ALLOWED_ORIGINS;
+  return parseUrlListEnv(raw, raw === undefined ? DEFAULT_CORS_ORIGINS : []);
 }
 function isAllowedCorsOrigin(origin) {
   return corsAllowedOrigins().includes(origin);
