@@ -29,8 +29,10 @@ export const DEFAULT_MAX_CONCURRENT = 2;
 export function readMaxConcurrent() {
   const raw = process.env.TOKEN_ECONOMIZER_MAX_CONCURRENT;
   if (raw === undefined || raw === '') return DEFAULT_MAX_CONCURRENT;
-  const n = parseInt(raw, 10);
-  return Number.isInteger(n) && n >= 1 ? n : DEFAULT_MAX_CONCURRENT;
+  const trimmed = raw.trim();
+  if (!/^\d+$/.test(trimmed)) return DEFAULT_MAX_CONCURRENT;
+  const n = parseInt(trimmed, 10);
+  return n >= 1 ? n : DEFAULT_MAX_CONCURRENT;
 }
 
 // Execute the te CLI with a fixed argv (never built from request data).

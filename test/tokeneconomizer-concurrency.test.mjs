@@ -39,11 +39,14 @@ describe('tokeneconomizer concurrency cap', () => {
   it('rejects second request when maxConcurrent=1 and first is running', async () => {
     calls.length = 0;
     let resolveFirst;
+    let started;
+    const startedPromise = new Promise((r) => { started = r; });
     const blockingApp = await listen(
       createApp({
         maxConcurrent: 1,
         run: async (argv) => {
           calls.push(argv);
+          started();
           await new Promise((r) => { resolveFirst = r; });
           return { output: 'ok' };
         },
@@ -53,7 +56,7 @@ describe('tokeneconomizer concurrency cap', () => {
 
     const p1 = fetch(`${blockingBase}/status`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: '{}' });
     // Wait for first request to enter run and block
-    await new Promise((r) => setTimeout(r, 50));
+    await startedPromise;
     const r2 = await fetch(`${blockingBase}/status`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: '{}' });
     assert.equal(r2.status, 503);
     const j2 = await r2.json();
@@ -188,5 +191,15 @@ describe('readMaxConcurrent parsing', () => {
   it('accepts valid integer string with whitespace', () => {
     process.env.TOKEN_ECONOMIZER_MAX_CONCURRENT = '  5  ';
     assert.equal(readMaxConcurrent(), 5);
+  });
+
+  it('falls back to DEFAULT_MAX_CONCURRENT for fractional', () => {
+    process.env.TOKEN_ECONOMIZER_MAX_CONCURRENT = '3.14';
+    assert.equal(readMaxConcurrent(), DEFAULT_MAX_CONCURRENT);
+  });
+
+  it('falls back to DEFAULT_MAX_CONCURRENT for trailing text', () => {
+    process.env.TOKEN_ECONOMIZER_MAX_CONCURRENT = '5abc';
+    assert.equal(readMaxConcurrent(), DEFAULT_MAX_CONCURRENT);
   });
 });
