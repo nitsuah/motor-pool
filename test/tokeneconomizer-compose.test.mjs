@@ -8,31 +8,90 @@ import { DEFAULT_HOST } from '../tools/tokeneconomizer/server.js';
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const composePath = join(__dirname, '..', 'config', 'docker-compose.yml');
 const raw = readFileSync(composePath, 'utf8');
-const lines = raw.split('\n');
+const lines = raw.split(/\r?\n/);
 
+const indentOf = (l) => l.length - l.trimStart().length;
+const isNoise = (l) => l.trim() === '' || l.trim().startsWith('#');
+
+// Find service block: from service header (2-space indent) to next line at same indent or column 0.
+// Skip blank/comment lines when checking boundaries.
 function findServiceBlock(serviceName) {
+  const headerPattern = `  ${serviceName}:`;
   const startIdx = lines.findIndex((l) => l.trim() === `${serviceName}:`);
   if (startIdx === -1) return null;
+  const headerIndent = indentOf(lines[startIdx]);
   const block = [];
   for (let i = startIdx + 1; i < lines.length; i++) {
     const line = lines[i];
-    if (line.startsWith('  ') && !line.startsWith('    ')) break;
+    if (isNoise(line)) {
+      block.push(line);
+      continue;
+    }
+    const ind = indentOf(line);
+    if (ind <= headerIndent) break;
     block.push(line);
   }
   return { start: startIdx, lines: block };
 }
 
-function getKeyValue(block, key) {
-  const prefix = `${key}:`;
-  const idx = block.findIndex((l) => l.trim().startsWith(prefix));
-  if (idx === -1) return null;
-  return block[idx].trim().slice(prefix.length).trim();
+// Parse service block into a simple object mapping keys to values (string, array, or nested object).
+// Handles: inline values, lists under keys, and nested mappings one level deep.
+function parseServiceBlock(block) {
+  const obj = {};
+  let i = 0;
+  while (i < block.length) {
+    const line = block[i];
+    if (isNoise(line)) { i++; continue; }
+    const ind = indentOf(line);
+    const trimmed = line.trim();
+    // Key with inline value: "key: value"
+    const kv = trimmed.match(/^([^:]+):\s*(.+)$/);
+    if (kv) {
+      const [, k, v] = kv;
+      obj[k.trim()] = v.trim();
+      i++;
+      continue;
+    }
+    // Key with no inline value: "key:" — could be a list or nested mapping
+    const keyOnly = trimmed.match(/^([^:]+):$/);
+    if (keyOnly) {
+      const k = keyOnly[1].trim();
+      const baseIndent = ind;
+      i++;
+      const children = [];
+      while (i < block.length) {
+        const cl = block[i];
+        if (isNoise(cl)) { i++; continue; }
+        const cind = indentOf(cl);
+        if (cind <= baseIndent) break;
+        children.push(cl);
+        i++;
+      }
+      // List items: lines starting with "- "
+      const listItems = children
+        .filter((l) => l.trim().startsWith('- '))
+        .map((l) => l.trim().slice(2).trim());
+      if (listItems.length > 0) {
+        obj[k] = listItems;
+      } else {
+        // Nested mapping: parse one level of key: value
+        const nested = {};
+        for (const cl of children) {
+          if (isNoise(cl)) continue;
+          const nkv = cl.trim().match(/^([^:]+):\s*(.*)$/);
+          if (nkv) nested[nkv[1].trim()] = nkv[2].trim();
+        }
+        if (Object.keys(nested).length > 0) obj[k] = nested;
+      }
+      continue;
+    }
+    i++;
+  }
+  return obj;
 }
 
-const indentOf = (l) => l.length - l.trimStart().length;
-const isNoise = (l) => l.trim() === '' || l.trim().startsWith('#');
-
 // Lines nested under `key:` (deeper indent than the key), skipping blanks and comments.
+// Stops at first line that is neither an item nor a comment.
 function childLines(block, key) {
   const startIdx = block.findIndex((l) => l.trim() === `${key}:`);
   if (startIdx === -1) return null;
@@ -52,20 +111,29 @@ function getList(block, key) {
   return kids.filter((l) => l.trim().startsWith('- ')).map((l) => l.trim().slice(2).trim());
 }
 
-function getNestedObject(block, parentKey) {
-  const kids = childLines(block, parentKey);
-  if (!kids) return null;
+// Parse only direct children of a network definition (one level deeper than network key).
+function parseNetworkBlock(block, networkName) {
+  const startIdx = block.findIndex((l) => l.trim() === `${networkName}:`);
+  if (startIdx === -1) return null;
+  const base = indentOf(block[startIdx]);
   const obj = {};
-  for (const line of kids) {
-    const [k, ...v] = line.trim().split(':');
-    if (v.length) obj[k.trim()] = v.join(':').trim();
+  for (let i = startIdx + 1; i < block.length; i++) {
+    const line = block[i];
+    if (isNoise(line)) continue;
+    const ind = indentOf(line);
+    if (ind <= base) break;
+    // Only direct children (one indent level deeper)
+    if (ind === base + 2) {
+      const [k, ...v] = line.trim().split(':');
+      if (v.length) obj[k.trim()] = v.join(':').trim();
+    }
   }
   return obj;
 }
 
 // The top-level `networks:` key has no indent; service-level ones do.
 function findTopLevelNetworks() {
-  const idx = lines.findIndex((l) => l.trimEnd() === 'networks:');
+  const idx = lines.findIndex((l) => l.trimEnd() === 'networks:' && indentOf(l) === 0);
   if (idx === -1) return null;
   const block = [];
   for (let i = idx + 1; i < lines.length; i++) {
@@ -87,8 +155,8 @@ describe('tokeneconomizer Compose isolation contract', () => {
   assert.ok(networksBlock, 'top-level networks block not found');
 
   it('tool-tokeneconomizer has no ports entry', () => {
-    const ports = getKeyValue(te.lines, 'ports');
-    assert.equal(ports, null, 'tool-tokeneconomizer must not have a ports: entry');
+    const parsed = parseServiceBlock(te.lines);
+    assert.equal(parsed.ports, undefined, 'tool-tokeneconomizer must not have a ports: entry');
   });
 
   it('tool-tokeneconomizer networks lists only tokeneconomizer-network', () => {
@@ -97,7 +165,7 @@ describe('tokeneconomizer Compose isolation contract', () => {
   });
 
   it('top-level networks.tokeneconomizer-network has driver: bridge and not external: true', () => {
-    const net = getNestedObject(networksBlock, 'tokeneconomizer-network');
+    const net = parseNetworkBlock(networksBlock, 'tokeneconomizer-network');
     assert.ok(net, 'tokeneconomizer-network must exist in top-level networks');
     assert.equal(net.driver, 'bridge', 'tokeneconomizer-network must have driver: bridge');
     assert.notEqual(net.external, 'true', 'tokeneconomizer-network must not be external: true');
@@ -109,7 +177,6 @@ describe('tokeneconomizer Compose isolation contract', () => {
   });
 
   it('TOKEN_ECONOMIZER_HOST=0.0.0.0 is set only in compose while server default stays loopback', () => {
-    // `environment:` is a block key with no inline value, so look for the line itself.
     const envVars = getList(te.lines, 'environment');
     assert.ok(envVars.length > 0, 'tool-tokeneconomizer must have an environment list');
     const hostVar = envVars.find((v) => v.startsWith('TOKEN_ECONOMIZER_HOST='));
