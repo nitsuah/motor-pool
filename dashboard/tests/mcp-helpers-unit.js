@@ -8,7 +8,7 @@
  */
 import assert from 'node:assert/strict';
 import express from 'express';
-import { parseMcpRpcResponse, mcpRequest } from '../modules/mcp-helpers.js';
+import { parseMcpRpcResponse, mcpRequest, mcpAuthHeaders } from '../modules/mcp-helpers.js';
 
 // ── parseMcpRpcResponse: plain JSON ──────────────────────────────────────────
 assert.deepStrictEqual(
@@ -139,3 +139,8 @@ try {
 }
 
 console.log('MCP helper tests passed.');
+
+// mcpAuthHeaders: the token goes only to the bundled tool servers.
+assert.deepStrictEqual(mcpAuthHeaders('http://tool-website:3201', { MCP_AUTH_TOKEN: 'tok-123' }), { Authorization: 'Bearer tok-123' });
+assert.deepStrictEqual(mcpAuthHeaders('https://third-party.example/x', { MCP_AUTH_TOKEN: 'tok-123' }), {});
+assert.deepStrictEqual(mcpAuthHeaders('http://tool-website:3201', {}), {});

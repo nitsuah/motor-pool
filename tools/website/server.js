@@ -14,6 +14,7 @@
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/streamableHttp.js';
 import express from 'express';
+import { createMcpAuth } from './mcp-auth.js';
 import { execFile } from 'child_process';
 import { promisify } from 'util';
 import { fileURLToPath } from 'url';
@@ -307,7 +308,7 @@ app.get('/health', (_req, res) => res.json({
   output_dir: OUTPUT_DIR,
 }));
 
-app.post('/mcp', async (req, res) => {
+app.post('/mcp', createMcpAuth(), async (req, res) => {
   const server    = buildServer();
   const transport = new StreamableHTTPServerTransport({ sessionIdGenerator: undefined });
   res.on('close', () => server.close().catch(() => {}));
@@ -315,7 +316,7 @@ app.post('/mcp', async (req, res) => {
   await transport.handleRequest(req, res, req.body);
 });
 
-app.get('/mcp', async (req, res) => {
+app.get('/mcp', createMcpAuth(), async (req, res) => {
   const server    = buildServer();
   const transport = new StreamableHTTPServerTransport({ sessionIdGenerator: undefined });
   res.on('close', () => server.close().catch(() => {}));
@@ -324,6 +325,7 @@ app.get('/mcp', async (req, res) => {
 });
 
 app.listen(PORT, () => {
+  if (!process.env.MCP_AUTH_TOKEN) console.warn('MCP_AUTH_TOKEN is not set: /mcp accepts unauthenticated requests');
   console.log(`website MCP server running on port ${PORT}`);
   console.log(`  Health:     http://localhost:${PORT}/health`);
   console.log(`  MCP:        http://localhost:${PORT}/mcp`);
