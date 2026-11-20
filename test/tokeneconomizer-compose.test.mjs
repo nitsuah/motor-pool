@@ -12,6 +12,8 @@ const lines = raw.split(/\r?\n/);
 
 const indentOf = (l) => l.length - l.trimStart().length;
 const isNoise = (l) => l.trim() === '' || l.trim().startsWith('#');
+// YAML allows quoted keys ("ports": / 'ports':); compare them unquoted.
+const unquote = (k) => k.trim().replace(/^(['"])(.*)\1$/, '$2');
 
 // Find service block: from service header (2-space indent) to next line at same indent or column 0.
 // Skip blank/comment lines when checking boundaries.
@@ -48,14 +50,14 @@ function parseServiceBlock(block) {
     const kv = trimmed.match(/^([^:]+):\s*(.+)$/);
     if (kv) {
       const [, k, v] = kv;
-      obj[k.trim()] = v.trim();
+      obj[unquote(k)] = v.trim();
       i++;
       continue;
     }
     // Key with no inline value: "key:" — could be a list or nested mapping
     const keyOnly = trimmed.match(/^([^:]+):$/);
     if (keyOnly) {
-      const k = keyOnly[1].trim();
+      const k = unquote(keyOnly[1]);
       const baseIndent = ind;
       i++;
       const children = [];
@@ -153,6 +155,13 @@ describe('tokeneconomizer Compose isolation contract', () => {
 
   const networksBlock = findTopLevelNetworks();
   assert.ok(networksBlock, 'top-level networks block not found');
+
+  it('parser sees a quoted ports key (regression)', () => {
+    const fake = ['    image: x', '    "ports":', '      - "3202:3202"', "    'restart': always"];
+    const parsed = parseServiceBlock(fake);
+    assert.deepEqual(parsed.ports, ['"3202:3202"'], 'quoted "ports": must parse as ports');
+    assert.equal(parsed.restart, 'always', "quoted 'restart': must parse as restart");
+  });
 
   it('tool-tokeneconomizer has no ports entry', () => {
     const parsed = parseServiceBlock(te.lines);
