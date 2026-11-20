@@ -48,7 +48,23 @@ $invoiceDate = $today.ToString("MMMM d, yyyy")
 if (-not $InvoiceNum)  { $InvoiceNum = "INV-" + $today.ToString("yyyyMMdd") + "-" + ($Slug.Substring(0, [Math]::Min(6, $Slug.Length)).ToUpper()) }
 if (-not $DueDate)     { $DueDate    = $today.AddDays(14).ToString("MMMM d, yyyy") }
 
+if ($InvoiceNum -cnotmatch '^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$') {
+    Write-Error "Invalid -InvoiceNum: use letters, digits, dot, underscore and hyphen only."
+    exit 1
+}
 $outFile = Join-Path $invoiceDir "$InvoiceNum.html"
+
+# Everything interpolated into the HTML below is encoded first.
+function ConvertTo-HtmlText([object]$Value) { [System.Net.WebUtility]::HtmlEncode([string]$Value) }
+$hCompany  = ConvertTo-HtmlText $YourCompany
+$hEmail    = ConvertTo-HtmlText $YourEmail
+$hPhone    = ConvertTo-HtmlText $YourPhone
+$hInvoice  = ConvertTo-HtmlText $InvoiceNum
+$hClient   = ConvertTo-HtmlText $ClientName
+$hDesc     = ConvertTo-HtmlText $Description
+$hDate     = ConvertTo-HtmlText $invoiceDate
+$hDue      = ConvertTo-HtmlText $DueDate
+$hAmount   = ConvertTo-HtmlText $Amount
 
 $html = @"
 <!DOCTYPE html>
@@ -65,13 +81,13 @@ $html = @"
   <!-- Header -->
   <div class="bg-indigo-600 text-white px-8 py-6 flex justify-between items-start">
     <div>
-      <h1 class="text-2xl font-bold">$YourCompany</h1>
-      <p class="text-indigo-200 text-sm mt-1">$YourEmail</p>
-      $(if ($YourPhone) { "<p class='text-indigo-200 text-sm'>$YourPhone</p>" })
+      <h1 class="text-2xl font-bold">$hCompany</h1>
+      <p class="text-indigo-200 text-sm mt-1">$hEmail</p>
+      $(if ($YourPhone) { "<p class='text-indigo-200 text-sm'>$hPhone</p>" })
     </div>
     <div class="text-right">
       <p class="text-indigo-200 text-sm uppercase tracking-wide">Invoice</p>
-      <p class="text-xl font-bold mt-1">$InvoiceNum</p>
+      <p class="text-xl font-bold mt-1">$hInvoice</p>
     </div>
   </div>
 
@@ -79,11 +95,11 @@ $html = @"
   <div class="px-8 py-6 border-b border-gray-100 flex justify-between text-sm">
     <div>
       <p class="text-gray-500">Bill To</p>
-      <p class="font-semibold text-gray-800 mt-1">$ClientName</p>
+      <p class="font-semibold text-gray-800 mt-1">$hClient</p>
     </div>
     <div class="text-right">
-      <p class="text-gray-500">Invoice Date: <span class="text-gray-800">$invoiceDate</span></p>
-      <p class="text-gray-500 mt-1">Due Date: <span class="font-semibold text-gray-800">$DueDate</span></p>
+      <p class="text-gray-500">Invoice Date: <span class="text-gray-800">$hDate</span></p>
+      <p class="text-gray-500 mt-1">Due Date: <span class="font-semibold text-gray-800">$hDue</span></p>
     </div>
   </div>
 
@@ -98,14 +114,14 @@ $html = @"
       </thead>
       <tbody>
         <tr class="border-b border-gray-100">
-          <td class="py-4 text-gray-800">$Description</td>
-          <td class="py-4 text-right font-semibold text-gray-800">`$$Amount</td>
+          <td class="py-4 text-gray-800">$hDesc</td>
+          <td class="py-4 text-right font-semibold text-gray-800">`$$hAmount</td>
         </tr>
       </tbody>
       <tfoot>
         <tr>
           <td class="pt-4 text-gray-500">Total Due</td>
-          <td class="pt-4 text-right text-xl font-bold text-indigo-600">`$$Amount</td>
+          <td class="pt-4 text-right text-xl font-bold text-indigo-600">`$$hAmount</td>
         </tr>
       </tfoot>
     </table>
@@ -115,7 +131,7 @@ $html = @"
   <div class="px-8 pb-8">
     <div class="bg-gray-50 rounded-lg p-4 text-sm text-gray-600">
       <p class="font-semibold text-gray-800 mb-2">Payment Methods</p>
-      <p>Venmo / PayPal / Zelle / Check — contact $YourEmail for details.</p>
+      <p>Venmo / PayPal / Zelle / Check — contact $hEmail for details.</p>
       <p class="mt-2 text-xs text-gray-400">Payment due within 14 days of invoice date. Thank you for your business!</p>
     </div>
   </div>
