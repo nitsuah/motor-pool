@@ -14,11 +14,35 @@ import { isBuiltinEndpointKey } from '../modules/llm-config.js';
 const RESERVED_KEYS = new Set(['__proto__', 'constructor', 'prototype']);
 const VALID_API_STYLES = new Set(['openai', 'ollama', 'anthropic', 'gemini']);
 
+// Cloud metadata and link-local targets are never valid model endpoints.
+// Loopback and private LAN hosts stay allowed: local runtimes live there.
+const BLOCKED_HOSTNAMES = new Set(['metadata.google.internal', 'metadata', 'instance-data']);
+
+function isBlockedAddress(host) {
+  let h = host.toLowerCase().replace(/^\[|\]$/g, '');
+  if (BLOCKED_HOSTNAMES.has(h)) return true;
+  // IPv4-mapped IPv6 (the URL parser renders ::ffff:a.b.c.d as ::ffff:hhhh:hhhh)
+  const mapped = /^::ffff:([0-9a-f]{1,4}):([0-9a-f]{1,4})$/.exec(h);
+  if (mapped) {
+    const hi = parseInt(mapped[1], 16);
+    const lo = parseInt(mapped[2], 16);
+    h = `${hi >> 8}.${hi & 255}.${lo >> 8}.${lo & 255}`;
+  }
+  const v4 = /^(\d+)\.(\d+)\.(\d+)\.(\d+)$/.exec(h);
+  if (v4) {
+    const [a, b] = [Number(v4[1]), Number(v4[2])];
+    return a === 0 || (a === 169 && b === 254) || (a === 100 && b === 100);
+  }
+  // fe80::/10 link-local, :: unspecified, fd00:ec2::254 (AWS IMDS)
+  return h === '::' || /^fe[89ab][0-9a-f]:/.test(h) || h.startsWith('fd00:ec2:');
+}
+
 function validateUrl(url) {
   let parsed;
   try { parsed = new URL(url); } catch { return 'Invalid URL'; }
   if (!['http:', 'https:'].includes(parsed.protocol)) return 'URL must use http or https';
   if (parsed.username || parsed.password) return 'URL must not contain embedded credentials';
+  if (isBlockedAddress(parsed.hostname)) return 'URL host is not allowed';
   return null;
 }
 
@@ -50,6 +74,9 @@ export function createEndpointsRouter({ LLM_CONFIG, logStructured }) {
     if (!key || !url) {
       return res.status(400).json({ success: false, error: 'key and url are required' });
     }
+    if (typeof key !== 'string' || typeof url !== 'string') {
+      return res.status(400).json({ success: false, error: 'key and url must be strings' });
+    }
     if (!/^[a-zA-Z0-9_-]+$/.test(key)) {
       return res.status(400).json({ success: false, error: 'key must be alphanumeric/underscore/dash only' });
     }
@@ -79,8 +106,9 @@ export function createEndpointsRouter({ LLM_CONFIG, logStructured }) {
   // to fetch available combos/models from external providers like 9router.
   router.get('/proxy-models', async (req, res) => {
     const { endpoint } = req.query;
-    const cfg = endpoint && LLM_CONFIG[endpoint];
+    const cfg = typeof endpoint === 'string' && Object.hasOwn(LLM_CONFIG, endpoint) ? LLM_CONFIG[endpoint] : null;
     if (!cfg) return res.status(404).json({ success: false, error: 'Endpoint not found' });
+    if (validateUrl(cfg.url)) return res.status(400).json({ success: false, error: 'Endpoint URL is not allowed' });
     const baseUrl = cfg.url.replace(/\/$/, '');
     const headers = { 'Content-Type': 'application/json' };
     if (cfg.apiKey) headers['Authorization'] = `Bearer ${cfg.apiKey}`;
@@ -88,7 +116,7 @@ export function createEndpointsRouter({ LLM_CONFIG, logStructured }) {
       const target = cfg.apiStyle === 'ollama'
         ? `${baseUrl}/api/tags`
         : `${baseUrl}${baseUrl.includes('/v1') ? '' : '/v1'}/models`;
-      const r = await fetch(target, { headers, signal: AbortSignal.timeout(4000) });
+      const r = await fetch(target, { headers, redirect: 'error', signal: AbortSignal.timeout(4000) });
       if (!r.ok) return res.status(502).json({ success: false, error: `Upstream returned ${r.status}` });
       const data = await r.json();
       const models = cfg.apiStyle === 'ollama'
