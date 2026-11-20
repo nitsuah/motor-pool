@@ -193,6 +193,16 @@ describe('readMaxConcurrent parsing', () => {
     assert.equal(readMaxConcurrent(), 5);
   });
 
+  it('falls back to DEFAULT_MAX_CONCURRENT huge value parseInt Infinity', () => {
+    const prev = process.env.TOKEN_ECONOMIZER_MAX_CONCURRENT;
+    process.env.TOKEN_ECONOMIZER_MAX_CONCURRENT = '9'.repeat(309);
+    assert.equal(readMaxConcurrent(), DEFAULT_MAX_CONCURRENT);
+    process.env.TOKEN_ECONOMIZER_MAX_CONCURRENT = '3';
+    assert.equal(readMaxConcurrent(), 3);
+    if (prev === undefined) delete process.env.TOKEN_ECONOMIZER_MAX_CONCURRENT;
+    else process.env.TOKEN_ECONOMIZER_MAX_CONCURRENT = prev;
+  });
+
   it('falls back to DEFAULT_MAX_CONCURRENT for fractional', () => {
     process.env.TOKEN_ECONOMIZER_MAX_CONCURRENT = '3.14';
     assert.equal(readMaxConcurrent(), DEFAULT_MAX_CONCURRENT);

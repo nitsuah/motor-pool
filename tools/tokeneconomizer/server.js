@@ -32,7 +32,7 @@ export function readMaxConcurrent() {
   const trimmed = raw.trim();
   if (!/^\d+$/.test(trimmed)) return DEFAULT_MAX_CONCURRENT;
   const n = parseInt(trimmed, 10);
-  return n >= 1 ? n : DEFAULT_MAX_CONCURRENT;
+  return Number.isFinite(n) && n >= 1 ? n : DEFAULT_MAX_CONCURRENT;
 }
 
 // Execute the te CLI with a fixed argv (never built from request data).
