@@ -29,40 +29,48 @@ function getKeyValue(block, key) {
   return block[idx].trim().slice(prefix.length).trim();
 }
 
-function getList(block, key) {
+const indentOf = (l) => l.length - l.trimStart().length;
+const isNoise = (l) => l.trim() === '' || l.trim().startsWith('#');
+
+// Lines nested under `key:` (deeper indent than the key), skipping blanks and comments.
+function childLines(block, key) {
   const startIdx = block.findIndex((l) => l.trim() === `${key}:`);
-  if (startIdx === -1) return [];
-  const items = [];
+  if (startIdx === -1) return null;
+  const base = indentOf(block[startIdx]);
+  const out = [];
   for (let i = startIdx + 1; i < block.length; i++) {
     const line = block[i];
-    if (!line.startsWith('      -')) break;
-    items.push(line.trim().slice(2).trim());
+    if (isNoise(line)) continue;
+    if (indentOf(line) <= base) break;
+    out.push(line);
   }
-  return items;
+  return out;
+}
+
+function getList(block, key) {
+  const kids = childLines(block, key) || [];
+  return kids.filter((l) => l.trim().startsWith('- ')).map((l) => l.trim().slice(2).trim());
 }
 
 function getNestedObject(block, parentKey) {
-  const startIdx = block.findIndex((l) => l.trim() === `${parentKey}:`);
-  if (startIdx === -1) return null;
+  const kids = childLines(block, parentKey);
+  if (!kids) return null;
   const obj = {};
-  for (let i = startIdx + 1; i < block.length; i++) {
-    const line = block[i];
-    if (!line.startsWith('      ')) break;
-    if (line.trim().includes(':')) {
-      const [k, ...v] = line.trim().split(':');
-      obj[k.trim()] = v.join(':').trim();
-    }
+  for (const line of kids) {
+    const [k, ...v] = line.trim().split(':');
+    if (v.length) obj[k.trim()] = v.join(':').trim();
   }
   return obj;
 }
 
+// The top-level `networks:` key has no indent; service-level ones do.
 function findTopLevelNetworks() {
-  const idx = lines.findIndex((l) => l.trim() === 'networks:');
+  const idx = lines.findIndex((l) => l.trimEnd() === 'networks:');
   if (idx === -1) return null;
   const block = [];
   for (let i = idx + 1; i < lines.length; i++) {
     const line = lines[i];
-    if (line.startsWith('  ') && !line.startsWith('    ')) break;
+    if (!isNoise(line) && indentOf(line) === 0) break;
     block.push(line);
   }
   return block;
@@ -101,15 +109,9 @@ describe('tokeneconomizer Compose isolation contract', () => {
   });
 
   it('TOKEN_ECONOMIZER_HOST=0.0.0.0 is set only in compose while server default stays loopback', () => {
-    const env = getKeyValue(te.lines, 'environment');
-    assert.ok(env, 'tool-tokeneconomizer must have environment');
-    const envBlockIdx = te.lines.findIndex((l) => l.trim() === 'environment:');
-    const envVars = [];
-    for (let i = envBlockIdx + 1; i < te.lines.length; i++) {
-      const line = te.lines[i];
-      if (!line.startsWith('        -')) break;
-      envVars.push(line.trim().slice(2).trim());
-    }
+    // `environment:` is a block key with no inline value, so look for the line itself.
+    const envVars = getList(te.lines, 'environment');
+    assert.ok(envVars.length > 0, 'tool-tokeneconomizer must have an environment list');
     const hostVar = envVars.find((v) => v.startsWith('TOKEN_ECONOMIZER_HOST='));
     assert.equal(hostVar, 'TOKEN_ECONOMIZER_HOST=0.0.0.0', 'TOKEN_ECONOMIZER_HOST must be 0.0.0.0 in compose');
     assert.equal(DEFAULT_HOST, '127.0.0.1', 'server DEFAULT_HOST must remain 127.0.0.1');
