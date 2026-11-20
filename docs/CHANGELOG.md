@@ -11,6 +11,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- TokenEconomizer HTTP wrapper now caps concurrent child processes. New `TOKEN_ECONOMIZER_MAX_CONCURRENT` env var (default 2) limits in-flight `runTeCommand` calls; excess requests return 503 `TE_BUSY`. Covered by `test/tokeneconomizer-concurrency.test.mjs` (#149).
 - The 3D home dashboard (`three.js`) now loads as a separate chunk instead of shipping in the initial dashboard bundle (#116).
 - Repo-health workflow pinned to shared kit `nitsuah/.github@a0df883`; the older `7d3c243` kit shipped its own `uv.lock` with msgpack 1.2.1, which the scan reported as this repo's advisory (GHSA-j586-36cw-2gc2).
 - Journeys workflow container bumped to `playwright:v1.65.0-jammy` to match `@playwright/test` 1.65.0.

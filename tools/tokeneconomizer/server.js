@@ -24,6 +24,14 @@ const TE_CMD = '/usr/local/bin/te';
 
 export const MAX_OUTPUT_BYTES = 1024 * 1024;
 export const KILL_GRACE_MS = 5000;
+export const DEFAULT_MAX_CONCURRENT = 2;
+
+export function readMaxConcurrent() {
+  const raw = process.env.TOKEN_ECONOMIZER_MAX_CONCURRENT;
+  if (raw === undefined || raw === '') return DEFAULT_MAX_CONCURRENT;
+  const n = parseInt(raw, 10);
+  return Number.isInteger(n) && n >= 1 ? n : DEFAULT_MAX_CONCURRENT;
+}
 
 // Execute the te CLI with a fixed argv (never built from request data).
 // `cmd` is injectable for tests only; the server always uses the default.
@@ -118,9 +126,11 @@ const COMMANDS = {
   doctor: () => ({ argv: ['doctor'] }),
 };
 
-export function createApp({ run = runTeCommand } = {}) {
+export function createApp({ run = runTeCommand, maxConcurrent = readMaxConcurrent() } = {}) {
   const app = express();
   app.use(express.json({ limit: '16kb' }));
+
+  let inFlight = 0;
 
   app.get('/health', (req, res) => {
     res.json({ service: 'tokeneconomizer', ok: true });
@@ -144,12 +154,19 @@ export function createApp({ run = runTeCommand } = {}) {
     }
     const plan = build(body);
     if (!plan.argv) return res.status(plan.status).json(plan.body);
+
+    if (inFlight >= maxConcurrent) {
+      return res.status(503).json({ success: false, code: 'TE_BUSY', error: 'TokenEconomizer is busy' });
+    }
+    inFlight++;
     try {
       const result = await run(plan.argv);
       res.json({ success: true, command: req.params.command, output: result.output });
     } catch (err) {
       // Keep command arguments and CLI output server-side; errors may contain secrets.
       res.status(err?.status || 500).json({ success: false, ...safeTeError(err) });
+    } finally {
+      inFlight--;
     }
   });
 
