@@ -1,3 +1,4 @@
+import { existsSync, readFileSync } from 'node:fs';
 import pg from 'pg';
 
 const { Pool } = pg;
@@ -7,7 +8,20 @@ function isTruthyEnv(value) {
 }
 
 const DATABASE_URL = process.env.DATABASE_URL || '';
-const DB_SSL = isTruthyEnv(process.env.DATABASE_SSL);
+
+// TLS options for the Postgres connection. Certificates are verified by default.
+// DATABASE_SSL_CA is a PEM string or a path to a PEM file (for a private CA).
+// DATABASE_SSL_INSECURE=1 skips verification for local development only and is
+// ignored under NODE_ENV=production.
+function buildSslOption(env = process.env) {
+  if (!isTruthyEnv(env.DATABASE_SSL)) return false;
+  const insecure = isTruthyEnv(env.DATABASE_SSL_INSECURE) && env.NODE_ENV !== 'production';
+  if (insecure) return { rejectUnauthorized: false };
+  const ssl = { rejectUnauthorized: true };
+  const ca = String(env.DATABASE_SSL_CA || '').trim();
+  if (ca) ssl.ca = ca.includes('BEGIN CERTIFICATE') ? ca : (existsSync(ca) ? readFileSync(ca, 'utf8') : ca);
+  return ssl;
+}
 
 let pool = null;
 let enabled = false;
@@ -30,7 +44,7 @@ async function initPersistence(logStructured) {
   try {
     pool = new Pool({
       connectionString: DATABASE_URL,
-      ssl: DB_SSL ? { rejectUnauthorized: false } : false,
+      ssl: buildSslOption(),
       max: 5,
     });
 
@@ -171,6 +185,7 @@ async function markSessionEnded(sessionId, endedAt = new Date(), logStructured) 
 }
 
 export {
+  buildSslOption,
   getStatus,
   initPersistence,
   markSessionEnded,
