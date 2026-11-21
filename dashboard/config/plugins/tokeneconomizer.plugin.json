@@ -5,6 +5,9 @@
   "version": "1.0.0",
   "description": "Token cost optimization plugin using Microsoft TokenEconomizer. Learns from past sessions, prunes unused tools, detects stuck loops. Requires local TokenEconomizer installation via https://github.com/microsoft/TokenEconomizer.",
   "enabled": false,
+  "headers": {
+    "Authorization": "Bearer ${TOKEN_ECONOMIZER_TOKEN:-}"
+  },
   "baseUrl": "${TOKEN_ECONOMIZER_URL:-http://tool-tokeneconomizer:3202}",
   "tools": [
     {
@@ -55,27 +58,6 @@
               "measure"
             ],
             "description": "read-only tool pruning action (default show)"
-          }
-        },
-        "additionalProperties": false
-      }
-    },
-    {
-      "name": "config",
-      "description": "Show TokenEconomizer config (read-only; set/unset are disabled over HTTP).",
-      "transport": "http",
-      "method": "POST",
-      "path": "/config",
-      "timeoutMs": 30000,
-      "parameters": {
-        "type": "object",
-        "properties": {
-          "operation": {
-            "type": "string",
-            "enum": [
-              "show"
-            ],
-            "description": "config action (default show)"
           }
         },
         "additionalProperties": false

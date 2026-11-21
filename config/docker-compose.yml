@@ -344,6 +344,7 @@ services:
       # (sets WORKSPACE_SANDBOX=false).
       - WORKSPACE_SANDBOX=true
       - ENDPOINT_STORE_SECRET=${ENDPOINT_STORE_SECRET:-motor-pool-default-secret-change-me}
+      - TOKEN_ECONOMIZER_TOKEN=${TOKEN_ECONOMIZER_TOKEN:-}
     volumes:
       - agent_workspace:/workspace
       - agent_endpoint_data:/data
@@ -523,7 +524,7 @@ services:
       context: ../tools/tokeneconomizer
       dockerfile: Dockerfile
     container_name: tool-tokeneconomizer
-    restart: unless-stopped
+    restart: on-failure
     profiles:
       - tools
       - prebuild
@@ -534,13 +535,15 @@ services:
       # Loopback is the code default; bind all container interfaces here. No host
       # port is published and only the dashboard shares tokeneconomizer-network.
       - TOKEN_ECONOMIZER_HOST=0.0.0.0
+      - TOKEN_ECONOMIZER_HTTP_ENABLED=${TOKEN_ECONOMIZER_HTTP_ENABLED:-false}
+      - TOKEN_ECONOMIZER_TOKEN=${TOKEN_ECONOMIZER_TOKEN:-}
       - TE_PYTHON=${TE_PYTHON:-python3}
       - TOKEN_ECONOMIZER_DATA_DIR=${TOKEN_ECONOMIZER_DATA_DIR:-/home/nodeapp/.tokeneconomizer}
     volumes:
       # TokenEconomizer learned data (microskills, toolprune state, configs)
       - tokeneconomizer_data:/home/nodeapp/.tokeneconomizer
     healthcheck:
-      test: ["CMD", "node", "-e", "require('http').get('http://localhost:3202/health',(r)=>{r.resume();r.on('end',()=>process.exit(r.statusCode===200?0:1))}).on('error',()=>process.exit(1))"]
+      test: ["CMD", "node", "-e", "require('http').get('http://localhost:3202/health',{headers:{authorization:'Bearer '+process.env.TOKEN_ECONOMIZER_TOKEN}},(r)=>{r.resume();r.on('end',()=>process.exit(r.statusCode===200?0:1))}).on('error',()=>process.exit(1))"]
       interval: 30s
       timeout: 5s
       start_period: 10s

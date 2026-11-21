@@ -9,6 +9,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Security
+
+- TokenEconomizer HTTP wrapper now requires `Authorization: Bearer <TOKEN>` on every route, including `GET /health` (probes must send the token). Refuses to start if `TOKEN_ECONOMIZER_TOKEN` is unset or not 24-505 characters long (the dashboard caps the `Bearer` header at 512). Dashboard plugin sends the header from `TOKEN_ECONOMIZER_TOKEN` server-side only; never exposed to browser. Compose passes enable flag and token; healthcheck authenticates; restart policy `on-failure` prevents restart loop when disabled (#204).
+
 ### Changed
 
 - TokenEconomizer HTTP wrapper redacts command output before returning it: values of secret-named keys (key, token, secret, password, auth, credential) and bearer/provider-shaped tokens are masked, so `config show` cannot leak credentials over HTTP. Mutating toolprune/config actions were already 403 (#168).

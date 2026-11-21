@@ -64,6 +64,9 @@ const SEMVER_RE = /^\d+\.\d+\.\d+(?:[-+][0-9A-Za-z-.]+)?$/;
 const HTTP_METHODS = new Set(['GET', 'POST', 'PUT', 'PATCH', 'DELETE']);
 const SUPPORTED_TRANSPORTS = new Set(['http']);
 
+const HEADER_KEY_RE = /^[A-Za-z0-9-]{1,64}$/;
+const MAX_HEADER_VALUE_LEN = 512;
+
 const MIN_TIMEOUT_MS = 1_000;
 const MAX_TIMEOUT_MS = 120_000;
 const DEFAULT_TIMEOUT_MS = 15_000;
@@ -229,6 +232,27 @@ export function validateManifest(manifest, { source = 'unknown' } = {}) {
     }
   }
 
+  // Validate optional plugin-level headers (sent verbatim to the backend on invoke).
+  // Each key must match /^[A-Za-z0-9-]{1,64}$/ and each value must be a string of at most
+  // 512 characters with no \r or \n; otherwise push headers.<key> invalid to errors.
+  // Skip entries whose value is the empty string after env expansion (an unset token sends no header).
+  const rawHeaders = manifest.headers;
+  const headers = {};
+  if (rawHeaders !== undefined) {
+    if (!isPlainObject(rawHeaders)) {
+      errors.push('headers must be an object');
+    } else {
+      for (const [key, value] of Object.entries(rawHeaders)) {
+        if (!HEADER_KEY_RE.test(key) || typeof value !== 'string' || value.length > MAX_HEADER_VALUE_LEN || value.includes('\r') || value.includes('\n')) {
+          errors.push(`headers.${key} invalid`);
+          continue;
+        }
+        if (value === '') continue; // skip unset (empty) values
+        headers[key] = value;
+      }
+    }
+  }
+
   if (errors.length) return { valid: false, errors };
 
   return {
@@ -242,6 +266,7 @@ export function validateManifest(manifest, { source = 'unknown' } = {}) {
       baseUrl: baseUrl || null,
       tools,
       events,
+      headers,
       source,
     },
   };
