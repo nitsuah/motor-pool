@@ -20,7 +20,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 COPY package.json package-lock.json* ./
 RUN npm ci --omit=dev
 
-COPY server.js ./
+COPY server.js mcp-auth.js ./
 
 EXPOSE 3200
 HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \

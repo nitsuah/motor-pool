@@ -19,7 +19,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 COPY package.json package-lock.json* ./
 RUN npm ci --omit=dev
 
-COPY server.js output-path.js ./
+COPY server.js output-path.js mcp-auth.js ./
 COPY scripts/ ./scripts/
 COPY templates/ ./templates/
 
