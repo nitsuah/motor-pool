@@ -293,6 +293,11 @@ docker compose --env-file .env -f config/docker-compose.yml --profile tools up -
 - The container mounts `tokeneconomizer_data` volume for learned data persistence
 - Set `TOKEN_ECONOMIZER_TOKEN` (24+ characters, e.g. `openssl rand -hex 24`) and `TOKEN_ECONOMIZER_HTTP_ENABLED=true` to enable the HTTP wrapper. The dashboard plugin sends `Authorization: Bearer ${TOKEN_ECONOMIZER_TOKEN}` from the server side only; it is never exposed to browser code.
 - Forwarded headers are ignored unless `TOKEN_ECONOMIZER_TRUSTED_PROXIES` lists the proxy IPs/CIDRs.
+- After setting or changing `TOKEN_ECONOMIZER_TOKEN`, recreate the dashboard too so both containers share the token (otherwise plugin calls get 401):
+
+  ```powershell
+  docker compose --env-file .env -f config/docker-compose.yml --profile tools up -d --force-recreate tool-tokeneconomizer agent-dashboard
+  ```
 
 TokenEconomizer runs model calls through your existing agent on the same plan/login —
 no API keys needed. All data stays in the `tokeneconomizer_data` volume.

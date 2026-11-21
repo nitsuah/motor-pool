@@ -11,7 +11,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Security
 
-- TokenEconomizer HTTP wrapper now requires `Authorization: Bearer <TOKEN>` on every route (GET `/health` stays public). Refuses to start if `TOKEN_ECONOMIZER_TOKEN` is unset or shorter than 24 characters. Dashboard plugin sends the header from `TOKEN_ECONOMIZER_TOKEN` server-side only; never exposed to browser. Compose passes enable flag and token; healthcheck authenticates; restart policy `on-failure` prevents restart loop when disabled (#204).
+- TokenEconomizer HTTP wrapper now requires `Authorization: Bearer <TOKEN>` on every route, including `GET /health` (probes must send the token). Refuses to start if `TOKEN_ECONOMIZER_TOKEN` is unset or shorter than 24 characters. Dashboard plugin sends the header from `TOKEN_ECONOMIZER_TOKEN` server-side only; never exposed to browser. Compose passes enable flag and token; healthcheck authenticates; restart policy `on-failure` prevents restart loop when disabled (#204).
 
 ### Changed
 

@@ -28,16 +28,20 @@ function maskDeep(value) {
         for (const [k, v] of Object.entries(value)) out[k] = isSecretKey(k) ? MASK : maskDeep(v);
         return out;
     }
-    return value;
+    // Strings under ordinary keys can still carry a bearer token or URL credentials.
+    return typeof value === 'string' ? maskInline(value) : value;
 }
 
 const KEY_CHARS = '[A-Za-z0-9_.-]+';
 // "key": <string | number | true | false | null>
 const JSON_PAIR = new RegExp(`"(${KEY_CHARS})"(\\s*:\\s*)("(?:[^"\\\\]|\\\\.)*"|-?\\d[\\d.eE+-]*|true|false|null)`, 'g');
 // key = value / key: value at line start (INI, YAML, env, CLI tables)
-const PLAIN_PAIR = /^(\s*)([A-Za-z0-9_.-]+)(\s*[:=]\s*)(.*)$/;
-const YAML_BLOCK = /^[|>][+-]?\d*\s*$/;
-const URL_USERINFO = /\b([a-z][a-z0-9+.-]*:\/\/)[^\s/@:]+:[^\s/@]+@/gi;
+// The optional "- " prefix covers YAML sequence items (`  - api_key: x`).
+const PLAIN_PAIR = /^(\s*(?:-\s+)?)([A-Za-z0-9_.-]+)(\s*[:=]\s*)(.*)$/;
+// Block scalar header, optionally followed by a comment (`| # note`).
+const YAML_BLOCK = /^[|>][+-]?\d*\s*(?:#.*)?$/;
+// Userinfo never crosses "/", "?" or "#", so a query like ?next=a:b@host is left alone.
+const URL_USERINFO = /\b([a-z][a-z0-9+.-]*:\/\/)[^\s/?#@:]+:[^\s/?#@]+@/gi;
 const TOKEN_SHAPES = [
     /\bBearer\s+[A-Za-z0-9._~+/=-]{8,}/g,
     /\b(?:sk|pk|rk)-[A-Za-z0-9_-]{8,}/g,
@@ -82,7 +86,12 @@ export function redactSecrets(text) {
     }
     let out = text.replace(JSON_PAIR, (whole, key, sep) => (isSecretKey(key) ? `"${key}"${sep}"${MASK}"` : whole));
     out = redactLines(out);
-    out = out.replace(URL_USERINFO, `$1${MASK}@`);
+    return maskInline(out);
+}
+
+/** Rules that apply anywhere in a string: URL credentials and token shapes. */
+function maskInline(text) {
+    let out = text.replace(URL_USERINFO, `$1${MASK}@`);
     for (const re of TOKEN_SHAPES) out = out.replace(re, MASK);
     return out;
 }

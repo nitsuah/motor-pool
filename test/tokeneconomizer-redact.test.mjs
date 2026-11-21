@@ -56,6 +56,30 @@ private_key: >-
     assert.ok(out.includes('db.example.test/x'), out);
   });
 
+  it('masks a YAML block scalar whose header has a trailing comment', () => {
+    const out = redactSecrets(`password: | # rotated monthly\n  ${SENTINEL}\nmodel: gpt`);
+    assert.ok(!out.includes(SENTINEL), out);
+    assert.ok(out.includes('model: gpt'), out);
+  });
+
+  it('masks secret keys in YAML sequence items, keeping sibling fields', () => {
+    const text = `providers:\n  - api_key: |\n      ${SENTINEL}\n    model: gpt\n  - token: ${SENTINEL}`;
+    const out = redactSecrets(text);
+    assert.ok(!out.includes(SENTINEL), out);
+    assert.ok(out.includes('    model: gpt'), out);
+  });
+
+  it('does not treat a query string as URL credentials', () => {
+    const text = 'See https://example.com?next=user:pw@example.net and https://example.com/#a:b@c';
+    assert.equal(redactSecrets(text), text);
+  });
+
+  it('masks tokens and URL credentials in string values of whole-JSON output', () => {
+    const out = redactSecrets(JSON.stringify({ note: `Bearer ${SENTINEL}`, db: `postgres://u:${SENTINEL}@h/x`, model: 'gpt' }));
+    assert.ok(!out.includes(SENTINEL), out);
+    assert.ok(out.includes('"model":"gpt"'), out);
+  });
+
   it('leaves ordinary output and non-strings alone', () => {
     assert.equal(redactSecrets('model: gpt-5\ncache: on'), 'model: gpt-5\ncache: on');
     assert.equal(redactSecrets(undefined), undefined);

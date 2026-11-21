@@ -1,6 +1,10 @@
 import assert from 'node:assert/strict';
 import { describe, it, beforeAll, afterAll, afterEach } from 'vitest';
+import { spawnSync } from 'node:child_process';
+import { fileURLToPath } from 'node:url';
 import { createApp } from '../tools/tokeneconomizer/server.js';
+
+const SERVER = fileURLToPath(new URL('../tools/tokeneconomizer/server.js', import.meta.url));
 
 // Sentinel test values only; nothing here is a real credential.
 const TEST_TOKEN = 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa';
@@ -95,37 +99,27 @@ describe('tokeneconomizer bearer auth', () => {
     process.env.TOKEN_ECONOMIZER_TOKEN = prev;
   });
 
-  it('createApp rejects short token at startup (explicit token path)', async () => {
-    const app = createApp({ run: async () => ({ output: 'ok' }), token: 'short' });
-    assert.ok(app, 'app is created with short token');
+  // The real entrypoint, not a copy of its guard: spawn server.js with each env.
+  const startServer = (env) => spawnSync(process.execPath, [SERVER], {
+    env: { PATH: process.env.PATH, PORT: '0', TOKEN_ECONOMIZER_HOST: '127.0.0.1', ...env },
+    encoding: 'utf8',
+    timeout: 15_000,
   });
 
-  it('startup refuses unset token', async () => {
-    const prev = process.env.TOKEN_ECONOMIZER_TOKEN;
-    delete process.env.TOKEN_ECONOMIZER_TOKEN;
-    assert.throws(
-      () => {
-        // Simulate the CLI guard: refuse if token unset or < 24 chars
-        const token = process.env.TOKEN_ECONOMIZER_TOKEN;
-        if (!token || token.length < 24) throw new Error('TOKEN_ECONOMIZER_TOKEN unset or shorter than 24 characters; refusing to start');
-      },
-      /refusing to start/,
-    );
-    if (prev === undefined) delete process.env.TOKEN_ECONOMIZER_TOKEN;
-    else process.env.TOKEN_ECONOMIZER_TOKEN = prev;
+  it('entrypoint exits 1 when enabled without a token', () => {
+    const r = startServer({ TOKEN_ECONOMIZER_HTTP_ENABLED: 'true' });
+    assert.equal(r.status, 1, r.stderr);
+    assert.match(r.stderr, /refusing to start/);
   });
 
-  it('startup refuses short token', async () => {
-    const prev = process.env.TOKEN_ECONOMIZER_TOKEN;
-    process.env.TOKEN_ECONOMIZER_TOKEN = 'short';
-    assert.throws(
-      () => {
-        const token = process.env.TOKEN_ECONOMIZER_TOKEN;
-        if (!token || token.length < 24) throw new Error('TOKEN_ECONOMIZER_TOKEN unset or shorter than 24 characters; refusing to start');
-      },
-      /refusing to start/,
-    );
-    if (prev === undefined) delete process.env.TOKEN_ECONOMIZER_TOKEN;
-    else process.env.TOKEN_ECONOMIZER_TOKEN = prev;
+  it('entrypoint exits 1 when enabled with a token shorter than 24 characters', () => {
+    const r = startServer({ TOKEN_ECONOMIZER_HTTP_ENABLED: 'true', TOKEN_ECONOMIZER_TOKEN: 'short' });
+    assert.equal(r.status, 1, r.stderr);
+  });
+
+  it('entrypoint exits 0 without listening when the HTTP wrapper is disabled', () => {
+    const r = startServer({ TOKEN_ECONOMIZER_TOKEN: TEST_TOKEN });
+    assert.equal(r.status, 0, r.stderr);
+    assert.doesNotMatch(r.stdout, /listening/);
   });
 });
