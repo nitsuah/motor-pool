@@ -26,6 +26,36 @@ describe('redactSecrets', () => {
     assert.ok(!/abcdefghijklmnop|sk-REDACTME|ghp_REDACTME/.test(out), out);
   });
 
+  it('keeps token counters (measurements, not secrets)', () => {
+    const text = 'tokens_saved: 1200\nmax_tokens: 4096\ninput_tokens = 33';
+    assert.equal(redactSecrets(text), text);
+    assert.equal(redactSecrets('{"max_tokens": 4096, "tokens_saved": 7}'), '{"max_tokens":4096,"tokens_saved":7}');
+  });
+
+  it('masks non-string JSON values under secret keys, keeping other fields', () => {
+    const out = redactSecrets(`{"password":123456,"api_key":["${SENTINEL}"],"nested":{"auth_token":{"v":"${SENTINEL}"}},"model":"small"}`);
+    assert.ok(!out.includes(SENTINEL) && !out.includes('123456'), out);
+    assert.ok(out.includes('"model":"small"'), out);
+  });
+
+  it('masks every line of a YAML block scalar under a secret key', () => {
+    const text = `password: |
+  ${SENTINEL}
+  more-${SENTINEL}
+cache: on
+private_key: >-
+  ${SENTINEL}`;
+    const out = redactSecrets(text);
+    assert.ok(!out.includes(SENTINEL), out);
+    assert.ok(out.includes('cache: on'), out);
+  });
+
+  it('masks credentials in URL userinfo', () => {
+    const out = redactSecrets(`endpoint=https://user:${SENTINEL}@db.example.test/x and http://a:b@h`);
+    assert.ok(!out.includes(SENTINEL) && !out.includes('a:b@'), out);
+    assert.ok(out.includes('db.example.test/x'), out);
+  });
+
   it('leaves ordinary output and non-strings alone', () => {
     assert.equal(redactSecrets('model: gpt-5\ncache: on'), 'model: gpt-5\ncache: on');
     assert.equal(redactSecrets(undefined), undefined);
