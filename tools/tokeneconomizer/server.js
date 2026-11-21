@@ -13,6 +13,7 @@ import express from 'express';
 import { fileURLToPath, pathToFileURL } from 'url';
 import { dirname } from 'path';
 import { safeTeError } from './safe-error.mjs';
+import { redactSecrets } from './redact.mjs';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
@@ -163,7 +164,7 @@ export function createApp({ run = runTeCommand, maxConcurrent = readMaxConcurren
     inFlight++;
     try {
       const result = await run(plan.argv);
-      res.json({ success: true, command: req.params.command, output: result.output });
+      res.json({ success: true, command: req.params.command, output: redactSecrets(result.output) });
     } catch (err) {
       // Keep command arguments and CLI output server-side; errors may contain secrets.
       res.status(err?.status || 500).json({ success: false, ...safeTeError(err) });
