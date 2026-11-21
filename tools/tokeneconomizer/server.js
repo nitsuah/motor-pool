@@ -216,8 +216,11 @@ if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) 
     console.log('TokenEconomizer HTTP API disabled (set TOKEN_ECONOMIZER_HTTP_ENABLED=true to enable)');
     process.exit(0);
   }
-  if (!token || token.length < 24) {
-    console.error(`TOKEN_ECONOMIZER_TOKEN unset or shorter than 24 characters; refusing to start`);
+  // The dashboard plugin sends `Bearer <token>` and rejects header values over
+  // 512 characters (dashboard/modules/plugin-loader.js), so 505 is the most a
+  // token can be and still work end to end.
+  if (!token || token.length < 24 || token.length > 505) {
+    console.error(`TOKEN_ECONOMIZER_TOKEN must be 24-505 characters; refusing to start`);
     process.exit(1);
   }
   const host = process.env.TOKEN_ECONOMIZER_HOST || DEFAULT_HOST;

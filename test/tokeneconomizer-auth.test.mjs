@@ -117,6 +117,12 @@ describe('tokeneconomizer bearer auth', () => {
     assert.equal(r.status, 1, r.stderr);
   });
 
+  it('entrypoint exits 1 when the token is too long for the dashboard header limit', () => {
+    const r = startServer({ TOKEN_ECONOMIZER_HTTP_ENABLED: 'true', TOKEN_ECONOMIZER_TOKEN: 'a'.repeat(506) });
+    assert.equal(r.status, 1, r.stderr);
+    assert.match(r.stderr, /24-505/);
+  });
+
   it('entrypoint exits 0 without listening when the HTTP wrapper is disabled', () => {
     const r = startServer({ TOKEN_ECONOMIZER_TOKEN: TEST_TOKEN });
     assert.equal(r.status, 0, r.stderr);

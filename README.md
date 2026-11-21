@@ -291,7 +291,7 @@ docker compose --env-file .env -f config/docker-compose.yml --profile tools up -
 - Install TokenEconomizer locally: `git clone https://github.com/microsoft/TokenEconomizer`
 - Set `TE_PYTHON` in `.env` to your python3 path (e.g., `TE_PYTHON=python3`)
 - The container mounts `tokeneconomizer_data` volume for learned data persistence
-- Set `TOKEN_ECONOMIZER_TOKEN` (24+ characters, e.g. `openssl rand -hex 24`) and `TOKEN_ECONOMIZER_HTTP_ENABLED=true` to enable the HTTP wrapper. The dashboard plugin sends `Authorization: Bearer ${TOKEN_ECONOMIZER_TOKEN}` from the server side only; it is never exposed to browser code.
+- Set `TOKEN_ECONOMIZER_TOKEN` (24 to 505 characters, e.g. `openssl rand -hex 24`; the dashboard caps the `Bearer` header at 512) and `TOKEN_ECONOMIZER_HTTP_ENABLED=true` to enable the HTTP wrapper. The dashboard plugin sends `Authorization: Bearer ${TOKEN_ECONOMIZER_TOKEN}` from the server side only; it is never exposed to browser code.
 - Forwarded headers are ignored unless `TOKEN_ECONOMIZER_TRUSTED_PROXIES` lists the proxy IPs/CIDRs.
 - After setting or changing `TOKEN_ECONOMIZER_TOKEN`, recreate the dashboard too so both containers share the token (otherwise plugin calls get 401):
 
