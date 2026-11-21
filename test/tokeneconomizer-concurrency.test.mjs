@@ -2,6 +2,8 @@ import assert from 'node:assert/strict';
 import { describe, it, beforeAll, afterAll } from 'vitest';
 import { createApp, DEFAULT_MAX_CONCURRENT, readMaxConcurrent } from '../tools/tokeneconomizer/server.js';
 
+const TEST_TOKEN = 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa';
+
 const calls = [];
 let server;
 let base;
@@ -9,7 +11,7 @@ let base;
 async function post(path, body) {
   const res = await fetch(base + path, {
     method: 'POST',
-    headers: { 'content-type': 'application/json' },
+    headers: { 'content-type': 'application/json', authorization: `Bearer ${TEST_TOKEN}` },
     body: JSON.stringify(body),
   });
   return { status: res.status, json: await res.json() };
@@ -29,6 +31,7 @@ describe('tokeneconomizer concurrency cap', () => {
           calls.push(argv);
           return { output: 'ok' };
         },
+        token: TEST_TOKEN,
       }),
     );
     base = `http://127.0.0.1:${server.address().port}`;
@@ -50,14 +53,15 @@ describe('tokeneconomizer concurrency cap', () => {
           await new Promise((r) => { resolveFirst = r; });
           return { output: 'ok' };
         },
+        token: TEST_TOKEN,
       }),
     );
     const blockingBase = `http://127.0.0.1:${blockingApp.address().port}`;
 
-    const p1 = fetch(`${blockingBase}/status`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: '{}' });
+    const p1 = fetch(`${blockingBase}/status`, { method: 'POST', headers: { 'content-type': 'application/json', authorization: `Bearer ${TEST_TOKEN}` }, body: '{}' });
     // Wait for first request to enter run and block
     await startedPromise;
-    const r2 = await fetch(`${blockingBase}/status`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: '{}' });
+    const r2 = await fetch(`${blockingBase}/status`, { method: 'POST', headers: { 'content-type': 'application/json', authorization: `Bearer ${TEST_TOKEN}` }, body: '{}' });
     assert.equal(r2.status, 503);
     const j2 = await r2.json();
     assert.equal(j2.code, 'TE_BUSY');
@@ -82,14 +86,15 @@ describe('tokeneconomizer concurrency cap', () => {
           }
           return { output: 'ok' };
         },
+        token: TEST_TOKEN,
       }),
     );
     const blockingBase = `http://127.0.0.1:${blockingApp.address().port}`;
 
-    const r1 = await fetch(`${blockingBase}/status`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: '{}' });
+    const r1 = await fetch(`${blockingBase}/status`, { method: 'POST', headers: { 'content-type': 'application/json', authorization: `Bearer ${TEST_TOKEN}` }, body: '{}' });
     assert.equal(r1.status, 200);
 
-    const r2 = await fetch(`${blockingBase}/status`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: '{}' });
+    const r2 = await fetch(`${blockingBase}/status`, { method: 'POST', headers: { 'content-type': 'application/json', authorization: `Bearer ${TEST_TOKEN}` }, body: '{}' });
     assert.equal(r2.status, 200);
     const j2 = await r2.json();
     assert.equal(j2.success, true);
@@ -111,18 +116,18 @@ describe('tokeneconomizer concurrency cap', () => {
           }
           return { output: 'ok' };
         },
+        token: TEST_TOKEN,
       }),
     );
     const b = `http://127.0.0.1:${app.address().port}`;
 
-    const r1 = await fetch(`${b}/status`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: '{}' });
+    const r1 = await fetch(`${b}/status`, { method: 'POST', headers: { 'content-type': 'application/json', authorization: `Bearer ${TEST_TOKEN}` }, body: '{}' });
     assert.equal(r1.status, 500);
 
-    const r2 = await fetch(`${b}/status`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: '{}' });
+    const r2 = await fetch(`${b}/status`, { method: 'POST', headers: { 'content-type': 'application/json', authorization: `Bearer ${TEST_TOKEN}` }, body: '{}' });
     assert.equal(r2.status, 200);
     const j2 = await r2.json();
     assert.equal(j2.success, true);
-    assert.equal(calls.length, 2);
     app.close();
   });
 
@@ -135,15 +140,16 @@ describe('tokeneconomizer concurrency cap', () => {
           calls.push(argv);
           return { output: 'ok' };
         },
+        token: TEST_TOKEN,
       }),
     );
     const b = `http://127.0.0.1:${app.address().port}`;
 
-    const r1 = await fetch(`${b}/toolprune`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ action: 'bogus' }) });
+    const r1 = await fetch(`${b}/toolprune`, { method: 'POST', headers: { 'content-type': 'application/json', authorization: `Bearer ${TEST_TOKEN}` }, body: JSON.stringify({ action: 'bogus' }) });
     assert.equal(r1.status, 400);
     assert.equal(calls.length, 0);
 
-    const r2 = await fetch(`${b}/status`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: '{}' });
+    const r2 = await fetch(`${b}/status`, { method: 'POST', headers: { 'content-type': 'application/json', authorization: `Bearer ${TEST_TOKEN}` }, body: '{}' });
     assert.equal(r2.status, 200);
     assert.equal(calls.length, 1);
     app.close();

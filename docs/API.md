@@ -1023,7 +1023,11 @@ Requires the `tool-tokeneconomizer` service running (enable with `--profile tool
 
 The wrapper publishes no host port and listens only on the private `tokeneconomizer-network`, which
 only the dashboard joins. Outside a container it binds to `127.0.0.1` unless `TOKEN_ECONOMIZER_HOST`
-is set. There is no generic `/exec` route; request bodies only select from the enums below and are never
+is set. The wrapper is disabled by default; enable it with `TOKEN_ECONOMIZER_HTTP_ENABLED=true` and
+a `TOKEN_ECONOMIZER_TOKEN` (24+ characters). Every route requires `Authorization: Bearer <TOKEN>`;
+the dashboard plugin sends it from `TOKEN_ECONOMIZER_TOKEN` on the server side only (never exposed to
+browser code). Forwarded headers are ignored unless `TOKEN_ECONOMIZER_TRUSTED_PROXIES` lists the proxy
+IPs/CIDRs. There is no generic `/exec` route; request bodies only select from the enums below and are never
 passed to the CLI. The wrapper answers mutating operations with `403` and other invalid input (including
 unknown properties) with `400`. Through the dashboard invoke route, any non-2xx wrapper response is returned
 as HTTP `502`, with the wrapper's status in the response body's `status` field.
@@ -1037,12 +1041,12 @@ All endpoints: `POST /api/plugins/tokeneconomizer/tools/<tool>/invoke`
 | `status` | Show TE status: learned facts, actions, costs | `{ json?: boolean }` |
 | `microskills` | List injected and forming micro-skill facts | `{}` |
 | `toolprune` | Show the proposed deny list, or measure it | `{ action?: "show" \| "measure" }` |
-| `config` | Show TE config | `{ operation?: "show" }` |
 | `repomap` | Show representation map for current repo | `{}` |
 | `repos` | List repos with TE state | `{ operation?: "list" }` |
 | `doctor` | Run diagnostics on TE installation | `{}` |
 
-`toolprune apply|restore|refresh-catalog`, `config set|unset` and `repos migrate|merge` are disabled over HTTP
+`config` (show) is disabled over HTTP; use the `te` CLI directly.
+`toolprune apply|restore|refresh-catalog` and `repos migrate|merge` are disabled over HTTP
 (wrapper status `403`); run them with the `te` CLI directly.
 
 ### Example Usage

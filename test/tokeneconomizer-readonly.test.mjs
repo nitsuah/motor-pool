@@ -5,6 +5,8 @@ import { join } from 'node:path';
 import { afterAll, beforeAll, describe, it } from 'vitest';
 import { createApp, DEFAULT_HOST, runTeCommand } from '../tools/tokeneconomizer/server.js';
 
+const TEST_TOKEN = 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa';
+
 const calls = [];
 let server;
 let base;
@@ -12,7 +14,7 @@ let base;
 async function post(path, body, raw) {
   const res = await fetch(base + path, {
     method: 'POST',
-    headers: { 'content-type': 'application/json' },
+    headers: { 'content-type': 'application/json', authorization: `Bearer ${TEST_TOKEN}` },
     body: raw ?? JSON.stringify(body),
   });
   return { status: res.status, json: await res.json() };
@@ -31,6 +33,7 @@ beforeAll(async () => {
         calls.push(argv);
         return { output: 'ok' };
       },
+      token: TEST_TOKEN,
     }),
   );
   base = `http://127.0.0.1:${server.address().port}`;
@@ -61,7 +64,7 @@ describe('tokeneconomizer read-only HTTP surface', () => {
     assert.equal(calls.length, 0);
     const text = await fetch(`${base}/toolprune`, {
       method: 'POST',
-      headers: { 'content-type': 'text/plain' },
+      headers: { 'content-type': 'text/plain', authorization: `Bearer ${TEST_TOKEN}` },
       body: '{"action":"apply"}',
     });
     assert.equal(text.status, 415);
@@ -77,14 +80,13 @@ describe('tokeneconomizer read-only HTTP surface', () => {
     calls.length = 0;
     await post('/toolprune', {});
     await post('/toolprune', { action: 'measure' });
-    await post('/config', {});
+    assert.equal((await post('/config', {})).status, 403);
     await post('/repos', {});
     assert.equal((await post('/doctor', { arguments: ['--evil'] })).status, 400);
     await post('/doctor', {});
     assert.deepEqual(calls, [
       ['toolprune', 'show'],
       ['toolprune', 'measure'],
-      ['config', 'show'],
       ['repos', 'list'],
       ['doctor'],
     ]);
@@ -120,12 +122,16 @@ describe('tokeneconomizer read-only HTTP surface', () => {
   });
 
   it('/health exposes no paths or settings', async () => {
-    const res = await fetch(`${base}/health`);
+    const res = await fetch(`${base}/health`, { headers: { authorization: `Bearer ${TEST_TOKEN}` } });
     assert.deepEqual(await res.json(), { service: 'tokeneconomizer', ok: true });
   });
 
   it('404 does not list commands', async () => {
-    const res = await fetch(`${base}/nope`);
+    const res = await fetch(`${base}/nope`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', authorization: `Bearer ${TEST_TOKEN}` },
+      body: '{}',
+    });
     assert.equal(res.status, 404);
     assert.deepEqual(await res.json(), { success: false, error: 'Not found' });
   });
@@ -136,9 +142,13 @@ describe('tokeneconomizer read-only HTTP surface', () => {
         run: async () => {
           throw { status: 500, error: 'secret-sentinel', output: 'secret-sentinel' };
         },
+        token: TEST_TOKEN,
       }),
     );
-    const res = await fetch(`http://127.0.0.1:${s.address().port}/doctor`, { method: 'POST' });
+    const res = await fetch(`http://127.0.0.1:${s.address().port}/doctor`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', authorization: `Bearer ${TEST_TOKEN}` },
+    });
     const text = await res.text();
     s.close();
     assert.equal(res.status, 500);

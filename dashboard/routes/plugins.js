@@ -48,6 +48,7 @@ export function createPluginsRouter({ pluginRegistry, logStructured = () => {} }
         timeoutMs: t.timeoutMs, parameters: t.parameters,
       })),
       events: p.events,
+      // headers are intentionally omitted: they contain credentials that must never be exposed
     };
   }
 
@@ -125,6 +126,7 @@ export function createPluginsRouter({ pluginRegistry, logStructured = () => {} }
         maxContentLength: MAX_RESPONSE_BYTES,
         maxBodyLength: MAX_RESPONSE_BYTES,
         validateStatus: () => true,
+        headers: plugin.headers,
         ...(isBodyless ? { params: args } : { data: args }),
       });
       const durationMs = Date.now() - started;

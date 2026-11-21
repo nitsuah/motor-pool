@@ -291,12 +291,14 @@ docker compose --env-file .env -f config/docker-compose.yml --profile tools up -
 - Install TokenEconomizer locally: `git clone https://github.com/microsoft/TokenEconomizer`
 - Set `TE_PYTHON` in `.env` to your python3 path (e.g., `TE_PYTHON=python3`)
 - The container mounts `tokeneconomizer_data` volume for learned data persistence
+- Set `TOKEN_ECONOMIZER_TOKEN` (24+ characters, e.g. `openssl rand -hex 24`) and `TOKEN_ECONOMIZER_HTTP_ENABLED=true` to enable the HTTP wrapper. The dashboard plugin sends `Authorization: Bearer ${TOKEN_ECONOMIZER_TOKEN}` from the server side only; it is never exposed to browser code.
+- Forwarded headers are ignored unless `TOKEN_ECONOMIZER_TRUSTED_PROXIES` lists the proxy IPs/CIDRs.
 
 TokenEconomizer runs model calls through your existing agent on the same plan/login —
 no API keys needed. All data stays in the `tokeneconomizer_data` volume.
 
 The plugin exposes read-only CLI commands as HTTP tools: `status`, `microskills`, `toolprune`
-(show/measure), `config` (show), `repomap`, `repos` (list), `doctor`. Mutating operations are
+(show/measure), `repomap`, `repos` (list), `doctor`. Mutating operations are
 disabled over HTTP, and the service has no published host port (private `tokeneconomizer-network`). See the plugin manifest at
 `dashboard/config/plugins/tokeneconomizer.plugin.json`.
 

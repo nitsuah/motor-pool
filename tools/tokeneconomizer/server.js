@@ -12,6 +12,7 @@ import { spawn } from 'child_process';
 import express from 'express';
 import { fileURLToPath, pathToFileURL } from 'url';
 import { dirname } from 'path';
+import { createHash, timingSafeEqual } from 'crypto';
 import { safeTeError } from './safe-error.mjs';
 import { redactSecrets } from './redact.mjs';
 
@@ -116,7 +117,8 @@ const COMMANDS = {
   config: (b) => {
     const op = b.operation === undefined ? 'show' : b.operation;
     if (typeof op === 'string' && MUTATING.has(op)) return disabled(`config ${op}`);
-    if (op === 'show') return { argv: ['config', 'show'] };
+    // Owner decision (#168, 2026-11-18): config show stays CLI-only too.
+    if (op === 'show') return disabled('config show');
     return bad('operation must be show');
   },
   repomap: () => ({ argv: ['repomap'] }),
@@ -129,8 +131,29 @@ const COMMANDS = {
   doctor: () => ({ argv: ['doctor'] }),
 };
 
-export function createApp({ run = runTeCommand, maxConcurrent = readMaxConcurrent() } = {}) {
+function sha256Buf(str) { return createHash('sha256').update(String(str)).digest(); }
+
+export function createApp({ run = runTeCommand, maxConcurrent = readMaxConcurrent(), token = process.env.TOKEN_ECONOMIZER_TOKEN } = {}) {
   const app = express();
+  // Forwarded headers are trusted only from an explicit proxy allowlist (#168).
+  const trustedProxies = (process.env.TOKEN_ECONOMIZER_TRUSTED_PROXIES || '')
+    .split(',').map((p) => p.trim()).filter(Boolean);
+  app.set('trust proxy', trustedProxies.length ? trustedProxies : false);
+
+  // Bearer auth before body parsing: unauthenticated requests never reach the JSON parser.
+  // One check covers every route, /health included. Fail closed with no token.
+  app.use((req, res, next) => {
+    const unauthorized = () => res.status(401).json({ success: false, error: 'Unauthorized', code: 'TE_UNAUTHORIZED' });
+    if (!token) return unauthorized();
+    const header = req.headers['authorization'];
+    if (!header) return unauthorized();
+    const [scheme, presented] = header.split(' ');
+    if (scheme !== 'Bearer' || !presented) return unauthorized();
+    if (!timingSafeEqual(sha256Buf(token), sha256Buf(presented))) return unauthorized();
+    // Never log the token or the presented value.
+    next();
+  });
+
   app.use(express.json({ limit: '16kb' }));
 
   let inFlight = 0;
@@ -187,6 +210,16 @@ export function createApp({ run = runTeCommand, maxConcurrent = readMaxConcurren
 }
 
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
+  const token = process.env.TOKEN_ECONOMIZER_TOKEN;
+  // Owner decision (#168): the HTTP router is off unless explicitly enabled.
+  if (process.env.TOKEN_ECONOMIZER_HTTP_ENABLED !== 'true') {
+    console.log('TokenEconomizer HTTP API disabled (set TOKEN_ECONOMIZER_HTTP_ENABLED=true to enable)');
+    process.exit(0);
+  }
+  if (!token || token.length < 24) {
+    console.error(`TOKEN_ECONOMIZER_TOKEN unset or shorter than 24 characters; refusing to start`);
+    process.exit(1);
+  }
   const host = process.env.TOKEN_ECONOMIZER_HOST || DEFAULT_HOST;
   createApp().listen(PORT, host, () => {
     console.log(`TokenEconomizer HTTP wrapper listening on ${host}:${PORT}`);
