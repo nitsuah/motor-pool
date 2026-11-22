@@ -1,3 +1,4 @@
+import { readFileSync } from 'node:fs';
 import pg from 'pg';
 
 const { Pool } = pg;
@@ -7,7 +8,34 @@ function isTruthyEnv(value) {
 }
 
 const DATABASE_URL = process.env.DATABASE_URL || '';
-const DB_SSL = isTruthyEnv(process.env.DATABASE_SSL);
+
+// TLS options for the Postgres connection. Certificates are verified by default.
+// DATABASE_SSL_CA is a PEM string or a path to a PEM file (for a private CA).
+// DATABASE_SSL_INSECURE=1 skips verification for local development only and is
+// ignored under NODE_ENV=production.
+function buildSslOption(env = process.env) {
+  if (!isTruthyEnv(env.DATABASE_SSL)) return false;
+  const insecure = isTruthyEnv(env.DATABASE_SSL_INSECURE) && env.NODE_ENV !== 'production';
+  if (insecure) return { rejectUnauthorized: false };
+  const ssl = { rejectUnauthorized: true };
+  const ca = String(env.DATABASE_SSL_CA || '').trim();
+  if (ca) ssl.ca = readCa(ca);
+  return ssl;
+}
+
+// Inline PEM is used as-is; anything else must be a readable PEM file. A bad
+// value throws (initPersistence reports it) instead of reaching pg as a CA.
+function readCa(value) {
+  if (value.startsWith('-----BEGIN ')) return value;
+  let pem;
+  try {
+    pem = readFileSync(value, 'utf8');
+  } catch (err) {
+    throw new Error(`DATABASE_SSL_CA is neither inline PEM nor a readable file (${err.code || err.message})`, { cause: err });
+  }
+  if (!pem.includes('-----BEGIN ')) throw new Error('DATABASE_SSL_CA file does not contain a PEM certificate');
+  return pem;
+}
 
 let pool = null;
 let enabled = false;
@@ -30,7 +58,7 @@ async function initPersistence(logStructured) {
   try {
     pool = new Pool({
       connectionString: DATABASE_URL,
-      ssl: DB_SSL ? { rejectUnauthorized: false } : false,
+      ssl: buildSslOption(),
       max: 5,
     });
 
@@ -171,6 +199,7 @@ async function markSessionEnded(sessionId, endedAt = new Date(), logStructured) 
 }
 
 export {
+  buildSslOption,
   getStatus,
   initPersistence,
   markSessionEnded,
