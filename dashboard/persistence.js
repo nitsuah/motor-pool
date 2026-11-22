@@ -31,7 +31,7 @@ function readCa(value) {
   try {
     pem = readFileSync(value, 'utf8');
   } catch (err) {
-    throw new Error(`DATABASE_SSL_CA is neither inline PEM nor a readable file (${err.code || err.message})`);
+    throw new Error(`DATABASE_SSL_CA is neither inline PEM nor a readable file (${err.code || err.message})`, { cause: err });
   }
   if (!pem.includes('-----BEGIN ')) throw new Error('DATABASE_SSL_CA file does not contain a PEM certificate');
   return pem;
