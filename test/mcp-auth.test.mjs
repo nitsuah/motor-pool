@@ -64,4 +64,9 @@ describe('tool server compose wiring', () => {
     assert.doesNotMatch(raw, /^\s*-\s*"3200:3200"/m);
     assert.equal((raw.match(/- MCP_AUTH_TOKEN=\$\{MCP_AUTH_TOKEN:-\}/g) || []).length, 2);
   });
+  it('uses a bounded restart policy for both tool servers', () => {
+    for (const name of ['tool-content-gen', 'tool-website']) {
+      assert.match(raw, new RegExp('container_name: ' + name + '\n(?:    #[^\n]*\n)*    restart: on-failure:5'));
+    }
+  });
 });

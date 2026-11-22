@@ -426,7 +426,8 @@ services:
       context: ../tools/content-gen
       dockerfile: Dockerfile
     container_name: tool-content-gen
-    restart: unless-stopped
+    # on-failure (bounded): a missing MCP_AUTH_TOKEN stops the server at startup; do not crash-loop.
+    restart: on-failure:5
     profiles:
       - tools
       - prebuild
@@ -473,7 +474,7 @@ services:
       context: ../tools/website
       dockerfile: Dockerfile
     container_name: tool-website
-    restart: unless-stopped
+    restart: on-failure:5
     profiles:
       - tools
       - prebuild
