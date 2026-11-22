@@ -109,6 +109,11 @@ function resolveRequestedExperience(requestedExperience) {
   return PUBLIC_DEMO_MODE ? DEMO_EXPERIENCE : requestedExperience;
 }
 
+// Background tasks default to developer, but go through the same demo policy as interactive sessions.
+function resolveTaskExperience(task) {
+  return resolveRequestedExperience(task?.experience || 'developer');
+}
+
 const IN_DOCKER = existsSync('/.dockerenv');
 
 const TOOL_CALL_TIMEOUT_MS = Number(process.env.TOOL_CALL_TIMEOUT_MS || 11 * 60_000);
@@ -329,7 +334,7 @@ async function prepareSessionForLlmCall(session) {
   let apiStyle = LLM_CONFIG[session.endpoint]?.apiStyle || 'ollama';
   const modelResolution = await ensureRunnableModelForSession(session);
   if (modelResolution.reason === 'no_models') {
-    const fallbackEndpoint = getAvailabilityFallbackEndpoint();
+    const fallbackEndpoint = getAvailabilityFallbackEndpoint(session);
     if (fallbackEndpoint && fallbackEndpoint !== session.endpoint) {
       const previousEndpoint = session.endpoint;
       session.endpoint = fallbackEndpoint;
@@ -365,8 +370,13 @@ function coerceModelForEndpoint(endpoint, requestedModel) {
   return requestedModel;
 }
 
-function getAvailabilityFallbackEndpoint() {
-  const candidate = Object.entries(LLM_CONFIG).find(([, config]) => config.apiStyle === 'openai');
+// Only endpoints the session is allowed to use (its experience policy, and the public-demo
+// policy when enabled) are candidates; with none, the session keeps its endpoint.
+function getAvailabilityFallbackEndpoint(session) {
+  const experience = resolveRequestedExperience(session?.experience);
+  const permitted = (key) => isEndpointAllowed(experience, key)
+    && (!PUBLIC_DEMO_MODE || isEndpointAllowed(DEMO_EXPERIENCE, key));
+  const candidate = Object.entries(LLM_CONFIG).find(([key, config]) => config.apiStyle === 'openai' && permitted(key));
   return candidate?.[0] || null;
 }
 
@@ -741,6 +751,7 @@ export {
   resolveConfiguredSafetyMode,
   resolveEffectiveSafetyMode,
   resolveSessionEndpoint,
+  resolveTaskExperience,
   runPromptHandlers,
   sanitizeResponse,
 };
@@ -792,7 +803,7 @@ if (process.env.AGENT_DASHBOARD_DISABLE_LISTEN !== '1') {
     const sessionId = `sess_task_${Date.now()}_${randomBytes(3).toString('hex')}`;
     const endpoint = 'primary';
     const resolvedLlmUrl = await resolveEndpointUrl(endpoint);
-    const experience = task.experience || 'developer';
+    const experience = resolveTaskExperience(task);
     const session = {
       id: sessionId,
       name: `[task] ${task.title.slice(0, 40)}`,
