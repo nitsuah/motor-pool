@@ -190,7 +190,7 @@ automatically on server start via `db.js`.
 | `PRIMARY_LLM_MODEL` | `llama3.1:8b-instruct-q4_K_M` | Ollama model pulled and warmed at stack startup |
 | `OLLAMA_KEEP_ALIVE` | `30m` | Keep the startup model resident between requests |
 | `OLLAMA_CONTEXT_LENGTH` | `16384` | Context window in tokens (Ollama's default depends on VRAM: 4096 tokens below 24 GiB, so on small or CPU-only hosts longer prompts are silently truncated and tool definitions dropped) |
-| `POSTGRES_DB/USER/PASSWORD` | `agent_board / agent / agent` | Database credentials |
+| `POSTGRES_DB/USER/PASSWORD` | `agent_board / agent / (none, required)` | Database credentials; the port is published on 127.0.0.1 only |
 | `PORT` | `3000` | Dashboard HTTP port |
 | `AGENT_BOARD_ENABLE_DOCKER_CONTROL` | `false` | Enable start/stop/restart buttons in UI |
 | `OTEL_ENABLED` | `false` | Enable OpenTelemetry tracing (exports to Jaeger) |

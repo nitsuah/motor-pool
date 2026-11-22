@@ -9,6 +9,15 @@ function isTruthyEnv(value) {
 
 const DATABASE_URL = process.env.DATABASE_URL || '';
 
+// Compose embeds POSTGRES_PASSWORD in DATABASE_URL without encoding it, so only
+// URL-safe characters are accepted.
+function assertUrlSafeDbPassword(env = process.env) {
+  const password = env.POSTGRES_PASSWORD;
+  if (password && !/^[A-Za-z0-9._~-]+$/.test(password)) {
+    throw new Error('POSTGRES_PASSWORD may contain only letters, digits and . _ ~ - (it is embedded in DATABASE_URL)');
+  }
+}
+
 // TLS options for the Postgres connection. Certificates are verified by default.
 // DATABASE_SSL_CA is a PEM string or a path to a PEM file (for a private CA).
 // DATABASE_SSL_INSECURE=1 skips verification for local development only and is
@@ -54,6 +63,7 @@ async function initPersistence(logStructured) {
     enabled = false;
     return getStatus();
   }
+  assertUrlSafeDbPassword();
 
   try {
     pool = new Pool({
@@ -199,6 +209,7 @@ async function markSessionEnded(sessionId, endedAt = new Date(), logStructured) 
 }
 
 export {
+  assertUrlSafeDbPassword,
   buildSslOption,
   getStatus,
   initPersistence,

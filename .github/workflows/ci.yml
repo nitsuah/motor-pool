@@ -40,7 +40,8 @@ jobs:
       - name: Create .env for compose
         # config/docker-compose.yml's env_file entries resolve as ../.env relative to
         # the compose file (config/), i.e. repo-root .env — not config/.env.
-        run: touch .env
+        # POSTGRES_PASSWORD is required by the compose file; generate a throwaway one.
+        run: echo "POSTGRES_PASSWORD=$(openssl rand -hex 16)" > .env
       - name: Create coverage output dir
         # The `test` service bind-mounts ./dashboard/coverage into the container so the
         # lcov report survives after --rm. Pre-create it so the mount lands with the
@@ -51,9 +52,9 @@ jobs:
         # test:coverage runs test:unit under c8 and writes coverage/lcov.info (see
         # dashboard/package.json) — same fail-fast-on-test-failure behavior as plain
         # test:unit, plus the lcov report the next step uploads.
-        run: docker compose -f config/docker-compose.yml --profile test run --build --rm test npm run test:coverage
+        run: docker compose --env-file .env -f config/docker-compose.yml --profile test run --build --rm test npm run test:coverage
       - name: Run SSRF regression tests
-        run: docker compose -f config/docker-compose.yml --profile test run --rm test npm run test:ssrf
+        run: docker compose --env-file .env -f config/docker-compose.yml --profile test run --rm test npm run test:ssrf
       - name: Upload coverage report
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
@@ -61,20 +62,20 @@ jobs:
           path: dashboard/coverage/lcov.info
           if-no-files-found: error
       - name: Docker Compose Build
-        run: docker compose -f config/docker-compose.yml build agent-dashboard
+        run: docker compose --env-file .env -f config/docker-compose.yml build agent-dashboard
       - name: Docker Compose Up
-        run: docker compose -f config/docker-compose.yml up -d agent-dashboard
+        run: docker compose --env-file .env -f config/docker-compose.yml up -d agent-dashboard
       - name: Wait for healthy
         run: |
           for i in $(seq 1 30); do
-            if docker compose -f config/docker-compose.yml ps agent-dashboard | grep -q healthy; then
+            if docker compose --env-file .env -f config/docker-compose.yml ps agent-dashboard | grep -q healthy; then
               echo "agent-dashboard is healthy"
               exit 0
             fi
             sleep 2
           done
           echo "agent-dashboard did not become healthy in time"
-          docker compose -f config/docker-compose.yml logs agent-dashboard
+          docker compose --env-file .env -f config/docker-compose.yml logs agent-dashboard
           exit 1
       - name: Check Docker Compose Services
-        run: docker compose -f config/docker-compose.yml ps
+        run: docker compose --env-file .env -f config/docker-compose.yml ps
