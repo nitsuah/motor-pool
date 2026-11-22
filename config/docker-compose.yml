@@ -10,9 +10,11 @@ services:
     environment:
       - POSTGRES_DB=agent_board
       - POSTGRES_USER=agent
-      - POSTGRES_PASSWORD=agent
+      # No default: set POSTGRES_PASSWORD in the root .env (use letters and digits so it is URL-safe).
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}
     ports:
-      - "5432:5432"
+      # Loopback only; containers reach the database over the compose network.
+      - "127.0.0.1:5432:5432"
     volumes:
       - agent_db_data:/var/lib/postgresql/data
     healthcheck:
@@ -332,7 +334,7 @@ services:
       - PORT=3000
       # Bind all container interfaces; the port is published on 127.0.0.1 only (see ports)
       - HOST=0.0.0.0
-      - DATABASE_URL=postgresql://agent:agent@agent-db:5432/agent_board
+      - DATABASE_URL=postgresql://agent:${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}@agent-db:5432/agent_board
       - OTEL_ENABLED=${OTEL_ENABLED:-false}
       - OTEL_ENDPOINT=${OTEL_ENDPOINT:-http://jaeger:4318}
       - WORKSPACE_ROOT=/workspace
