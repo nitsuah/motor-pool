@@ -31,7 +31,9 @@ function isBlockedAddress(host) {
   const v4 = /^(\d+)\.(\d+)\.(\d+)\.(\d+)$/.exec(h);
   if (v4) {
     const [a, b] = [Number(v4[1]), Number(v4[2])];
-    return a === 0 || (a === 169 && b === 254) || (a === 100 && b === 100);
+    // 100.100.100.200 is Alibaba Cloud metadata; the rest of 100.64/10 (CGNAT,
+    // Tailscale) can host local runtimes, so only that one address is blocked.
+    return a === 0 || (a === 169 && b === 254) || h === '100.100.100.200';
   }
   // fe80::/10 link-local, :: unspecified, fd00:ec2::254 (AWS IMDS)
   return h === '::' || /^fe[89ab][0-9a-f]:/.test(h) || h.startsWith('fd00:ec2:');

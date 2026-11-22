@@ -37,7 +37,7 @@ try {
     assert.equal(await post({ key: 'meta_probe', url }), 400, `${url} refused`);
   }
 
-  for (const url of ['http://127.0.0.1:11434', 'http://192.168.1.20:11434', 'https://api.example.com']) {
+  for (const url of ['http://127.0.0.1:11434', 'http://192.168.1.20:11434', 'http://100.100.5.3:11434', 'https://api.example.com']) {
     assert.equal(await post({ key: 'local_ok', url }), 200, `${url} accepted`);
   }
   await fetch(`${base}/api/config/endpoints/local_ok`, { method: 'DELETE' });
