@@ -260,7 +260,10 @@ export function createWorkspaceRouter(WORKSPACE_ROOT) {
 
   router.post('/workspace/exec', express.json(), async (req, res) => {
     if (!shellExecEnabled()) {
-      return res.status(403).json({ error: 'Shell execution is disabled. Set WORKSPACE_EXEC=1 to enable it.' });
+      const reason = ['1', 'true', 'yes', 'on'].includes(String(process.env.PUBLIC_DEMO_MODE ?? '').trim().toLowerCase())
+        ? 'Shell execution is unavailable in public demo mode.'
+        : 'Shell execution is disabled. Set WORKSPACE_EXEC=1 to enable it.';
+      return res.status(403).json({ error: reason });
     }
     const auth = authorizeExec(req);
     if (!auth.ok) return res.status(auth.status).json({ error: auth.error });
