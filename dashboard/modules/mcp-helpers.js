@@ -37,7 +37,7 @@ export function mcpAuthHeaders(baseUrl, env = process.env) {
   if (!token) return {};
   const hosts = String(env.MCP_AUTH_HOSTS ?? 'tool-content-gen,tool-website,localhost,127.0.0.1')
     .split(',').map(h => h.trim().toLowerCase()).filter(Boolean);
-  let host = '';
+  let host;
   try { host = new URL(baseUrl).hostname.toLowerCase(); } catch { return {}; }
   return hosts.includes(host) ? { Authorization: `Bearer ${token}` } : {};
 }

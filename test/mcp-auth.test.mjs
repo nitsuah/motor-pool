@@ -21,6 +21,18 @@ for (const [name, factory] of [['content-gen', contentGenAuth], ['website', webs
     it('accepts the configured token', () => {
       assert.equal(run(factory({ MCP_AUTH_TOKEN: 'tok-123' }), 'Bearer tok-123').nexted, true);
     });
+    it('accepts any scheme case and extra spaces; refuses an empty credential', () => {
+      const mw = factory({ MCP_AUTH_TOKEN: 'tok-123' });
+      assert.equal(run(mw, 'bearer   tok-123 ').nexted, true);
+      assert.deepEqual(run(mw, 'Bearer '), { status: 401, nexted: false });
+      assert.deepEqual(run(mw, 'Bearer'), { status: 401, nexted: false });
+    });
+    it('handles a long run of spaces in linear time', () => {
+      const mw = factory({ MCP_AUTH_TOKEN: 'tok-123' });
+      const t0 = Date.now();
+      assert.deepEqual(run(mw, 'bearer ' + ' '.repeat(200_000) + 'x'), { status: 401, nexted: false });
+      assert.ok(Date.now() - t0 < 500);
+    });
     it('passes through when no token is configured', () => {
       assert.equal(run(factory({}), undefined).nexted, true);
     });
