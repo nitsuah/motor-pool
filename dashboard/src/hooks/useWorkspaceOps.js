@@ -215,7 +215,10 @@ export function useWorkspaceOps() {
     setTermBusy(true);
     try {
       const res = await postExec(cmd);
-      const data = await res.json();
+      const body = await res.json().catch(() => ({}));
+      // A refused request (401/403/...) carries only `error`; show it as output.
+      const hasOutput = 'stdout' in body || 'stderr' in body;
+      const data = res.ok || hasOutput ? body : { stderr: body.error || `Request failed (HTTP ${res.status})`, exitCode: body.exitCode ?? 1 };
       setTermHistory(h => h.map((e, i) => i === h.length - 1 ? { ...e, ...data } : e));
     } catch (err) {
       setTermHistory(h => h.map((e, i) => i === h.length - 1 ? { ...e, stderr: err.message, exitCode: 1 } : e));
