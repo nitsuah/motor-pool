@@ -175,6 +175,36 @@ export function useWorkspaceOps() {
     }
   };
 
+  // With WORKSPACE_EXEC_TOKEN set on the server, the terminal must send that
+  // token. The user types it once per tab (kept in sessionStorage); the server
+  // never hands it out.
+  const EXEC_TOKEN_KEY = 'workspace_exec_token';
+  const readExecToken = () => {
+    try { return sessionStorage.getItem(EXEC_TOKEN_KEY) || ''; } catch { return ''; }
+  };
+  const postExec = async (cmd) => {
+    const send = (token) => fetch('/api/workspace/exec', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      },
+      body: JSON.stringify({ command: cmd }),
+    });
+    let res = await send(readExecToken());
+    if (res.status === 401) {
+      const entered = window.prompt('Workspace exec token (WORKSPACE_EXEC_TOKEN):') || '';
+      if (entered.trim()) {
+        try { sessionStorage.setItem(EXEC_TOKEN_KEY, entered.trim()); } catch { /* storage blocked */ }
+        res = await send(entered.trim());
+        if (res.status === 401) {
+          try { sessionStorage.removeItem(EXEC_TOKEN_KEY); } catch { /* storage blocked */ }
+        }
+      }
+    }
+    return res;
+  };
+
   const runTermCommand = async (cmd) => {
     if (!cmd.trim() || termBusy) return;
     termCmdHistoryRef.current = [...termCmdHistoryRef.current.filter(c => c !== cmd), cmd].slice(-100);
@@ -184,12 +214,13 @@ export function useWorkspaceOps() {
     setTermInput('');
     setTermBusy(true);
     try {
-      const res = await fetch('/api/workspace/exec', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ command: cmd }),
-      });
-      const data = await res.json();
+      const res = await postExec(cmd);
+      // A refusal may have no JSON body; a completed command's body must parse
+      // (a read failure there reaches the catch below and is shown as an error).
+      const body = res.ok ? await res.json() : await res.json().catch(() => ({}));
+      // A refused request (401/403/...) carries only `error`; show it as output.
+      const hasOutput = 'stdout' in body || 'stderr' in body;
+      const data = res.ok || hasOutput ? body : { stderr: body.error || `Request failed (HTTP ${res.status})`, exitCode: body.exitCode ?? 1 };
       setTermHistory(h => h.map((e, i) => i === h.length - 1 ? { ...e, ...data } : e));
     } catch (err) {
       setTermHistory(h => h.map((e, i) => i === h.length - 1 ? { ...e, stderr: err.message, exitCode: 1 } : e));
