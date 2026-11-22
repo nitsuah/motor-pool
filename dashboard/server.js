@@ -507,11 +507,6 @@ const hostGuardOptions = {
 app.use(createHostGuard(hostGuardOptions));
 // Non-read requests from a browser origin must be same-host or allowlisted.
 app.use(createOriginGuard(() => corsAllowedOrigins()));
-// Everything below requires the dashboard token (login page, /auth/login and /health excepted).
-const dashboardAuth = createDashboardAuth();
-app.use(dashboardAuth.loginRouter());
-app.use(dashboardAuth.middleware());
-app.get('/health', (_req, res) => res.json({ status: 'ok' }));
 // Rate limiting middleware to prevent DoS
 // Localhost is exempt: this is a single-user local dashboard, and legitimate
 // local tooling (tests, dev clients) makes many requests in quick succession.
@@ -531,7 +526,13 @@ const apiLimiter = rateLimit({
   message: { error: 'Too many requests, please try again later.' },
   skip: (req) => isLocalhost(req.ip || req.socket.remoteAddress || ''),
 });
-app.use('/api/', apiLimiter);
+// Also covers /auth/ (login), so token guessing is throttled; this sits before the auth middleware.
+app.use(['/api/', '/auth/'], apiLimiter);
+// Everything below requires the dashboard token (login page, /auth/login and /health excepted).
+const dashboardAuth = createDashboardAuth();
+app.use(dashboardAuth.loginRouter());
+app.use(dashboardAuth.middleware());
+app.get('/health', (_req, res) => res.json({ status: 'ok' }));
 
 
 // Capture raw body on the webhook trigger path before JSON parsing (needed for HMAC verification)
@@ -734,6 +735,7 @@ app.get('/', (req, res) => {
 
 export {
   attachEventWebSocketServer,
+  dashboardAuth,
   applyOutputControls,
   app,
   calculateAverageMessagesPerSession,

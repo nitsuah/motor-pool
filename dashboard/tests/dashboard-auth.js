@@ -7,11 +7,11 @@ import http from 'node:http';
 import { WebSocket } from 'ws';
 
 process.env.AGENT_DASHBOARD_DISABLE_LISTEN = '1';
-process.env.DASHBOARD_TOKEN = 'test-token-0123456789';
+process.env.DASHBOARD_TOKEN = 'test-token-0123456789abcdef';
 delete process.env.DASHBOARD_ALLOW_LOOPBACK_NOAUTH;
 delete process.env.NODE_ENV;
 
-const { app } = await import('../server.js');
+const { app, dashboardAuth: auth } = await import('../server.js');
 const { attachEventWebSocketServer } = await import('../modules/event-bus.js');
 const { createUpgradeVerifier } = await import('../modules/origin-guard.js');
 const { createDashboardAuth, isLoopbackHost, isLoopbackAddress, safeEqual } = await import('../modules/dashboard-auth.js');
@@ -21,8 +21,7 @@ await new Promise((r) => server.once('listening', r));
 const port = server.address().port;
 const TOKEN = process.env.DASHBOARD_TOKEN;
 
-// Same wiring as server.js, with the auth check from a second instance sharing the token.
-const auth = createDashboardAuth({ env: { DASHBOARD_TOKEN: TOKEN } });
+// Same wiring as server.js (the app's own auth instance, so its sessions are honored).
 const opts = { getCorsOrigins: () => [], getAllowedHosts: () => [] };
 const verify = createUpgradeVerifier(opts);
 attachEventWebSocketServer(server, (r) => verify(r) && auth.isAuthorized(r));
@@ -81,11 +80,26 @@ try {
   const cookiePair = cookie.split(';')[0];
   assert.equal((await req('/api/health', { headers: { cookie: cookiePair } })).status, 200, 'session cookie accepted');
 
+  // Sessions are random server-side ids with enforced expiry; logout ends them
+  const sid = cookiePair.split('=')[1];
+  assert.match(sid, /^[0-9a-f]{64}$/, 'random session id');
+  assert.equal((await req('/api/health', { headers: { cookie: `${cookiePair.split('=')[0]}=${'0'.repeat(64)}` } })).status, 401, 'forged session refused');
+  auth.sessions.set(sid, Date.now() - 1);
+  assert.equal((await req('/api/health', { headers: { cookie: cookiePair } })).status, 401, 'expired session refused');
+  assert.equal(auth.sessions.has(sid), false, 'expired session removed');
+  const ok2 = await req('/auth/login', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ token: TOKEN }) });
+  const pair2 = String(ok2.headers['set-cookie'][0]).split(';')[0];
+  assert.equal((await req('/api/health', { headers: { cookie: pair2 } })).status, 200);
+  const out = await req('/auth/logout', { method: 'POST', headers: { cookie: pair2 } });
+  assert.equal(out.status, 200);
+  assert.equal((await req('/api/health', { headers: { cookie: pair2 } })).status, 401, 'logged-out session refused');
+  const pair3 = String((await req('/auth/login', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ token: TOKEN }) })).headers['set-cookie'][0]).split(';')[0];
+
   // WebSocket: denied without credentials, allowed with bearer or session cookie
   assert.equal(await wsOutcome({}), 'http-403', 'ws denied without token');
   assert.equal(await wsOutcome({ authorization: 'Bearer wrong' }), 'http-403', 'ws denied with wrong token');
   assert.equal(await wsOutcome({ authorization: `Bearer ${TOKEN}` }), 'open', 'ws allowed with bearer');
-  assert.equal(await wsOutcome({ cookie: cookiePair }), 'open', 'ws allowed with session cookie');
+  assert.equal(await wsOutcome({ cookie: pair3 }), 'open', 'ws allowed with session cookie');
 
   // Loopback opt-out: honored only for a plain loopback request
   const optOut = createDashboardAuth({ env: { DASHBOARD_ALLOW_LOOPBACK_NOAUTH: '1' } });
@@ -95,6 +109,10 @@ try {
   assert.equal(optOut.isAuthorized(lo({ forwarded: 'for=203.0.113.9' })), false, 'refused with Forwarded');
   assert.equal(optOut.isAuthorized(lo({ host: 'dash.example.test' })), false, 'refused for non-loopback Host');
   assert.equal(optOut.isAuthorized({ headers: { host: 'localhost' }, socket: { remoteAddress: '192.168.1.5' } }), false, 'refused for non-loopback peer');
+  assert.equal(optOut.isAuthorized(lo({ 'x-forwarded-proto': 'https' })), false, 'refused with any X-Forwarded-* header');
+  assert.equal(optOut.isAuthorized(lo({ 'x-forwarded-for': '' })), false, 'refused with an empty forwarding header');
+  assert.equal(optOut.isAuthorized(lo({ forwarded: '' })), false, 'refused with an empty Forwarded header');
+  assert.equal(optOut.isAuthorized(lo({ 'x-real-ip': '' })), false, 'refused with X-Real-IP');
   const prod = createDashboardAuth({ env: { DASHBOARD_ALLOW_LOOPBACK_NOAUTH: '1', NODE_ENV: 'production' } });
   assert.equal(prod.isAuthorized(lo({})), false, 'opt-out ignored in production');
   const noOptOut = createDashboardAuth({ env: {} });
@@ -102,11 +120,25 @@ try {
 
   // Startup policy
   assert.throws(() => createDashboardAuth({ env: {} }).assertStartupPolicy('0.0.0.0'), /DASHBOARD_TOKEN/);
-  assert.doesNotThrow(() => createDashboardAuth({ env: { DASHBOARD_TOKEN: 'x' } }).assertStartupPolicy('0.0.0.0'));
+  assert.doesNotThrow(() => createDashboardAuth({ env: { DASHBOARD_TOKEN: 'x'.repeat(24) } }).assertStartupPolicy('0.0.0.0'));
   assert.doesNotThrow(() => createDashboardAuth({ env: {} }).assertStartupPolicy('127.0.0.1'));
   const gen = createDashboardAuth({ env: {} });
   assert.equal(gen.generated, true);
   assert.ok(gen.token.length >= 32);
+
+  // Token policy
+  assert.throws(() => createDashboardAuth({ env: { DASHBOARD_TOKEN: 'short-token' } }), /at least 24/);
+  assert.doesNotThrow(() => createDashboardAuth({ env: { DASHBOARD_TOKEN: 'x'.repeat(24) } }));
+
+  // Bearer parsing handles a long run of spaces in linear time
+  const t0 = Date.now();
+  assert.equal((await req('/api/health', { headers: { authorization: 'bearer ' + ' '.repeat(8_000) + 'x' } })).status, 401);
+  assert.ok(Date.now() - t0 < 1000);
+
+  // Repeated bad logins are throttled
+  let last;
+  for (let i = 0; i < 12; i++) last = await req('/auth/login', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ token: 'wrong' }) });
+  assert.equal(last.status, 429, 'login throttled after repeated failures');
 
   // Helpers
   assert.equal(isLoopbackHost('[::1]:3000'), true);

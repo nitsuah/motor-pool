@@ -34,6 +34,8 @@ const baseTestEnv = {
   DATABASE_URL: '',
   // Suites call the in-process app from loopback without a token.
   DASHBOARD_ALLOW_LOOPBACK_NOAUTH: '1',
+  // The opt-out is ignored in production; an inherited NODE_ENV must not change suite results.
+  NODE_ENV: 'test',
 };
 
 try {
