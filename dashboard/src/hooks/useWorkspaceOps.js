@@ -215,7 +215,9 @@ export function useWorkspaceOps() {
     setTermBusy(true);
     try {
       const res = await postExec(cmd);
-      const body = await res.json().catch(() => ({}));
+      // A refusal may have no JSON body; a completed command's body must parse
+      // (a read failure there reaches the catch below and is shown as an error).
+      const body = res.ok ? await res.json() : await res.json().catch(() => ({}));
       // A refused request (401/403/...) carries only `error`; show it as output.
       const hasOutput = 'stdout' in body || 'stderr' in body;
       const data = res.ok || hasOutput ? body : { stderr: body.error || `Request failed (HTTP ${res.status})`, exitCode: body.exitCode ?? 1 };
