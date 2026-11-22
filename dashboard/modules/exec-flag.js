@@ -1,6 +1,6 @@
 import { timingSafeEqual, createHash } from 'node:crypto';
 
-const isOn = (v) => ['1', 'true', 'yes', 'on'].includes(String(v ?? '').trim().toLowerCase());
+export const isOn = (v) => ['1', 'true', 'yes', 'on'].includes(String(v ?? '').trim().toLowerCase());
 
 /**
  * Opt-in switch for workspace shell execution: the `/workspace/exec` route and
@@ -39,7 +39,7 @@ function bearerToken(header) {
  * Returns { ok: true } or { ok: false, status, error }.
  */
 export function authorizeExec(req, env = process.env) {
-  const token = String(env.WORKSPACE_EXEC_TOKEN ?? '');
+  const token = String(env.WORKSPACE_EXEC_TOKEN ?? '').trim();
   if (token) {
     const presented = bearerToken(req.headers?.authorization);
     if (presented && sameSecret(presented, token)) return { ok: true };

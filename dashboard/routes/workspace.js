@@ -4,7 +4,7 @@ import { resolve as resolvePath, relative as relativePath, dirname, basename, se
 import { realpathSync, lstatSync, constants as fsConstants } from 'fs';
 import { exec, execFile } from 'child_process';
 import { promisify } from 'util';
-import { shellExecEnabled, authorizeExec } from '../modules/exec-flag.js';
+import { shellExecEnabled, authorizeExec, isOn } from '../modules/exec-flag.js';
 import { openInside, mkdirInside, removeInside, renameInside, readdirInside, warnIfPinningOptOut } from '../modules/workspace-fs.js';
 
 const execAsync = promisify(exec);
@@ -260,7 +260,7 @@ export function createWorkspaceRouter(WORKSPACE_ROOT) {
 
   router.post('/workspace/exec', express.json(), async (req, res) => {
     if (!shellExecEnabled()) {
-      const reason = ['1', 'true', 'yes', 'on'].includes(String(process.env.PUBLIC_DEMO_MODE ?? '').trim().toLowerCase())
+      const reason = isOn(process.env.PUBLIC_DEMO_MODE)
         ? 'Shell execution is unavailable in public demo mode.'
         : 'Shell execution is disabled. Set WORKSPACE_EXEC=1 to enable it.';
       return res.status(403).json({ error: reason });
