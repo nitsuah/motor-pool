@@ -11,6 +11,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Security
 
+- Dashboard HTTP and WebSocket now require a token (`DASHBOARD_TOKEN`, or one generated and printed at startup); sign in at `/login` or send `Authorization: Bearer`. Only the login page and `/health` are open. Startup refuses a non-loopback `HOST` without a token. `DASHBOARD_ALLOW_LOOPBACK_NOAUTH=1` is a local-dev opt-out honored only for plain loopback requests outside production. Container healthcheck uses `/health`.
 - Background tasks apply the public-demo experience policy, and the availability fallback only picks endpoints the session is permitted to use (otherwise the session keeps its endpoint).
 - content-gen port 3200 is published on 127.0.0.1 only, and `MCP_AUTH_TOKEN` is passed through Compose to both tool servers. content-gen and website refuse to start on a non-loopback bind without `MCP_AUTH_TOKEN` (`CONTENT_GEN_HOST` / `WEBSITE_HOST` select the bind address).
 - TokenEconomizer HTTP wrapper now requires `Authorization: Bearer <TOKEN>` on every route, including `GET /health` (probes must send the token). Refuses to start if `TOKEN_ECONOMIZER_TOKEN` is unset or not 24-505 characters long (the dashboard caps the `Bearer` header at 512). Dashboard plugin sends the header from `TOKEN_ECONOMIZER_TOKEN` server-side only; never exposed to browser. Compose passes enable flag and token; healthcheck authenticates; restart policy `on-failure` prevents restart loop when disabled (#204).

@@ -1,6 +1,7 @@
 import express from 'express';
 import cors from 'cors';
 import { createHostGuard, createOriginGuard, createUpgradeVerifier } from './modules/origin-guard.js';
+import { createDashboardAuth } from './modules/dashboard-auth.js';
 import axios from 'axios';
 import dotenv from 'dotenv';
 import { fileURLToPath } from 'url';
@@ -506,6 +507,11 @@ const hostGuardOptions = {
 app.use(createHostGuard(hostGuardOptions));
 // Non-read requests from a browser origin must be same-host or allowlisted.
 app.use(createOriginGuard(() => corsAllowedOrigins()));
+// Everything below requires the dashboard token (login page, /auth/login and /health excepted).
+const dashboardAuth = createDashboardAuth();
+app.use(dashboardAuth.loginRouter());
+app.use(dashboardAuth.middleware());
+app.get('/health', (_req, res) => res.json({ status: 'ok' }));
 // Rate limiting middleware to prevent DoS
 // Localhost is exempt: this is a single-user local dashboard, and legitimate
 // local tooling (tests, dev clients) makes many requests in quick succession.
@@ -777,6 +783,18 @@ if (process.env.AGENT_DASHBOARD_DISABLE_LISTEN !== '1') {
 
   // Loopback by default; containers set HOST=0.0.0.0 and publish the port on 127.0.0.1.
   const HOST = process.env.HOST || '127.0.0.1';
+  try {
+    dashboardAuth.assertStartupPolicy(HOST);
+  } catch (err) {
+    logStructured('error', 'dashboard_auth_config_invalid', { host: HOST, error: err.message });
+    process.exit(1);
+  }
+  if (dashboardAuth.generated) {
+    console.log(`Dashboard access token (generated for this run): ${dashboardAuth.token}`);
+  }
+  if (dashboardAuth.optOutRequested() && dashboardAuth.isProduction()) {
+    logStructured('warn', 'dashboard_auth_optout_ignored', { reason: 'production' });
+  }
   const server = app.listen(PORT, HOST, () => {
     logStructured('info', 'server_started', {
       host: HOST,
@@ -795,7 +813,8 @@ if (process.env.AGENT_DASHBOARD_DISABLE_LISTEN !== '1') {
       }));
   });
 
-  attachEventWebSocketServer(server, createUpgradeVerifier(hostGuardOptions));
+  const verifyOriginAndHost = createUpgradeVerifier(hostGuardOptions);
+  attachEventWebSocketServer(server, (request) => verifyOriginAndHost(request) && dashboardAuth.isAuthorized(request));
 
   // Start the background task auto-runner (picks up pending tasks by priority)
   // dispatchMessage: creates or reuses a session, then runs the agent loop non-streaming
