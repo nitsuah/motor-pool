@@ -38,3 +38,30 @@ for (const [name, factory] of [['content-gen', contentGenAuth], ['website', webs
     });
   });
 }
+
+import { assertAuthConfigured as contentGenAssert } from '../tools/content-gen/mcp-auth.js';
+import { assertAuthConfigured as websiteAssert } from '../tools/website/mcp-auth.js';
+import { readFileSync } from 'node:fs';
+
+for (const [name, assertFn] of [['content-gen', contentGenAssert], ['website', websiteAssert]]) {
+  describe(`${name} fail-closed bind`, () => {
+    it('refuses a non-loopback bind without a token', () => {
+      assert.throws(() => assertFn('0.0.0.0', {}), /MCP_AUTH_TOKEN/);
+      assert.throws(() => assertFn('192.168.1.5', { MCP_AUTH_TOKEN: '' }), /MCP_AUTH_TOKEN/);
+    });
+    it('allows a non-loopback bind with a token and a loopback bind without one', () => {
+      assert.doesNotThrow(() => assertFn('0.0.0.0', { MCP_AUTH_TOKEN: 'tok' }));
+      assert.doesNotThrow(() => assertFn('127.0.0.1', {}));
+      assert.doesNotThrow(() => assertFn('::1', {}));
+    });
+  });
+}
+
+describe('tool server compose wiring', () => {
+  const raw = readFileSync(new URL('../config/docker-compose.yml', import.meta.url), 'utf8');
+  it('publishes content-gen on loopback only and passes the token to both servers', () => {
+    assert.match(raw, /"127\.0\.0\.1:3200:3200"/);
+    assert.doesNotMatch(raw, /^\s*-\s*"3200:3200"/m);
+    assert.equal((raw.match(/- MCP_AUTH_TOKEN=\$\{MCP_AUTH_TOKEN:-\}/g) || []).length, 2);
+  });
+});
