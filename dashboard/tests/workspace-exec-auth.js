@@ -65,6 +65,8 @@ try {
   const remote = { headers: {}, socket: { remoteAddress: '10.0.0.5' } };
   assert.equal(authorizeExec(remote, {}).ok, false, 'non-loopback peer without token is refused');
   assert.equal(authorizeExec({ headers: {}, socket: { remoteAddress: '::ffff:127.0.0.1' } }, {}).ok, true);
+  assert.equal(authorizeExec({ headers: {}, socket: { remoteAddress: '::1' } }, {}).ok, true, 'IPv6 loopback is accepted');
+  assert.equal(authorizeExec({ headers: {}, socket: { remoteAddress: '127.0.0.1' } }, {}).ok, true, 'IPv4 loopback is accepted');
   console.log('  ok exec requires a token, loopback, and is off in demo mode');
 } finally {
   for (const k of KEYS) { if (saved[k] === undefined) delete process.env[k]; else process.env[k] = saved[k]; }
