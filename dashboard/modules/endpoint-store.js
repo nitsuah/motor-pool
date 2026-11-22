@@ -29,6 +29,11 @@ const LEGACY_KEY = scryptSync(LEGACY_SECRET, SALT, 32);
 function resolveSecret() {
   const fromEnv = process.env.ENDPOINT_STORE_SECRET;
   if (fromEnv && fromEnv !== LEGACY_SECRET) return fromEnv;
+  if (fromEnv === LEGACY_SECRET) {
+    // The old built-in default is public, so it is never used as a key. Keys
+    // stored under it are still read and re-encrypted with the per-install key.
+    console.warn('[endpoint-store] ENDPOINT_STORE_SECRET is the old public default; ignoring it and using the per-install key file. Set a unique value or unset it.');
+  }
   const keyPath = join(dirname(STORE_PATH), 'endpoints.key');
   try {
     if (existsSync(keyPath)) {
@@ -83,9 +88,10 @@ export function loadEndpoints() {
             const apiKey = decrypt(ep._encryptedApiKey, LEGACY_KEY);
             migrated = true;
             return { ...ep, apiKey, _encryptedApiKey: undefined };
-          } catch { /* not a legacy value either */ }
-          console.error(`[endpoint-store] Failed to decrypt apiKey for "${ep.key}":`, e.message);
-          return { ...ep, apiKey: '', _encryptedApiKey: undefined };
+          } catch (legacyErr) {
+            console.error(`[endpoint-store] Failed to decrypt apiKey for "${ep.key}":`, e.message, `(legacy key: ${legacyErr.message})`);
+            return { ...ep, apiKey: '', _encryptedApiKey: undefined };
+          }
         }
       }
       return ep;
