@@ -1,4 +1,4 @@
-import { existsSync, readFileSync } from 'node:fs';
+import { readFileSync } from 'node:fs';
 import pg from 'pg';
 
 const { Pool } = pg;
@@ -19,8 +19,22 @@ function buildSslOption(env = process.env) {
   if (insecure) return { rejectUnauthorized: false };
   const ssl = { rejectUnauthorized: true };
   const ca = String(env.DATABASE_SSL_CA || '').trim();
-  if (ca) ssl.ca = ca.includes('BEGIN CERTIFICATE') ? ca : (existsSync(ca) ? readFileSync(ca, 'utf8') : ca);
+  if (ca) ssl.ca = readCa(ca);
   return ssl;
+}
+
+// Inline PEM is used as-is; anything else must be a readable PEM file. A bad
+// value throws (initPersistence reports it) instead of reaching pg as a CA.
+function readCa(value) {
+  if (value.startsWith('-----BEGIN ')) return value;
+  let pem;
+  try {
+    pem = readFileSync(value, 'utf8');
+  } catch (err) {
+    throw new Error(`DATABASE_SSL_CA is neither inline PEM nor a readable file (${err.code || err.message})`);
+  }
+  if (!pem.includes('-----BEGIN ')) throw new Error('DATABASE_SSL_CA file does not contain a PEM certificate');
+  return pem;
 }
 
 let pool = null;
