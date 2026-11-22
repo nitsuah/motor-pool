@@ -30,13 +30,25 @@ export function parseMcpRpcResponse(rawBody, contentType = '') {
   }
 }
 
+// The shared MCP token is only sent to the bundled tool servers (never to
+// third-party servers); MCP_AUTH_HOSTS (comma-separated) overrides the host list.
+export function mcpAuthHeaders(baseUrl, env = process.env) {
+  const token = String(env.MCP_AUTH_TOKEN ?? '');
+  if (!token) return {};
+  const hosts = String(env.MCP_AUTH_HOSTS ?? 'tool-content-gen,tool-website,localhost,127.0.0.1')
+    .split(',').map(h => h.trim().toLowerCase()).filter(Boolean);
+  let host;
+  try { host = new URL(baseUrl).hostname.toLowerCase(); } catch { return {}; }
+  return hosts.includes(host) ? { Authorization: `Bearer ${token}` } : {};
+}
+
 export async function mcpRequest(baseUrl, method, params = {}, timeoutMs = 15000) {
   const response = await axios.post(
     `${baseUrl}/mcp`,
     { jsonrpc: '2.0', id: randomUUID(), method, params },
     {
       timeout: timeoutMs,
-      headers: { 'Content-Type': 'application/json', Accept: 'application/json, text/event-stream' },
+      headers: { 'Content-Type': 'application/json', Accept: 'application/json, text/event-stream', ...mcpAuthHeaders(baseUrl) },
       responseType: 'text',
       transformResponse: [(data) => data],
       validateStatus: () => true,
