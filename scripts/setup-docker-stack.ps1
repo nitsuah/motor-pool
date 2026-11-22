@@ -35,7 +35,7 @@ Push-Location $projectDir
 
 # Start all services
 Write-Output "[INFO] Starting agent ecosystem..."
-docker compose up -d
+docker compose --env-file .env -f config/docker-compose.yml up -d
 
 if ($LASTEXITCODE -ne 0) {
     Write-Error "Failed to start services"
