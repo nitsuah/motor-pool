@@ -14,7 +14,7 @@
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/streamableHttp.js';
 import express from 'express';
-import { createMcpAuth } from './mcp-auth.js';
+import { createMcpAuth, assertAuthConfigured } from './mcp-auth.js';
 import { execFile } from 'child_process';
 import { promisify } from 'util';
 import { fileURLToPath } from 'url';
@@ -324,8 +324,17 @@ app.get('/mcp', createMcpAuth(), async (req, res) => {
   await transport.handleRequest(req, res);
 });
 
-app.listen(PORT, () => {
-  if (!process.env.MCP_AUTH_TOKEN) console.warn('MCP_AUTH_TOKEN is not set: /mcp accepts unauthenticated requests');
+// All interfaces by default (container); set WEBSITE_HOST=127.0.0.1 to keep it local.
+const HOST = process.env.WEBSITE_HOST || "0.0.0.0";
+try {
+  assertAuthConfigured(HOST);
+} catch (err) {
+  console.error(err.message);
+  process.exit(1);
+}
+
+app.listen(PORT, HOST, () => {
+  if (!process.env.MCP_AUTH_TOKEN) console.warn("MCP_AUTH_TOKEN is not set: /mcp accepts unauthenticated requests (loopback only)");
   console.log(`website MCP server running on port ${PORT}`);
   console.log(`  Health:     http://localhost:${PORT}/health`);
   console.log(`  MCP:        http://localhost:${PORT}/mcp`);

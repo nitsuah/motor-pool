@@ -25,3 +25,13 @@ export function createMcpAuth(env = process.env) {
     return res.status(401).json({ error: 'Authentication required' });
   };
 }
+
+const LOOPBACK = new Set(["127.0.0.1", "::1", "localhost"]);
+export const isLoopbackBind = (host) => LOOPBACK.has(String(host ?? "").trim().toLowerCase());
+
+// Fail closed: a server that listens beyond loopback must have MCP_AUTH_TOKEN set.
+export function assertAuthConfigured(host, env = process.env) {
+  if (!isLoopbackBind(host) && !String(env.MCP_AUTH_TOKEN ?? "")) {
+    throw new Error("MCP_AUTH_TOKEN is required when the server binds a non-loopback address");
+  }
+}

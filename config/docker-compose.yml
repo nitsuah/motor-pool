@@ -431,7 +431,8 @@ services:
       - tools
       - prebuild
     ports:
-      - "3200:3200"
+      # Loopback only; the dashboard reaches it over the compose network
+      - "127.0.0.1:3200:3200"
     # No env_file here deliberately: this container proxies to
     # MoneyPrinterTurbo and handles untrusted video-generation prompts, so it
     # gets only the specific variables it actually needs below rather than
@@ -440,6 +441,8 @@ services:
     # reason to be able to read those).
     environment:
       - CONTENT_GEN_PORT=3200
+      # Required: the server refuses to start without it (it listens on all container interfaces)
+      - MCP_AUTH_TOKEN=${MCP_AUTH_TOKEN:-}
       - MPT_API_URL=${MPT_API_URL:-http://host.docker.internal:8080}
       - MPT_UI_URL=${MPT_UI_URL:-http://host.docker.internal:8501}
     # No repo-root mount either: this service only wraps MoneyPrinterTurbo's
@@ -484,6 +487,8 @@ services:
     # compromised tool container had no reason to read (CWE-200).
     environment:
       - WEBSITE_PORT=3201
+      # Required: the server refuses to start without it (it listens on all container interfaces)
+      - MCP_AUTH_TOKEN=${MCP_AUTH_TOKEN:-}
       - WEBSITE_OUTPUT_DIR=/output
       - YELP_API_KEY=${YELP_API_KEY:-}
       - GOOGLE_PLACES_API_KEY=${GOOGLE_PLACES_API_KEY:-}
