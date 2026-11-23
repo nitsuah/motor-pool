@@ -54,7 +54,7 @@ $healthy = 0
 
     try {
         $llmHealth = Invoke-WebRequest -Uri "http://localhost:8081/api/tags" -ErrorAction SilentlyContinue
-        $dashboardHealth = Invoke-WebRequest -Uri "http://localhost:3000/api/health" -ErrorAction SilentlyContinue
+        $dashboardHealth = Invoke-WebRequest -Uri "http://localhost:3000/health" -ErrorAction SilentlyContinue
 
         if ($llmHealth.StatusCode -eq 200 -and $dashboardHealth.StatusCode -eq 200) {
             $healthy = 1

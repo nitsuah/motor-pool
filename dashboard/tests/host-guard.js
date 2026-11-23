@@ -6,6 +6,7 @@ import assert from 'node:assert/strict';
 import http from 'node:http';
 
 process.env.AGENT_DASHBOARD_DISABLE_LISTEN = '1';
+process.env.DASHBOARD_TOKEN = 'host-guard-token-0123456789abcdef';
 process.env.ALLOWED_HOSTS = 'dash.example.test, other.example.test:8443';
 process.env.CORS_ALLOWED_ORIGINS = 'https://cors.example.test';
 const { app } = await import('../server.js');
@@ -16,7 +17,7 @@ const port = server.address().port;
 
 function get(host, method = 'GET') {
   return new Promise((resolve, reject) => {
-    const req = http.request({ host: '127.0.0.1', port, path: '/api/health', method, headers: { Host: host } },
+    const req = http.request({ host: '127.0.0.1', port, path: '/api/health', method, headers: { Host: host, Authorization: 'Bearer host-guard-token-0123456789abcdef' } },
       (res) => { res.resume(); res.on('end', () => resolve(res.statusCode)); });
     req.on('error', reject);
     req.end();
