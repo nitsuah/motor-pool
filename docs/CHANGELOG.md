@@ -9,6 +9,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- CI runs browser tests in the Playwright image that matches the installed test runner.
+
 ### Security
 
 - content-gen and website no longer crash-loop when `MCP_AUTH_TOKEN` is missing on a non-loopback bind: they log the refusal and idle without listening, so `restart: unless-stopped` still brings them back after a Docker daemon restart.
