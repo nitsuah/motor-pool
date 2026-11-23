@@ -5,8 +5,9 @@
  */
 import assert from 'node:assert/strict';
 import {
-  AuthError, BOOTSTRAP_PRINCIPAL_ID, createMemoryStore, createPrincipalService, hashToken, tokenLookupId,
+  AuthError, BOOTSTRAP_PRINCIPAL_ID, createMemoryStore, createPrincipalService, createUnavailableStore, hashToken, tokenLookupId,
 } from '../modules/principals.js';
+import { createPrincipalAuth } from '../modules/principal-auth.js';
 import { canSee, eventVisibleTo, isReservedEventType } from '../modules/visibility.js';
 
 let clock = new Date('2026-11-23T12:00:00Z');
@@ -123,6 +124,8 @@ console.log('Principals service tests');
   assert.equal(canSee(root, job), true, 'superadmin sees all');
   assert.equal(canSee(null, job), false);
   assert.equal(canSee(alice, { owner_id: null }), false, 'ownerless job hidden');
+  assert.equal(canSee(alice, { owner_id: null, tenant: 't1', visibility: 'tenant' }), false, 'ownerless tenant job hidden too');
+  assert.equal(canSee(root, { owner_id: null }), true, 'superadmin sees ownerless jobs');
   const ev = { event_type: 'job_status', metadata: { job } };
   assert.equal(eventVisibleTo(ev, bob), false);
   assert.equal(eventVisibleTo(ev, null), false, 'no principal, no job events');
@@ -131,6 +134,20 @@ console.log('Principals service tests');
   assert.equal(isReservedEventType('JOB_status'), true);
   assert.equal(isReservedEventType('jobs'), false);
   console.log('  ok canSee and job-event filtering');
+}
+
+// ── A configured-but-down database fails closed ─────────────────────────
+{
+  const svc = createPrincipalService({ store: createUnavailableStore(), now });
+  assert.equal(svc.storeKind, 'unavailable');
+  await assert.rejects(svc.verifyToken(BOOT), /unavailable/);
+  const auth = createPrincipalAuth({ service: svc, env: {} });
+  const req = { headers: { authorization: `Bearer ${BOOT}` }, socket: { remoteAddress: '127.0.0.1' } };
+  let status = 0;
+  const res = { setHeader() {}, status(s) { status = s; return { json() {} }; } };
+  await auth.requireAuth()(req, res, () => { status = 200; });
+  assert.equal(status, 401, 'store failure -> 401, never through');
+  console.log('  ok an unavailable store refuses every request');
 }
 
 console.log('principals-service: all passed');

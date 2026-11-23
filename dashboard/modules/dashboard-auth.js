@@ -20,6 +20,7 @@
  */
 import { createHash, randomBytes, timingSafeEqual } from 'node:crypto';
 import express from 'express';
+import { logStructured } from './logger.js';
 
 export const SESSION_COOKIE = 'mp_dashboard_session';
 export const MIN_TOKEN_LENGTH = 24;
@@ -145,7 +146,9 @@ export function createDashboardAuth({ env = process.env, verifyPrincipalToken = 
     const sent = bearerToken(req.headers.authorization);
     if (sent !== null && safeEqual(sent, token)) return true;
     const cookie = parseCookies(req.headers.cookie)[SESSION_COOKIE];
-    return Boolean(cookie) && sessionValid(cookie);
+    // Token-bound sessions authorize only through their principal (principal-auth.js),
+    // so revoking the token ends them here too.
+    return Boolean(cookie) && sessionValid(cookie) && !sessionBindings.has(cookie);
   }
 
   /** Works for both express requests and raw WebSocket upgrade requests. */
@@ -194,7 +197,14 @@ export function createDashboardAuth({ env = process.env, verifyPrincipalToken = 
         let binding = null;
         if (!supplied) { recordFailure(ip); return fail(401); }
         if (!safeEqual(supplied, token)) {
-          const verified = verifyPrincipalToken ? await verifyPrincipalToken(supplied).catch(() => null) : null;
+          let verified;
+          try {
+            verified = verifyPrincipalToken ? await verifyPrincipalToken(supplied) : null;
+          } catch (err) {
+            // The token store failed; that is not a wrong credential, so it is not throttled.
+            logStructured('warn', 'login_principal_verify_failed', { error: err.message });
+            return wantsJson ? res.status(503).json({ success: false, error: 'Temporarily unavailable' }) : res.status(503).type('text').send('Temporarily unavailable');
+          }
           if (!verified) { recordFailure(ip); return fail(401); }
           binding = { principalId: verified.principal.id, tokenId: verified.tokenId };
         }

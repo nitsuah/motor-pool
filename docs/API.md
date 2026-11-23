@@ -47,7 +47,7 @@ Admin responses carry `Cache-Control: no-store`. From a shell: `MP_TOKEN=<supera
 
 ### WebSocket `/ws/events`
 
-The socket is attributed to a principal from the upgrade's `Authorization` header or a token-bound session cookie, or later by sending `{ "type": "auth", "token": "mp_…" }` (reply `authenticated` or `auth_failed`; five failures close the socket with 1008). Job events (`event_type` starting with `job_`, carrying `metadata.job = { id, owner_id, tenant, visibility }`) are delivered only to the job's owner, to superadmins, and to the same tenant when `visibility` is `tenant`. A socket without a principal receives no job events. Clients cannot publish `job_*` event types to channels.
+The socket is attributed to a principal from the upgrade's `Authorization` header or a token-bound session cookie, or later by sending `{ "type": "auth", "token": "mp_…" }` (reply `authenticated` or `auth_failed`; five failures close the socket with 1008). Job events (`event_type` starting with `job_`, carrying `metadata.job = { id, owner_id, tenant, visibility }`) are delivered only to the job's owner, to superadmins, and to the same tenant when `visibility` is `tenant`. A socket without a principal receives no job events. A socket that has neither a principal nor the dashboard credential is upgraded only so it can send `auth`: it gets no events and cannot subscribe until then, and it is closed after 10 seconds without authenticating. Clients cannot publish `job_*` event types to channels.
 
 ## Common Response Format
 

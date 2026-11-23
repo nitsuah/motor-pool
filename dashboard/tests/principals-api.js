@@ -12,6 +12,7 @@ import { WebSocket } from 'ws';
 // The unit runner turns dev mode on for every suite; this one tests without it.
 delete process.env.MP_AUTH_DEV_MODE;
 process.env.WS_PRINCIPAL_REVALIDATE_MS = '100';
+process.env.WS_AUTH_TIMEOUT_MS = '400';
 const BOOT = `boot-${'x'.repeat(40)}`;
 process.env.MP_BOOTSTRAP_TOKEN = BOOT;
 process.env.AGENT_DASHBOARD_DISABLE_LISTEN = '1';
@@ -21,8 +22,10 @@ const { eventBus } = await import('../modules/event-bus.js');
 
 const server = app.listen(0, '127.0.0.1');
 await new Promise(r => server.once('listening', r));
-attachEventWebSocketServer(server, (request, principal) => Boolean(principal) || dashboardAuth.isAuthorized(request), {
-  authenticate: principalAuth.authenticate, authenticateToken: principalAuth.authenticateToken, revalidate: principalAuth.revalidate,
+// Same wiring as server.js (minus the Host/Origin check).
+attachEventWebSocketServer(server, () => true, {
+  authenticate: principalAuth.authenticate, authenticateToken: principalAuth.authenticateToken,
+  revalidate: principalAuth.revalidate, isGateAuthorized: (request) => dashboardAuth.isAuthorized(request),
 });
 const { port } = server.address();
 const BASE = `http://127.0.0.1:${port}`;
@@ -137,8 +140,13 @@ try {
   const viaSession = await call('/api/me', { headers: { cookie: login.cookie } });
   assert.equal(viaSession.data.principal.id, 'ops');
   assert.equal(viaSession.data.principal.via, 'session');
+  const remoteReq = (cookie) => ({ headers: { cookie, host: 'mp.example' }, socket: { remoteAddress: '10.0.0.5' } });
+  assert.equal(dashboardAuth.isAuthorized(remoteReq(login.cookie)), false,
+    'a token-bound session is never accepted by the dashboard-token check alone');
   await call(`/api/admin/tokens/${sessionTok.id}`, { method: 'DELETE', token: BOOT });
   assert.equal((await call('/api/me', { headers: { cookie: login.cookie } })).status, 401, 'revoking the token ends its sessions');
+  const dashLogin = await signIn(dashboardAuth.token);
+  assert.equal(dashboardAuth.isAuthorized(remoteReq(dashLogin.cookie)), true, 'dashboard-token sessions unchanged');
   assert.equal((await signIn('mp_000000000000_' + 'A'.repeat(43))).status, 401, 'bad API token cannot sign in');
   console.log('  ok API-token sign-in binds the session to the principal');
 
@@ -199,6 +207,24 @@ try {
   await waitFor(() => sAlice.received.some(m => m.event?.event_type === 'principal_test_marker2'));
   assert.deepEqual(jobsSeen(sAlice), ['alice'], 'no job events after revocation');
   console.log('  ok revocation reaches open sockets');
+
+  // Without the dashboard credential a socket may only authenticate.
+  delete process.env.DASHBOARD_ALLOW_LOOPBACK_NOAUTH;
+  const sGated = await openSocket();
+  const sLate = await openSocket();
+  process.env.DASHBOARD_ALLOW_LOOPBACK_NOAUTH = '1';
+  sockets.push(sGated, sLate);
+  sGated.ws.send(JSON.stringify({ type: 'subscribe_channel', channel: 'c1' }));
+  await waitFor(() => sGated.received.some(m => m.type === 'auth_required'));
+  eventBus.emit('principal_test_marker3', { metadata: {} });
+  sGated.ws.send(JSON.stringify({ type: 'auth', token: bob.token }));
+  await waitFor(() => sGated.received.some(m => m.type === 'authenticated'));
+  eventBus.emit('principal_test_marker4', { metadata: {} });
+  await waitFor(() => sGated.received.some(m => m.event?.event_type === 'principal_test_marker4'));
+  assert.ok(!sGated.received.some(m => m.event?.event_type === 'principal_test_marker3'), 'no events before auth');
+  const lateCode = await new Promise(r => sLate.ws.once('close', (code) => r(code)));
+  assert.equal(lateCode, 1008, 'an unauthenticated socket is closed after the timeout');
+  console.log('  ok gated sockets receive nothing until they authenticate');
 
   // A socket that keeps failing auth is closed.
   const sNoisy = await openSocket();

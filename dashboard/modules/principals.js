@@ -107,15 +107,21 @@ export function createMemoryStore() {
     async listPrincipals() {
       return [...principals.values()].map(copy).sort((a, b) => a.createdAt - b.createdAt);
     },
-    async countActiveSuperadmins() {
-      return [...principals.values()].filter(p => p.role === 'superadmin' && !p.disabledAt).length;
+    // Single-threaded: check and write happen without an await in between.
+    async bootstrap(principal, token) {
+      if (principals.size > 0) return false;
+      principals.set(principal.id, { ...principal });
+      tokens.set(token.id, { ...token });
+      return true;
     },
     async disablePrincipal(id, at) {
       const p = principals.get(id);
-      if (!p) return false;
+      if (!p) return 'not_found';
+      const activeSupers = [...principals.values()].filter(x => x.role === 'superadmin' && !x.disabledAt).length;
+      if (p.role === 'superadmin' && !p.disabledAt && activeSupers <= 1) return 'last_superadmin';
       if (!p.disabledAt) p.disabledAt = at;
       for (const t of tokens.values()) if (t.principalId === id && !t.revokedAt) t.revokedAt = at;
-      return true;
+      return 'ok';
     },
     async insertToken(t) {
       if (tokens.has(t.id)) return false;
@@ -158,6 +164,33 @@ function tokenFromRow(r) {
   };
 }
 
+async function inTransaction(pool, fn) {
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+    const result = await fn(client);
+    await client.query('COMMIT');
+    return result;
+  } catch (err) {
+    await client.query('ROLLBACK').catch(() => {});
+    throw err;
+  } finally {
+    client.release();
+  }
+}
+
+/**
+ * Used when a database is configured but unreachable: every call fails, so
+ * nothing authenticates (fail closed) and no in-memory superadmin is created
+ * that would ignore the database's principals and revocations.
+ */
+export function createUnavailableStore(reason = 'auth store unavailable') {
+  const fail = async () => { throw new Error(reason); };
+  return new Proxy({ kind: 'unavailable' }, {
+    get: (target, prop) => (prop in target ? target[prop] : fail),
+  });
+}
+
 const TOKEN_COLUMNS = 'id, principal_id, token_hash, label, scopes, created_at, expires_at, last_used_at, revoked_at';
 
 export function createPgStore(pool) {
@@ -184,26 +217,36 @@ export function createPgStore(pool) {
       const { rows } = await q('SELECT * FROM principals ORDER BY created_at');
       return rows.map(principalFromRow);
     },
-    async countActiveSuperadmins() {
-      const { rows } = await q(`SELECT count(*)::int AS n FROM principals WHERE role = 'superadmin' AND disabled_at IS NULL`);
-      return rows[0].n;
+    // Principal and token commit together, and only into an empty table; the
+    // table lock serializes concurrent first starts.
+    async bootstrap(principal, token) {
+      return inTransaction(pool, async (c) => {
+        await c.query('LOCK TABLE principals IN SHARE ROW EXCLUSIVE MODE');
+        const { rows } = await c.query('SELECT 1 FROM principals LIMIT 1');
+        if (rows.length) return false;
+        await c.query(
+          'INSERT INTO principals (id, name, role, tenant, created_at) VALUES ($1,$2,$3,$4,$5)',
+          [principal.id, principal.name, principal.role, principal.tenant, principal.createdAt]);
+        await c.query(
+          `INSERT INTO api_tokens (id, principal_id, token_hash, label, scopes, created_at, expires_at)
+           VALUES ($1,$2,$3,$4,$5,$6,$7)`,
+          [token.id, token.principalId, token.tokenHash, token.label, token.scopes, token.createdAt, token.expiresAt]);
+        return true;
+      });
     },
+    // Locks every active superadmin row first, so two concurrent disables cannot
+    // both see "another superadmin remains" and leave none.
     async disablePrincipal(id, at) {
-      const client = await pool.connect();
-      try {
-        await client.query('BEGIN');
-        const { rowCount } = await client.query(
-          'UPDATE principals SET disabled_at = COALESCE(disabled_at, $2) WHERE id = $1', [id, at]);
-        await client.query(
-          'UPDATE api_tokens SET revoked_at = $2 WHERE principal_id = $1 AND revoked_at IS NULL', [id, at]);
-        await client.query('COMMIT');
-        return rowCount === 1;
-      } catch (err) {
-        await client.query('ROLLBACK').catch(() => {});
-        throw err;
-      } finally {
-        client.release();
-      }
+      return inTransaction(pool, async (c) => {
+        const { rows: supers } = await c.query(
+          `SELECT id FROM principals WHERE role = 'superadmin' AND disabled_at IS NULL ORDER BY id FOR UPDATE`);
+        const { rows: [p] } = await c.query('SELECT id, role, disabled_at FROM principals WHERE id = $1 FOR UPDATE', [id]);
+        if (!p) return 'not_found';
+        if (p.role === 'superadmin' && !p.disabled_at && supers.length <= 1) return 'last_superadmin';
+        await c.query('UPDATE principals SET disabled_at = COALESCE(disabled_at, $2) WHERE id = $1', [id, at]);
+        await c.query('UPDATE api_tokens SET revoked_at = $2 WHERE principal_id = $1 AND revoked_at IS NULL', [id, at]);
+        return 'ok';
+      });
     },
     async insertToken(t) {
       const { rowCount } = await q(
@@ -269,15 +312,12 @@ export function createPrincipalService({ store, now = () => new Date(), logStruc
     if (token.length < MIN_BOOTSTRAP_TOKEN_LENGTH || token.length > MAX_TOKEN_LENGTH) {
       throw new Error(`MP_BOOTSTRAP_TOKEN must be ${MIN_BOOTSTRAP_TOKEN_LENGTH}-${MAX_TOKEN_LENGTH} characters`);
     }
-    if (await store.countPrincipals() > 0) return { bootstrapped: false, reason: 'principals_exist' };
     const at = now();
-    await store.insertPrincipal({
-      id: BOOTSTRAP_PRINCIPAL_ID, name: 'Bootstrap superadmin', role: 'superadmin', tenant: 'default', createdAt: at, disabledAt: null,
-    });
-    await store.insertToken({
-      id: tokenLookupId(token), principalId: BOOTSTRAP_PRINCIPAL_ID, tokenHash: hashToken(token),
-      label: 'bootstrap', scopes: [], createdAt: at, expiresAt: null,
-    });
+    const created = await store.bootstrap(
+      { id: BOOTSTRAP_PRINCIPAL_ID, name: 'Bootstrap superadmin', role: 'superadmin', tenant: 'default', createdAt: at, disabledAt: null },
+      { id: tokenLookupId(token), principalId: BOOTSTRAP_PRINCIPAL_ID, tokenHash: hashToken(token), label: 'bootstrap', scopes: [], createdAt: at, expiresAt: null },
+    );
+    if (!created) return { bootstrapped: false, reason: 'principals_exist' };
     logStructured('info', 'auth_bootstrap_created', { principalId: BOOTSTRAP_PRINCIPAL_ID });
     return { bootstrapped: true };
   }
@@ -313,12 +353,10 @@ export function createPrincipalService({ store, now = () => new Date(), logStruc
   }
 
   async function disablePrincipal(id) {
-    const p = await store.getPrincipal(id);
-    if (!p) throw new AuthError(404, 'principal not found');
-    if (p.role === 'superadmin' && !p.disabledAt && await store.countActiveSuperadmins() <= 1) {
-      throw new AuthError(409, 'cannot disable the last active superadmin');
-    }
-    await store.disablePrincipal(id, now());
+    if (!isValidSlug(id)) throw new AuthError(404, 'principal not found');
+    const outcome = await store.disablePrincipal(id, now());
+    if (outcome === 'not_found') throw new AuthError(404, 'principal not found');
+    if (outcome === 'last_superadmin') throw new AuthError(409, 'cannot disable the last active superadmin');
     return publicPrincipal(await store.getPrincipal(id));
   }
 

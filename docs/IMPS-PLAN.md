@@ -65,7 +65,7 @@ job_events (job_id text references jobs, seq int, ts timestamptz, type text, dat
 - **Bootstrap:** on first start with no principals, create `superadmin` from `MP_BOOTSTRAP_TOKEN` (env, hashed on load). After that, tokens are minted by `POST /api/admin/tokens` (superadmin only), which shows the plaintext once.
 - `requireAuth` goes on `/api/imps*`, `/api/admin*`, `/api/workspace/exec`, the worktree launch route and `/api/runner/*`. Other routes stay open on localhost for now, behind `MP_REQUIRE_AUTH=all` once the UI sends tokens.
 - **Read filter:** `canSee(principal, job) = principal.role === 'superadmin' || job.owner_id === principal.id || (job.visibility === 'tenant' && same tenant)`.
-- **WebSocket:** `/ws/events?token=…` (or the first message) authenticates the socket. `job_*` events are sent only to sockets whose principal `canSee` the job. Unauthenticated sockets get only the existing non-job system events. The broadcast loop in `modules/event-bus.js` gains a per-client filter.
+- **WebSocket:** the upgrade's `Authorization` header, a token-bound session cookie, or a first `{ "type": "auth", "token": … }` message authenticates the socket (never a URL query). `job_*` events are sent only to sockets whose principal `canSee` the job. Unauthenticated sockets get only the existing non-job system events. The broadcast loop in `modules/event-bus.js` gains a per-client filter.
 
 ## API
 

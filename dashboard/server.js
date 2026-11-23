@@ -2,7 +2,7 @@ import express from 'express';
 import cors from 'cors';
 import { createHostGuard, createOriginGuard, createUpgradeVerifier } from './modules/origin-guard.js';
 import { createDashboardAuth } from './modules/dashboard-auth.js';
-import { createMemoryStore, createPgStore, createPrincipalService } from './modules/principals.js';
+import { createMemoryStore, createPgStore, createPrincipalService, createUnavailableStore } from './modules/principals.js';
 import { createPrincipalAuth } from './modules/principal-auth.js';
 import { EXEC_ROLES } from './modules/exec-flag.js';
 import { createAdminRouter, whoAmIHandler } from './routes/admin.js';
@@ -406,18 +406,25 @@ async function fetchOllamaModels(baseUrl, timeoutMs = 4000) {
 await initTracing(logStructured);
 await initPersistence(logStructured);
 
-// Principals & API tokens: Postgres when persistence is up, else in-memory for this process.
-const principalService = createPrincipalService({
-  store: getPool() ? createPgStore(getPool()) : createMemoryStore(),
-  logStructured,
-});
+// Principals & API tokens: Postgres when persistence is up; in-memory only when no
+// database is configured. A configured but unreachable database fails closed.
+function principalStore() {
+  if (getPool()) return createPgStore(getPool());
+  if (getPersistenceStatus().configured) return createUnavailableStore('database configured but unavailable');
+  return createMemoryStore();
+}
+const principalService = createPrincipalService({ store: principalStore(), logStructured });
 let authBootstrapError = null;
-try {
-  const result = await principalService.bootstrap();
-  logStructured('info', 'auth_store_ready', { store: principalService.storeKind, bootstrap: result.reason ?? 'created' });
-} catch (err) {
-  authBootstrapError = err;
-  logStructured('error', 'auth_bootstrap_failed', { error: err.message });
+if (principalService.storeKind === 'unavailable') {
+  logStructured('error', 'auth_store_unavailable', { reason: 'database configured but unavailable; principal routes will refuse every request' });
+} else {
+  try {
+    const result = await principalService.bootstrap();
+    logStructured('info', 'auth_store_ready', { store: principalService.storeKind, bootstrap: result.reason ?? 'created' });
+  } catch (err) {
+    authBootstrapError = err;
+    logStructured('error', 'auth_bootstrap_failed', { error: err.message });
+  }
 }
 initSessionSnapshot(sessions, logStructured);
 
@@ -855,11 +862,12 @@ if (process.env.AGENT_DASHBOARD_DISABLE_LISTEN !== '1') {
   });
 
   const verifyOriginAndHost = createUpgradeVerifier(hostGuardOptions);
-  attachEventWebSocketServer(
-    server,
-    (request, principal) => verifyOriginAndHost(request) && (Boolean(principal) || dashboardAuth.isAuthorized(request)),
-    { authenticate: principalAuth.authenticate, authenticateToken: principalAuth.authenticateToken, revalidate: principalAuth.revalidate },
-  );
+  attachEventWebSocketServer(server, (request) => verifyOriginAndHost(request), {
+    authenticate: principalAuth.authenticate,
+    authenticateToken: principalAuth.authenticateToken,
+    revalidate: principalAuth.revalidate,
+    isGateAuthorized: (request) => dashboardAuth.isAuthorized(request),
+  });
 
   // Start the background task auto-runner (picks up pending tasks by priority)
   // dispatchMessage: creates or reuses a session, then runs the agent loop non-streaming

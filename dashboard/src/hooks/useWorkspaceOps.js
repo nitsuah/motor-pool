@@ -191,13 +191,19 @@ export function useWorkspaceOps() {
       },
       body: JSON.stringify({ command: cmd }),
     });
-    let res = await send(readExecToken());
+    const cached = readExecToken();
+    let res = await send(cached);
+    if (cached && (res.status === 401 || res.status === 403)) {
+      // A stale or under-privileged cached token must not shadow a newer sign-in.
+      try { sessionStorage.removeItem(EXEC_TOKEN_KEY); } catch { /* storage blocked */ }
+      res = await send('');
+    }
     if (res.status === 401) {
       const entered = window.prompt('API token (operator or superadmin, mp_…):') || '';
       if (entered.trim()) {
         try { sessionStorage.setItem(EXEC_TOKEN_KEY, entered.trim()); } catch { /* storage blocked */ }
         res = await send(entered.trim());
-        if (res.status === 401) {
+        if (res.status === 401 || res.status === 403) {
           try { sessionStorage.removeItem(EXEC_TOKEN_KEY); } catch { /* storage blocked */ }
         }
       }

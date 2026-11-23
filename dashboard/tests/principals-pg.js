@@ -21,6 +21,7 @@ if (!url) {
 const pool = new pg.Pool({ connectionString: url, max: 3 });
 try {
   console.log('Principals Postgres store tests');
+  await pool.query('DROP TRIGGER IF EXISTS mp_fail ON api_tokens').catch(() => {});
   await pool.query('DROP TABLE IF EXISTS api_tokens; DROP TABLE IF EXISTS principals;');
   await migrateAuthTables(pool);
   await migrateAuthTables(pool); // idempotent
@@ -59,6 +60,29 @@ try {
   assert.equal(live.length, 0, 'disable revoked every token');
   await assert.rejects(svc.disablePrincipal('superadmin'), /last active superadmin/);
   assert.equal((await svc.listPrincipals()).length, 2);
+
+  // Concurrent disables of the only two superadmins: exactly one wins.
+  await svc.createPrincipal({ id: 'root2', role: 'superadmin' });
+  const outcomes = await Promise.allSettled([svc.disablePrincipal('superadmin'), svc.disablePrincipal('root2')]);
+  assert.equal(outcomes.filter(o => o.status === 'fulfilled').length, 1, 'one superadmin always remains');
+  const { rows: [{ n }] } = await pool.query(`SELECT count(*)::int AS n FROM principals WHERE role = 'superadmin' AND disabled_at IS NULL`);
+  assert.equal(n, 1);
+
+  // Bootstrap is all-or-nothing: a failing token insert leaves no principal behind.
+  await pool.query('TRUNCATE api_tokens, principals');
+  const svc2 = createPrincipalService({ store: createPgStore(pool) });
+  await pool.query(`CREATE OR REPLACE FUNCTION mp_fail_tokens() RETURNS trigger AS $$ BEGIN RAISE EXCEPTION 'boom'; END $$ LANGUAGE plpgsql`);
+  await pool.query('CREATE TRIGGER mp_fail BEFORE INSERT ON api_tokens FOR EACH ROW EXECUTE FUNCTION mp_fail_tokens()');
+  await assert.rejects(svc2.bootstrap({ MP_BOOTSTRAP_TOKEN: BOOT }), /boom/);
+  await pool.query('DROP TRIGGER mp_fail ON api_tokens; DROP FUNCTION mp_fail_tokens()');
+  const { rows: [{ c }] } = await pool.query('SELECT count(*)::int AS c FROM principals');
+  assert.equal(c, 0, 'principal rolled back with the token');
+  assert.deepEqual(await svc2.bootstrap({ MP_BOOTSTRAP_TOKEN: BOOT }), { bootstrapped: true }, 'bootstrap retries cleanly');
+  const [b1, b2] = await Promise.all([
+    createPrincipalService({ store: createPgStore(pool) }).bootstrap({ MP_BOOTSTRAP_TOKEN: 'q'.repeat(40) }),
+    createPrincipalService({ store: createPgStore(pool) }).bootstrap({ MP_BOOTSTRAP_TOKEN: 'r'.repeat(40) }),
+  ]);
+  assert.equal(b1.bootstrapped || b2.bootstrapped, false, 'no second bootstrap once principals exist');
   console.log('  ok migration, bootstrap, mint/verify/expiry/revoke/disable on Postgres');
   console.log('principals-pg: all passed');
 } finally {

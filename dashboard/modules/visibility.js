@@ -12,7 +12,8 @@
 export function canSee(principal, job) {
   if (!principal || !job) return false;
   if (principal.role === 'superadmin') return true;
-  if (job.owner_id && job.owner_id === principal.id) return true;
+  if (!job.owner_id) return false;
+  if (job.owner_id === principal.id) return true;
   return job.visibility === 'tenant' && Boolean(job.tenant) && job.tenant === principal.tenant;
 }
 

@@ -108,14 +108,20 @@ export const eventBus = {
 };
 
 let wsEventServerAttached = false;
+const canReceive = (client) => Boolean(client.principal) || client.gateOk !== false;
 const MAX_WS_AUTH_FAILURES = 5;
 const WS_REVALIDATE_MS = Number(process.env.WS_PRINCIPAL_REVALIDATE_MS) || 30_000;
+const WS_AUTH_TIMEOUT_MS = Number(process.env.WS_AUTH_TIMEOUT_MS) || 10_000;
 
 const principalSummary = (p) => (p ? { id: p.id, role: p.role } : null);
 
 /**
  * verifyRequest(request, principal) -> boolean, when given, must accept the
- * upgrade (Host/Origin checks and dashboard auth).
+ * upgrade (Host/Origin checks; dashboard auth too when isGateAuthorized is not given).
+ * isGateAuthorized(request) -> boolean, when given, is the dashboard gate. A
+ * socket that fails it and has no principal is still upgraded so it can send
+ * `{ type: 'auth', token }`, but it receives no events and cannot subscribe
+ * until it authenticates, and it is closed after WS_AUTH_TIMEOUT_MS.
  * authenticate(request) -> Promise<principal|null> attributes the socket to a
  * principal from its upgrade headers; authenticateToken(token) does the same
  * for a later `{ type: 'auth', token }` message. Job events (`job_*`) reach a
@@ -124,7 +130,7 @@ const principalSummary = (p) => (p ? { id: p.id, role: p.role } : null);
  * Promise<principal|null> is re-run on every attributed socket periodically,
  * so a revoked or expired token stops receiving job events.
  */
-export function attachEventWebSocketServer(server, verifyRequest, { authenticate, authenticateToken, revalidate } = {}) {
+export function attachEventWebSocketServer(server, verifyRequest, { authenticate, authenticateToken, revalidate, isGateAuthorized } = {}) {
   if (!server || wsEventServerAttached) return;
 
   const wss = new WebSocketServer({ noServer: true });
@@ -144,16 +150,24 @@ export function attachEventWebSocketServer(server, verifyRequest, { authenticate
       socket.destroy();
       return;
     }
+    const gateOk = isGateAuthorized ? Boolean(isGateAuthorized(request)) : true;
     wss.handleUpgrade(request, socket, head, (client) => {
       client.principal = principal;
+      client.gateOk = gateOk;
       wss.emit('connection', client, request);
     });
   });
 
   wss.on('connection', (client) => {
     client.principal ??= null;
+    client.gateOk ??= true;
     client.send(JSON.stringify({ type: 'hello', timestamp: new Date().toISOString(), principal: principalSummary(client.principal) }));
     let authFailures = 0;
+    // A socket admitted only to authenticate must do so promptly.
+    const authTimer = canReceive(client) ? null : setTimeout(() => {
+      if (!canReceive(client) && client.readyState === client.OPEN) client.close(1008, 'Unauthorized');
+    }, WS_AUTH_TIMEOUT_MS);
+    authTimer?.unref?.();
 
     // Per-client channel subscriptions
     const clientChannelUnsubs = new Map();
@@ -175,11 +189,13 @@ export function attachEventWebSocketServer(server, verifyRequest, { authenticate
             client.send(JSON.stringify({ type: 'auth_failed' }));
             if (authFailures >= MAX_WS_AUTH_FAILURES) client.close(1008, 'Unauthorized');
           }
+        } else if (!canReceive(client)) {
+          client.send(JSON.stringify({ type: 'auth_required' }));
         } else if (msg.type === 'subscribe_channel' && msg.channel) {
           const ch = String(msg.channel).slice(0, 128);
           if (!clientChannelUnsubs.has(ch)) {
             const unsub = eventBus.subscribeChannel(ch, (event) => {
-              if (client.readyState === client.OPEN && eventVisibleTo(event, client.principal)) {
+              if (client.readyState === client.OPEN && canReceive(client) && eventVisibleTo(event, client.principal)) {
                 client.send(JSON.stringify({ type: 'channel_event', channel: ch, event }));
               }
             });
@@ -196,6 +212,7 @@ export function attachEventWebSocketServer(server, verifyRequest, { authenticate
     });
 
     client.on('close', () => {
+      if (authTimer) clearTimeout(authTimer);
       for (const unsub of clientChannelUnsubs.values()) unsub();
       clientChannelUnsubs.clear();
     });
@@ -204,7 +221,7 @@ export function attachEventWebSocketServer(server, verifyRequest, { authenticate
   const unsubscribe = eventBus.subscribe((event) => {
     const payload = JSON.stringify({ type: 'event', event });
     wss.clients.forEach((client) => {
-      if (client.readyState === client.OPEN && eventVisibleTo(event, client.principal)) client.send(payload);
+      if (client.readyState === client.OPEN && canReceive(client) && eventVisibleTo(event, client.principal)) client.send(payload);
     });
   });
 
@@ -219,7 +236,10 @@ export function attachEventWebSocketServer(server, verifyRequest, { authenticate
         const current = await revalidate(before).catch(() => null);
         if (client.principal !== before) continue; // re-authenticated meanwhile
         client.principal = current;
-        if (!current && client.readyState === client.OPEN) client.send(JSON.stringify({ type: 'auth_expired' }));
+        if (!current && client.readyState === client.OPEN) {
+          client.send(JSON.stringify({ type: 'auth_expired' }));
+          if (!client.gateOk) client.close(1008, 'Unauthorized');
+        }
       }
     } finally {
       revalidating = false;
