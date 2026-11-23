@@ -333,7 +333,7 @@ try {
   // Fail closed without exiting: stay up but never listen, so `restart: unless-stopped`
   // neither crash-loops on a missing token nor loses recovery after a daemon restart.
   authReady = false;
-  console.error(`${err.message}. Not listening; set MCP_AUTH_TOKEN and restart the container.`);
+  console.error(`${err.message}. Not listening; set MCP_AUTH_TOKEN and recreate the container (docker compose up -d), since a restart keeps the old environment.`);
   setInterval(() => {}, 2 ** 31 - 1);
 }
 
