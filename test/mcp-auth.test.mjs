@@ -64,9 +64,17 @@ describe('tool server compose wiring', () => {
     assert.doesNotMatch(raw, /^\s*-\s*"3200:3200"/m);
     assert.equal((raw.match(/- MCP_AUTH_TOKEN=\$\{MCP_AUTH_TOKEN:-\}/g) || []).length, 2);
   });
-  it('uses a bounded restart policy for both tool servers', () => {
+  it('keeps unless-stopped so both tool servers come back after a daemon restart', () => {
     for (const name of ['tool-content-gen', 'tool-website']) {
-      assert.match(raw, new RegExp('container_name: ' + name + '\n(?:    #[^\n]*\n)*    restart: on-failure:5'));
+      assert.match(raw, new RegExp('container_name: ' + name + '\n(?:    #[^\n]*\n)*    restart: unless-stopped'));
+    }
+  });
+  it('idles instead of exiting when the token is missing, so the restart policy cannot crash-loop', () => {
+    for (const tool of ['content-gen', 'website']) {
+      const src = readFileSync(new URL(`../tools/${tool}/server.js`, import.meta.url), 'utf8');
+      const guard = src.slice(src.indexOf('assertAuthConfigured(HOST)'), src.indexOf('app.listen(PORT, HOST'));
+      assert.doesNotMatch(guard, /process\.exit/);
+      assert.match(src, /if \(authReady\) app\.listen\(PORT, HOST/);
     }
   });
 });
