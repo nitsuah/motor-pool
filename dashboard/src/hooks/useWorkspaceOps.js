@@ -191,23 +191,27 @@ export function useWorkspaceOps() {
       },
       body: JSON.stringify({ command: cmd }),
     });
+    // 401, or the role check's 403 ("Forbidden"); not other 403s such as exec being disabled.
+    const authRejected = async (r) => {
+      if (r.status === 401) return true;
+      if (r.status !== 403) return false;
+      try { return (await r.clone().json()).error === 'Forbidden'; } catch { return false; }
+    };
+    const forget = () => { try { sessionStorage.removeItem(EXEC_TOKEN_KEY); } catch { /* storage blocked */ } };
+    // The signed-in session (or dev mode) goes first, so it is never shadowed by a cached token.
+    let res = await send('');
+    if (!(await authRejected(res))) return res;
     const cached = readExecToken();
-    let res = await send(cached);
-    if (cached && (res.status === 401 || res.status === 403)) {
-      // A stale or under-privileged cached token must not shadow a newer sign-in.
-      try { sessionStorage.removeItem(EXEC_TOKEN_KEY); } catch { /* storage blocked */ }
-      res = await send('');
+    if (cached) {
+      res = await send(cached);
+      if (!(await authRejected(res))) return res;
+      forget();
     }
-    if (res.status === 401) {
-      const entered = window.prompt('API token (operator or superadmin, mp_…):') || '';
-      if (entered.trim()) {
-        try { sessionStorage.setItem(EXEC_TOKEN_KEY, entered.trim()); } catch { /* storage blocked */ }
-        res = await send(entered.trim());
-        if (res.status === 401 || res.status === 403) {
-          try { sessionStorage.removeItem(EXEC_TOKEN_KEY); } catch { /* storage blocked */ }
-        }
-      }
-    }
+    const entered = (window.prompt('API token (operator or superadmin, mp_…):') || '').trim();
+    if (!entered) return res;
+    res = await send(entered);
+    if (await authRejected(res)) forget();
+    else { try { sessionStorage.setItem(EXEC_TOKEN_KEY, entered); } catch { /* storage blocked */ } }
     return res;
   };
 
