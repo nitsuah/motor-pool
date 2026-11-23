@@ -57,13 +57,15 @@ job_events (job_id text references jobs, seq int, ts timestamptz, type text, dat
 - `complete(id, runnerId, status, result)` only succeeds if the caller still holds the lease. That's the fencing that makes "runs once" hold.
 - Every transition writes a `job_events` row and emits `job_status` on the event bus.
 
-## Visibility and auth (`modules/auth.js`)
+## Visibility and auth (`modules/principals.js`, `modules/principal-auth.js`, `modules/visibility.js`)
+
+> **Shipped in PR 1 (2026-11-23).** As built: tokens are `mp_<12-hex id>_<32-byte secret>`, looked up by the id and compared by SHA-256 in constant time; they expire (default 90 days) and can be revoked. The bootstrap token needs at least 32 characters. Sockets authenticate with the upgrade's `Authorization` header, a token-bound session cookie or an `auth` message, not a `?token=` query (tokens stay out of URLs and logs). The login form also accepts an API token. `MP_AUTH_DEV_MODE=1` is the local-dev path (loopback only, never in production). Job events carry `metadata.job = { id, owner_id, tenant, visibility }`, and clients cannot publish `job_*` types. PR 2 must also filter any REST view of job events by `canSee`.
 
 - `Authorization: Bearer mp_<token>` → look up the token's sha256 → `req.principal`. The GitHub webhook keeps its HMAC and maps to a fixed `github` principal.
 - **Bootstrap:** on first start with no principals, create `superadmin` from `MP_BOOTSTRAP_TOKEN` (env, hashed on load). After that, tokens are minted by `POST /api/admin/tokens` (superadmin only), which shows the plaintext once.
 - `requireAuth` goes on `/api/imps*`, `/api/admin*`, `/api/workspace/exec`, the worktree launch route and `/api/runner/*`. Other routes stay open on localhost for now, behind `MP_REQUIRE_AUTH=all` once the UI sends tokens.
 - **Read filter:** `canSee(principal, job) = principal.role === 'superadmin' || job.owner_id === principal.id || (job.visibility === 'tenant' && same tenant)`.
-- **WebSocket:** `/ws/events?token=…` (or the first message) authenticates the socket. `job_*` events are sent only to sockets whose principal `canSee` the job. Unauthenticated sockets get only the existing non-job system events. The broadcast loop in `modules/event-bus.js` gains a per-client filter.
+- **WebSocket:** the upgrade's `Authorization` header, a token-bound session cookie, or a first `{ "type": "auth", "token": … }` message authenticates the socket (never a URL query). `job_*` events are sent only to sockets whose principal `canSee` the job. A socket with dashboard authorization but no principal gets the existing non-job system events; a socket with neither gets no events and is closed unless it sends `auth` before the timeout. The broadcast loop in `modules/event-bus.js` gains a per-client filter.
 
 ## API
 
@@ -142,7 +144,7 @@ Each PR gets its own branch and worktree, tests in Docker, and TASKS/ROADMAP/CHA
 
 | PR | Scope | Est. | Done when |
 | --- | --- | --- | --- |
-| **1. Principals & tokens** | `principals`/`api_tokens` tables, bootstrap, `modules/auth.js`, `requireAuth` on exec/worktree/admin routes, token admin API, per-client WS filter | 2–3 h | Unauthed exec gets 401; a dispatcher can't see another principal's job events over WS (test) |
+| **1. Principals & tokens** ✅ | `principals`/`api_tokens` tables, bootstrap, `modules/auth.js`, `requireAuth` on exec/worktree/admin routes, token admin API, per-client WS filter | 2–3 h | Unauthed exec gets 401; a dispatcher can't see another principal's job events over WS (test) |
 | **2. Durable job queue** | `jobs`/`job_events`, `modules/job-queue.js` (claim/heartbeat/hold/complete/reaper/cancel), `/api/imps` CRUD (no runner yet), Postgres-backed tests (`docker compose -p motor-pool-test --profile test`) | 2–3 h | Tests for claim exclusivity under 2 concurrent claimers, lease-expiry requeue, attempts cap → failed, cancel, fencing on a stale `complete` |
 | **3. Runner** | `imp-runner/` image and service, `imp-docker` DinD sidecar, mirrors and worktrees, launch, stream mapper, limits, pre-push gate, push/PR, cleanup; compose profile `imps` | 3–4 h | Unit tests for the stream mapper, limits, gate; a dry run with a stub `claude` script reaching each terminal status |
 | **4. Imps panel + `/imp` skill** | List/detail/new-imp UI, live tail over WS, the skill | 2 h | Dispatch from a Claude session and watch it live in the dashboard |

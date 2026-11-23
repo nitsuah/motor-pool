@@ -9,6 +9,7 @@ import { WebSocket } from 'ws';
 process.env.AGENT_DASHBOARD_DISABLE_LISTEN = '1';
 process.env.DASHBOARD_TOKEN = 'test-token-0123456789abcdef';
 delete process.env.DASHBOARD_ALLOW_LOOPBACK_NOAUTH;
+delete process.env.MP_AUTH_DEV_MODE; // dev mode would also admit loopback requests
 delete process.env.NODE_ENV;
 
 const { app, dashboardAuth: auth } = await import('../server.js');

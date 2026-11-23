@@ -10,7 +10,7 @@ import { toast } from './Toast.jsx';
  */
 export default function WorktreeLauncher() {
   const [open, setOpen] = useState(false);
-  const [state, setState] = useState({ enabled: false, worktrees: [], naming: null, tmuxAvailable: false });
+  const [state, setState] = useState({ enabled: false, worktrees: [], naming: null, tmuxAvailable: false, authRequired: false });
   const [name, setName] = useState('');
   const [command, setCommand] = useState('');
   const [busy, setBusy] = useState(false);
@@ -19,9 +19,14 @@ export default function WorktreeLauncher() {
   const refresh = useCallback(async () => {
     try {
       const res = await fetch('/api/worktrees');
+      if (res.status === 401 || res.status === 403) {
+        setState(s => ({ ...s, enabled: false, worktrees: [], authRequired: true }));
+        return;
+      }
       const data = await res.json();
       if (data.success) {
         setState({
+          authRequired: false,
           enabled: !!data.enabled,
           worktrees: data.worktrees || [],
           naming: data.naming || null,
@@ -94,7 +99,11 @@ export default function WorktreeLauncher() {
         <div className="topbar-new-panel" style={{ minWidth: '18rem' }}>
           <div className="topbar-new-section-label">Launch agent worktree</div>
 
-          {!state.enabled ? (
+          {state.authRequired ? (
+            <div style={{ fontSize: '0.75rem', opacity: 0.75, padding: '0.35rem 0' }}>
+              Worktrees need an operator or superadmin API token. Sign out and sign in with your <code>mp_…</code> token.
+            </div>
+          ) : !state.enabled ? (
             <div style={{ fontSize: '0.75rem', opacity: 0.75, padding: '0.35rem 0' }}>
               tmux worktrees are disabled. Set <code>AGENT_BOARD_ENABLE_TMUX=true</code> on the dashboard to enable.
             </div>

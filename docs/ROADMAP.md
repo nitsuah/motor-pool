@@ -13,7 +13,7 @@ Last Updated: 2026-10-27
 
 > Plan: [IMPS-PLAN.md](./IMPS-PLAN.md). Direction: [RUST-REWRITE-ASSESSMENT.md §10](./RUST-REWRITE-ASSESSMENT.md#10-target-architecture-safe-async-agents-with-role-based-control).
 
-- [ ] **Principals & API tokens with per-owner visibility** (pulls the 2027 Q1 exec-route token item forward).
+- [x] **Principals & API tokens with per-owner visibility** (pulls the 2027 Q1 exec-route token item forward). Shipped 2026-11-23: roles, hashed expiring tokens, `requireAuth` on exec/worktrees/admin/imps, per-principal job-event filtering on the WebSocket.
 - [ ] **Durable Postgres job queue** with leases, the first consumer being imps; the in-memory `/api/tasks` migrates onto it afterward.
 - [ ] **Imp runner**: headless Claude Code workers through 9router in sandboxed worktrees, opening PRs that a human or reviewer agent approves.
 - [ ] **Dispatchers**: `/imp` skill, phone (Tailscale + token), vigil/routines tokens, `bot:journey` webhook rule.
@@ -24,7 +24,7 @@ Critical path: service lifecycle UI → auth gate (+ interim exec-route token) �
 
 - [ ] **Service lifecycle dashboard (UI completion)**: mount `/var/run/docker.sock` for in-container `docker stats` or add a host-side stats sidecar; surface per-service resource charts in the dashboard.
 - [ ] **Authentication gate (P2)**: add an optional JWT/session auth layer so the dashboard can be safely exposed on a LAN without open-access risk.
-- [ ] **Scoped API token for exec-capable routes (interim, before full auth gate)**: the worktree launch/exec route and `/api/workspace/exec` stay unauthenticated until the JWT/session gate lands; a shared-secret header check on just those routes closes the LAN-exposure gap sooner.
+- [x] **Scoped API token for exec-capable routes (interim, before full auth gate)**: superseded by principals & API tokens (2026 Q4): the worktree routes and `/api/workspace/exec` require an operator or superadmin token.
 - [ ] **Persistent BYOK endpoints**: wire `CUSTOM_LLM_ENDPOINTS` env → encrypted volume store so runtime-added endpoints survive restart without editing `.env`.
 - [ ] **Host architecture profiling Phase 2**: Windows host lean-baseline profile accounting for WSL2/Docker Desktop overhead.
 - [ ] **Cross-vendor, runtime-aware GPU profile** ([#117](https://github.com/nitsuah/motor-pool/issues/117)): detect NVIDIA/AMD host devices, then separately verify the accelerator Ollama can access through its active runtime before choosing a GPU model tier; retain CPU fallback when access is not confirmed.

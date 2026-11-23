@@ -2,7 +2,7 @@
 
 > 🧭 [motor-pool](../README.md) · [Features](./FEATURES.md) · [Roadmap](./ROADMAP.md) · **Tasks** · [Changelog](./CHANGELOG.md) · [Metrics](./METRICS.md) <!-- nav -->
 
-Last Updated: 2026-10-28
+Last Updated: 2026-11-23
 
 ## Todo
 
@@ -19,8 +19,9 @@ Last Updated: 2026-10-28
 
 **Imps (build plan: [IMPS-PLAN.md](./IMPS-PLAN.md)).** Each PR updates this list.
 
-- [ ] **Principals & API tokens**: `principals`/`api_tokens` tables, bootstrap superadmin, `requireAuth` on exec/worktree/admin/imps routes, per-principal WebSocket event filtering.
+- [x] **Principals & API tokens**: `principals`/`api_tokens` tables, bootstrap superadmin, `requireAuth` on exec/worktree/admin/imps routes, per-principal WebSocket event filtering.
   - Acceptance Criteria: unauthenticated `/api/workspace/exec` returns 401; a dispatcher cannot see another principal's job events over WS.
+  - Done 2026-11-23: `dashboard/modules/principals.js`, `principal-auth.js`, `visibility.js`, `routes/admin.js`, CLI `dashboard/scripts/mp-auth.mjs`; tests `principals-service.js`, `principals-api.js`, `principals-pg.js`. See CHANGELOG.
 - [ ] **Durable job queue**: `jobs`/`job_events` in Postgres, claim/lease/heartbeat/reaper/cancel/hold with fencing, `/api/imps` CRUD.
   - Acceptance Criteria: Postgres-backed tests for claim exclusivity, lease-expiry requeue, attempts cap, cancel and stale-complete fencing.
 - [ ] **Imp runner**: `imp-runner` service + `imp-docker` DinD sidecar, repo mirrors/worktrees, `claude -p` via 9router, stream → events, time/cost limits, pre-push gate (deny paths, diff cap, gitleaks), runner-side push and PR via GitHub App.

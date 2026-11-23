@@ -175,9 +175,9 @@ export function useWorkspaceOps() {
     }
   };
 
-  // With WORKSPACE_EXEC_TOKEN set on the server, the terminal must send that
-  // token. The user types it once per tab (kept in sessionStorage); the server
-  // never hands it out.
+  // Exec needs an operator or superadmin principal. Signing in with an API
+  // token covers it; otherwise the user types a token once per tab (kept in
+  // sessionStorage) and it is sent as a bearer. The server never hands it out.
   const EXEC_TOKEN_KEY = 'workspace_exec_token';
   const readExecToken = () => {
     try { return sessionStorage.getItem(EXEC_TOKEN_KEY) || ''; } catch { return ''; }
@@ -191,17 +191,27 @@ export function useWorkspaceOps() {
       },
       body: JSON.stringify({ command: cmd }),
     });
-    let res = await send(readExecToken());
-    if (res.status === 401) {
-      const entered = window.prompt('Workspace exec token (WORKSPACE_EXEC_TOKEN):') || '';
-      if (entered.trim()) {
-        try { sessionStorage.setItem(EXEC_TOKEN_KEY, entered.trim()); } catch { /* storage blocked */ }
-        res = await send(entered.trim());
-        if (res.status === 401) {
-          try { sessionStorage.removeItem(EXEC_TOKEN_KEY); } catch { /* storage blocked */ }
-        }
-      }
+    // 401, or the role check's 403 ("Forbidden"); not other 403s such as exec being disabled.
+    const authRejected = async (r) => {
+      if (r.status === 401) return true;
+      if (r.status !== 403) return false;
+      try { return (await r.clone().json()).error === 'Forbidden'; } catch { return false; }
+    };
+    const forget = () => { try { sessionStorage.removeItem(EXEC_TOKEN_KEY); } catch { /* storage blocked */ } };
+    // The signed-in session (or dev mode) goes first, so it is never shadowed by a cached token.
+    let res = await send('');
+    if (!(await authRejected(res))) return res;
+    const cached = readExecToken();
+    if (cached) {
+      res = await send(cached);
+      if (!(await authRejected(res))) return res;
+      forget();
     }
+    const entered = (window.prompt('API token (operator or superadmin, mp_…):') || '').trim();
+    if (!entered) return res;
+    res = await send(entered);
+    if (await authRejected(res)) forget();
+    else { try { sessionStorage.setItem(EXEC_TOKEN_KEY, entered); } catch { /* storage blocked */ } }
     return res;
   };
 

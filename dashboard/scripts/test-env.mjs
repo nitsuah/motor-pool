@@ -3,4 +3,5 @@
 // keep an inherited NODE_ENV=production from disabling it. Cross-platform, unlike
 // a `VAR=1 node ...` prefix.
 process.env.DASHBOARD_ALLOW_LOOPBACK_NOAUTH = '1';
+process.env.MP_AUTH_DEV_MODE = '1';
 if (String(process.env.NODE_ENV || '').toLowerCase() === 'production') process.env.NODE_ENV = 'test';

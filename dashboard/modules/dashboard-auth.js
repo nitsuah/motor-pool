@@ -9,6 +9,10 @@
  * reachable without it (plus the signed webhook trigger when WEBHOOK_SECRET is
  * set, because that route verifies its own HMAC).
  *
+ * A request already attributed to a principal (an API token, see
+ * principal-auth.js) also passes, and the login form accepts an API token,
+ * binding the session to that token's principal.
+ *
  * Local-dev opt-out: DASHBOARD_ALLOW_LOOPBACK_NOAUTH=1. It is ignored in
  * production and only honored for a request that arrives over a loopback
  * socket, carries no Forwarded / X-Forwarded-* / X-Real-IP header (presence
@@ -16,6 +20,7 @@
  */
 import { createHash, randomBytes, timingSafeEqual } from 'node:crypto';
 import express from 'express';
+import { logStructured } from './logger.js';
 
 export const SESSION_COOKIE = 'mp_dashboard_session';
 export const MIN_TOKEN_LENGTH = 24;
@@ -30,7 +35,7 @@ const LOGIN_PAGE = `<!doctype html>
 input,button{font:inherit;padding:.5rem;width:100%;box-sizing:border-box;margin-top:.5rem}</style></head>
 <body><h1>Sign in</h1>
 <form method="post" action="/auth/login">
-<label for="token">Access token</label>
+<label for="token">Dashboard token or API token (mp_…)</label>
 <input id="token" name="token" type="password" autocomplete="current-password" required autofocus>
 <button type="submit">Sign in</button>
 </form>
@@ -60,14 +65,14 @@ export function isLoopbackHost(host) {
 
 // The credential from `Authorization: Bearer <token>`, or null. Plain string
 // parsing (no regex) so a long run of spaces costs linear time.
-function bearerToken(header) {
+export function bearerToken(header) {
   const h = String(header ?? '');
   const sp = h.indexOf(' ');
   if (sp < 0 || h.slice(0, sp).toLowerCase() !== 'bearer') return null;
   return h.slice(sp + 1).trim() || null;
 }
 
-function hasProxyHeader(headers) {
+export function hasProxyHeader(headers) {
   return Object.keys(headers).some((name) => {
     const n = name.toLowerCase();
     return n === 'forwarded' || n === 'x-real-ip' || n.startsWith('x-forwarded-');
@@ -83,7 +88,9 @@ function parseCookies(header) {
   return out;
 }
 
-export function createDashboardAuth({ env = process.env } = {}) {
+// verifyPrincipalToken(token) -> { principal, tokenId } | null, when given, lets
+// the login form accept an API token as well as the dashboard token.
+export function createDashboardAuth({ env = process.env, verifyPrincipalToken = null } = {}) {
   const configuredToken = String(env.DASHBOARD_TOKEN || '').trim();
   if (configuredToken && configuredToken.length < MIN_TOKEN_LENGTH) {
     throw new Error(`DASHBOARD_TOKEN must be at least ${MIN_TOKEN_LENGTH} characters`);
@@ -91,24 +98,37 @@ export function createDashboardAuth({ env = process.env } = {}) {
   const generated = !configuredToken;
   const token = configuredToken || randomBytes(24).toString('hex');
   const sessions = new Map(); // session id -> expiry (ms)
+  const sessionBindings = new Map(); // session id -> { principalId, tokenId } (API-token sign-ins)
   const failures = new Map(); // ip -> { count, resetAt }
 
   function pruneSessions() {
     const now = Date.now();
-    for (const [id, exp] of sessions) if (exp <= now) sessions.delete(id);
-    while (sessions.size >= MAX_SESSIONS) sessions.delete(sessions.keys().next().value);
+    for (const [id, exp] of sessions) if (exp <= now) endSession(id);
+    while (sessions.size >= MAX_SESSIONS) endSession(sessions.keys().next().value);
+    for (const id of sessionBindings.keys()) if (!sessions.has(id)) sessionBindings.delete(id);
   }
-  function createSession() {
+  function endSession(id) {
+    sessions.delete(id);
+    sessionBindings.delete(id);
+  }
+  function createSession(binding = null) {
     pruneSessions();
     const id = randomBytes(32).toString('hex');
     sessions.set(id, Date.now() + SESSION_TTL_MS);
+    if (binding) sessionBindings.set(id, binding);
     return id;
   }
   function sessionValid(id) {
     const exp = sessions.get(id);
     if (exp === undefined) return false;
-    if (exp <= Date.now()) { sessions.delete(id); return false; }
+    if (exp <= Date.now()) { endSession(id); return false; }
     return true;
+  }
+  /** The principal binding of a valid API-token session cookie, or null. */
+  function sessionBinding(req) {
+    const id = parseCookies(req.headers?.cookie)[SESSION_COOKIE];
+    if (!id || !sessionValid(id)) return null;
+    return sessionBindings.get(id) || null;
   }
 
   const isProduction = () => String(env.NODE_ENV || '').toLowerCase() === 'production';
@@ -126,7 +146,9 @@ export function createDashboardAuth({ env = process.env } = {}) {
     const sent = bearerToken(req.headers.authorization);
     if (sent !== null && safeEqual(sent, token)) return true;
     const cookie = parseCookies(req.headers.cookie)[SESSION_COOKIE];
-    return Boolean(cookie) && sessionValid(cookie);
+    // Token-bound sessions authorize only through their principal (principal-auth.js),
+    // so revoking the token ends them here too.
+    return Boolean(cookie) && sessionValid(cookie) && !sessionBindings.has(cookie);
   }
 
   /** Works for both express requests and raw WebSocket upgrade requests. */
@@ -164,7 +186,7 @@ export function createDashboardAuth({ env = process.env } = {}) {
     router.post('/auth/login',
       express.urlencoded({ extended: false, limit: '4kb' }),
       express.json({ limit: '4kb' }),
-      (req, res) => {
+      async (req, res) => {
         const ip = req.socket?.remoteAddress || 'unknown';
         const wantsJson = /json/i.test(String(req.headers['content-type'] || ''));
         const fail = (status) => (wantsJson
@@ -172,16 +194,29 @@ export function createDashboardAuth({ env = process.env } = {}) {
           : res.redirect(303, '/login?error=1'));
         if (throttled(ip)) return wantsJson ? res.status(429).json({ success: false, error: 'Too many attempts' }) : res.status(429).type('text').send('Too many attempts');
         const supplied = req.body && typeof req.body.token === 'string' ? req.body.token.trim() : '';
-        if (!supplied || !safeEqual(supplied, token)) { recordFailure(ip); return fail(401); }
+        let binding = null;
+        if (!supplied) { recordFailure(ip); return fail(401); }
+        if (!safeEqual(supplied, token)) {
+          let verified;
+          try {
+            verified = verifyPrincipalToken ? await verifyPrincipalToken(supplied) : null;
+          } catch (err) {
+            // The token store failed; that is not a wrong credential, so it is not throttled.
+            logStructured('warn', 'login_principal_verify_failed', { error: err.message });
+            return wantsJson ? res.status(503).json({ success: false, error: 'Temporarily unavailable' }) : res.status(503).type('text').send('Temporarily unavailable');
+          }
+          if (!verified) { recordFailure(ip); return fail(401); }
+          binding = { principalId: verified.principal.id, tokenId: verified.tokenId };
+        }
         failures.delete(ip);
         const flags = ['HttpOnly', 'SameSite=Strict', 'Path=/', `Max-Age=${SESSION_TTL_MS / 1000}`];
         if (req.secure || String(req.headers['x-forwarded-proto'] || '') === 'https') flags.push('Secure');
-        res.setHeader('Set-Cookie', `${SESSION_COOKIE}=${createSession()}; ${flags.join('; ')}`);
+        res.setHeader('Set-Cookie', `${SESSION_COOKIE}=${createSession(binding)}; ${flags.join('; ')}`);
         return wantsJson ? res.json({ success: true }) : res.redirect(303, '/');
       });
     router.post('/auth/logout', (req, res) => {
       const id = parseCookies(req.headers.cookie)[SESSION_COOKIE];
-      if (id) sessions.delete(id);
+      if (id) endSession(id);
       res.setHeader('Set-Cookie', `${SESSION_COOKIE}=; HttpOnly; SameSite=Strict; Path=/; Max-Age=0`);
       res.json({ success: true });
     });
@@ -192,7 +227,7 @@ export function createDashboardAuth({ env = process.env } = {}) {
     return function dashboardAuth(req, res, next) {
       if (req.method === 'GET' && (req.path === '/health')) return next();
       if (req.method === 'POST' && req.path === '/api/webhooks/trigger' && env.WEBHOOK_SECRET) return next();
-      if (isAuthorized(req)) return next();
+      if (req.principal || isAuthorized(req)) return next();
       const acceptsHtml = req.method === 'GET' && String(req.headers.accept || '').includes('text/html');
       if (acceptsHtml) return res.redirect(302, '/login');
       res.setHeader('WWW-Authenticate', 'Bearer');
@@ -200,5 +235,5 @@ export function createDashboardAuth({ env = process.env } = {}) {
     };
   }
 
-  return { isAuthorized, sessions, assertStartupPolicy, loginRouter, middleware, token, generated, optOutRequested, isProduction };
+  return { isAuthorized, sessions, sessionBinding, assertStartupPolicy, loginRouter, middleware, token, generated, optOutRequested, isProduction };
 }
