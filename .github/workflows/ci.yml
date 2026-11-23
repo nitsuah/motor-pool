@@ -42,6 +42,9 @@ jobs:
         # the compose file (config/), i.e. repo-root .env — not config/.env.
         # POSTGRES_PASSWORD is required by the compose file; generate a throwaway one.
         run: echo "POSTGRES_PASSWORD=$(openssl rand -hex 16)" > .env
+      - name: Add dashboard token to .env
+        # The dashboard refuses to start on a non-loopback bind (the container) without a token.
+        run: echo "DASHBOARD_TOKEN=$(openssl rand -hex 24)" >> .env
       - name: Create coverage output dir
         # The `test` service bind-mounts ./dashboard/coverage into the container so the
         # lcov report survives after --rm. Pre-create it so the mount lands with the

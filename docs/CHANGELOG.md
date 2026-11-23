@@ -12,6 +12,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Security
 
 - content-gen and website use `restart: on-failure:5`, so a missing `MCP_AUTH_TOKEN` (they refuse to start) does not crash-loop.
+- Dashboard HTTP and WebSocket now require a token (`DASHBOARD_TOKEN`, or one generated and printed at startup); sign in at `/login` or send `Authorization: Bearer`. Only the login page and `/health` are open. Startup refuses a non-loopback `HOST` without a token. `DASHBOARD_ALLOW_LOOPBACK_NOAUTH=1` is a local-dev opt-out honored only for plain loopback requests outside production. Tokens must be at least 24 characters; sessions are server-side with a 12 h expiry (`POST /auth/logout` ends one). Container healthcheck and the setup scripts use `/health`.
 - Postgres is published on 127.0.0.1 only, and `POSTGRES_PASSWORD` is now required (no `agent` default); the dashboard `DATABASE_URL` is built from the same variable.
 - Background tasks apply the public-demo experience policy, and the availability fallback only picks endpoints the session is permitted to use (otherwise the session keeps its endpoint).
 - content-gen port 3200 is published on 127.0.0.1 only, and `MCP_AUTH_TOKEN` is passed through Compose to both tool servers. content-gen and website refuse to start on a non-loopback bind without `MCP_AUTH_TOKEN` (`CONTENT_GEN_HOST` / `WEBSITE_HOST` select the bind address).
