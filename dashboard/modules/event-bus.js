@@ -110,8 +110,13 @@ export const eventBus = {
 let wsEventServerAttached = false;
 const canReceive = (client) => Boolean(client.principal) || client.gateOk !== false;
 const MAX_WS_AUTH_FAILURES = 5;
-const WS_REVALIDATE_MS = Number(process.env.WS_PRINCIPAL_REVALIDATE_MS) || 30_000;
-const WS_AUTH_TIMEOUT_MS = Number(process.env.WS_AUTH_TIMEOUT_MS) || 10_000;
+// Positive millisecond values only; anything else (unset, 0, negative, junk) uses the default.
+const positiveMs = (raw, fallback) => {
+  const v = Number(raw);
+  return Number.isFinite(v) && v > 0 ? v : fallback;
+};
+const WS_REVALIDATE_MS = positiveMs(process.env.WS_PRINCIPAL_REVALIDATE_MS, 30_000);
+const WS_AUTH_TIMEOUT_MS = positiveMs(process.env.WS_AUTH_TIMEOUT_MS, 10_000);
 
 const principalSummary = (p) => (p ? { id: p.id, role: p.role } : null);
 
