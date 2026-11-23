@@ -212,6 +212,8 @@ try {
   delete process.env.DASHBOARD_ALLOW_LOOPBACK_NOAUTH;
   const sGated = await openSocket();
   const sLate = await openSocket();
+  // Listen now: its auth timeout starts at connect, before the waits below.
+  const lateClosed = new Promise(r => sLate.ws.once('close', (code) => r(code)));
   process.env.DASHBOARD_ALLOW_LOOPBACK_NOAUTH = '1';
   sockets.push(sGated, sLate);
   sGated.ws.send(JSON.stringify({ type: 'subscribe_channel', channel: 'c1' }));
@@ -222,7 +224,7 @@ try {
   eventBus.emit('principal_test_marker4', { metadata: {} });
   await waitFor(() => sGated.received.some(m => m.event?.event_type === 'principal_test_marker4'));
   assert.ok(!sGated.received.some(m => m.event?.event_type === 'principal_test_marker3'), 'no events before auth');
-  const lateCode = await new Promise(r => sLate.ws.once('close', (code) => r(code)));
+  const lateCode = await lateClosed;
   assert.equal(lateCode, 1008, 'an unauthenticated socket is closed after the timeout');
   console.log('  ok gated sockets receive nothing until they authenticate');
 

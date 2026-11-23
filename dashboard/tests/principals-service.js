@@ -146,7 +146,11 @@ console.log('Principals service tests');
   let status = 0;
   const res = { setHeader() {}, status(s) { status = s; return { json() {} }; } };
   await auth.requireAuth()(req, res, () => { status = 200; });
-  assert.equal(status, 401, 'store failure -> 401, never through');
+  assert.equal(status, 503, 'store failure -> 503 (an outage, not a bad token), never through');
+  let noTokenStatus = 0;
+  const noToken = { headers: {}, socket: { remoteAddress: '127.0.0.1' } };
+  await auth.requireAuth()(noToken, { setHeader() {}, status(s) { noTokenStatus = s; return { json() {} }; } }, () => { noTokenStatus = 200; });
+  assert.equal(noTokenStatus, 401, 'no credential is still 401');
   console.log('  ok an unavailable store refuses every request');
 }
 

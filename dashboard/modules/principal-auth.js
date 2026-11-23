@@ -12,8 +12,8 @@
  *      loopback Host and no proxy headers (the same test as the dashboard's
  *      loopback opt-out).
  *
- * requireAuth answers 401 (no detail) without a principal and 403 when the
- * principal's role is not allowed. Tokens are never logged.
+ * requireAuth answers 401 (no detail) without a principal, 403 when the
+ * principal's role is not allowed, and 503 when the token store failed. Tokens are never logged.
  */
 import { bearerToken, hasProxyHeader, isLoopbackAddress, isLoopbackHost } from './dashboard-auth.js';
 import { DEV_PRINCIPAL_ID } from './principals.js';
@@ -76,9 +76,10 @@ export function createPrincipalAuth({ service, env = process.env, sessionBinding
     try {
       req.principal = await authenticate(req);
     } catch (err) {
-      // A store failure must not let the request through.
+      // A store failure must not let the request through, and it is not a bad credential.
       logStructured('warn', 'principal_auth_failed', { error: err.message });
       req.principal = null;
+      req.principalAuthUnavailable = true;
     }
     return req.principal;
   }
@@ -95,6 +96,9 @@ export function createPrincipalAuth({ service, env = process.env, sessionBinding
   function requireAuth(roles = null) {
     return async function requirePrincipal(req, res, next) {
       const principal = await resolveInto(req);
+      if (!principal && req.principalAuthUnavailable) {
+        return res.status(503).json({ success: false, error: 'Temporarily unavailable' });
+      }
       if (!principal) {
         res.setHeader('WWW-Authenticate', 'Bearer');
         return res.status(401).json({ success: false, error: 'Unauthorized' });

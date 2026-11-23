@@ -14,7 +14,7 @@ http://localhost:3000/api
 
 Two layers:
 
-1. **Dashboard gate.** Every route except `/login`, `POST /auth/login` and `/health` needs the dashboard token (`DASHBOARD_TOKEN`, as `Authorization: Bearer` or the session cookie from `/login`), or a valid API token.
+1. **Dashboard gate.** Every route except `/login`, `POST /auth/login` and `/health` needs the dashboard token (`DASHBOARD_TOKEN`, as `Authorization: Bearer` or the session cookie from `/login`), or a valid API token. Exceptions for local development only, both off by default and ignored in production: `DASHBOARD_ALLOW_LOOPBACK_NOAUTH=1`, and `MP_AUTH_DEV_MODE=1` (below), which admit plain loopback requests without a token.
 2. **Principals.** Some routes also need an API token belonging to a principal with the right role. Send `Authorization: Bearer mp_<id>_<secret>`, or sign in at `/login` with the API token (the session then acts as that principal until the token is revoked or expires).
 
 | Routes | Roles |
@@ -25,7 +25,7 @@ Two layers:
 | `/api/runner/*` | `runner` |
 | `GET /api/me` | any principal |
 
-A missing or invalid token returns `401 {"success": false, "error": "Unauthorized"}` with `WWW-Authenticate: Bearer`; a valid token with the wrong role returns `403 {"success": false, "error": "Forbidden"}`.
+A missing or invalid token returns `401 {"success": false, "error": "Unauthorized"}` with `WWW-Authenticate: Bearer`; a valid token with the wrong role returns `403 {"success": false, "error": "Forbidden"}`; if the token store itself fails, the request is refused with `503`.
 
 **Bootstrap.** Set `MP_BOOTSTRAP_TOKEN` (at least 32 characters; `node dashboard/scripts/mp-auth.mjs gen-bootstrap` prints one) before the first start. With no principals yet, it becomes the token of a `superadmin` principal. Mint your own tokens with it, then revoke it (`DELETE /api/admin/tokens/<id>`; `GET /api/admin/tokens?principal=superadmin` shows the id, which is `bootstrap` unless the value was in `mp_…` form).
 
