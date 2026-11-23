@@ -47,6 +47,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- CI runs browser tests in the Playwright image that matches the installed test runner.
 - **Fixed:** prepareSessionForLlmCall no longer returns apiKey in the prepared session object. Callers now fetch apiKey directly from LLM_CONFIG.
 - `detect-profile.ps1` now lists every host GPU (NVIDIA, AMD, Intel, or other) and distinguishes host inventory from container GPU access (#117).
 - Agent workspace file tools (`read_file`, `write_file`, `list_files`) now resolve symbolic links and refuse any path whose real location is outside the workspace, including dangling links.
