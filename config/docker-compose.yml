@@ -428,6 +428,8 @@ services:
       context: ../tools/content-gen
       dockerfile: Dockerfile
     container_name: tool-content-gen
+    # unless-stopped: survives daemon restarts. A missing MCP_AUTH_TOKEN makes the server idle
+    # without listening (see server.js), so this policy does not crash-loop.
     restart: unless-stopped
     profiles:
       - tools

@@ -326,14 +326,18 @@ app.get('/mcp', createMcpAuth(), async (req, res) => {
 
 // All interfaces by default (container); set WEBSITE_HOST=127.0.0.1 to keep it local.
 const HOST = process.env.WEBSITE_HOST || "0.0.0.0";
+let authReady = true;
 try {
   assertAuthConfigured(HOST);
 } catch (err) {
-  console.error(err.message);
-  process.exit(1);
+  // Fail closed without exiting: stay up but never listen, so `restart: unless-stopped`
+  // neither crash-loops on a missing token nor loses recovery after a daemon restart.
+  authReady = false;
+  console.error(`${err.message}. Not listening; set MCP_AUTH_TOKEN and recreate the container (docker compose up -d), since a restart keeps the old environment.`);
+  setInterval(() => {}, 2 ** 31 - 1);
 }
 
-app.listen(PORT, HOST, () => {
+if (authReady) app.listen(PORT, HOST, () => {
   if (!process.env.MCP_AUTH_TOKEN) console.warn("MCP_AUTH_TOKEN is not set: /mcp accepts unauthenticated requests (loopback only)");
   console.log(`website MCP server running on port ${PORT}`);
   console.log(`  Health:     http://localhost:${PORT}/health`);
