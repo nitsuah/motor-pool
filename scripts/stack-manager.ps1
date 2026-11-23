@@ -10,6 +10,8 @@ param(
 
 $ErrorActionPreference = 'Stop'
 $ComposeFile = "$PSScriptRoot/../config/docker-compose.yml"
+# Compose interpolates from the root .env (the project directory is config/).
+$EnvFile = "$PSScriptRoot/../.env"
 
 function Write-Header {
     param([string]$text)
@@ -20,24 +22,24 @@ function Write-Header {
 
 function Start-Stack {
     Write-Header "Starting Agent Stack"
-    docker compose -f $ComposeFile up -d
+    docker compose --env-file $EnvFile -f $ComposeFile up -d
     Show-Status
 }
 
 function Stop-Stack {
     Write-Header "Stopping Agent Stack"
-    docker compose -f $ComposeFile down
+    docker compose --env-file $EnvFile -f $ComposeFile down
 }
 
 function Restart-Stack {
     Write-Header "Restarting Agent Stack"
-    docker compose -f $ComposeFile restart
+    docker compose --env-file $EnvFile -f $ComposeFile restart
     Show-Status
 }
 
 function Show-Status {
     Write-Header "Service Status"
-    docker compose -f $ComposeFile ps
+    docker compose --env-file $EnvFile -f $ComposeFile ps
     Write-Host ""
     Write-Host "Endpoints:" -ForegroundColor Cyan
     Write-Host "  Dashboard:   http://localhost:3000"
@@ -48,7 +50,7 @@ function Show-Status {
 
 function Show-Logs {
     Write-Header "Recent Logs"
-    docker compose -f $ComposeFile logs --tail=50
+    docker compose --env-file $EnvFile -f $ComposeFile logs --tail=50
 }
 
 switch ($Action) {

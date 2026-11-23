@@ -119,7 +119,7 @@ For NVIDIA GPU passthrough in a supported Docker runtime:
 docker compose --env-file .env -f config/docker-compose.yml -f config/docker-compose.gpu.yml up -d
 ```
 
-The root `.env` is used for Compose interpolation and the dashboard's `env_file`. The optional GPU overlay is NVIDIA/CUDA-only; AMD and runtime-aware selection are tracked in [issue #117](https://github.com/nitsuah/motor-pool/issues/117).
+The root `.env` is used for Compose interpolation and the dashboard's `env_file`. Set `POSTGRES_PASSWORD` in it (required; letters, digits and `. _ ~ -` only, because it is embedded in `DATABASE_URL`). The optional GPU overlay is NVIDIA/CUDA-only; AMD and runtime-aware selection are tracked in [issue #117](https://github.com/nitsuah/motor-pool/issues/117).
 
 Open [http://localhost:3000](http://localhost:3000) — that's it.
 
