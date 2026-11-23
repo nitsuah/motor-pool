@@ -2,6 +2,7 @@ import { randomUUID } from 'crypto';
 import { WebSocketServer } from 'ws';
 import { logStructured } from './logger.js';
 import { persistEvent } from '../persistence.js';
+import { eventVisibleTo } from './visibility.js';
 
 const _eventStore = [];
 const MAX_EVENTS = 10000;
@@ -107,42 +108,78 @@ export const eventBus = {
 };
 
 let wsEventServerAttached = false;
+const MAX_WS_AUTH_FAILURES = 5;
+const WS_REVALIDATE_MS = Number(process.env.WS_PRINCIPAL_REVALIDATE_MS) || 30_000;
 
-// verifyRequest(request) -> boolean, when given, must accept the upgrade (Host/Origin checks).
-export function attachEventWebSocketServer(server, verifyRequest) {
+const principalSummary = (p) => (p ? { id: p.id, role: p.role } : null);
+
+/**
+ * verifyRequest(request, principal) -> boolean, when given, must accept the
+ * upgrade (Host/Origin checks and dashboard auth).
+ * authenticate(request) -> Promise<principal|null> attributes the socket to a
+ * principal from its upgrade headers; authenticateToken(token) does the same
+ * for a later `{ type: 'auth', token }` message. Job events (`job_*`) reach a
+ * socket only when its principal may see the job (see visibility.js); a socket
+ * without a principal gets no job events at all. revalidate(principal) ->
+ * Promise<principal|null> is re-run on every attributed socket periodically,
+ * so a revoked or expired token stops receiving job events.
+ */
+export function attachEventWebSocketServer(server, verifyRequest, { authenticate, authenticateToken, revalidate } = {}) {
   if (!server || wsEventServerAttached) return;
 
   const wss = new WebSocketServer({ noServer: true });
 
-  server.on('upgrade', (request, socket, head) => {
+  server.on('upgrade', async (request, socket, head) => {
     if (!request.url?.startsWith('/ws/events')) {
       socket.destroy();
       return;
     }
-    if (verifyRequest && !verifyRequest(request)) {
+    let principal = null;
+    if (authenticate) {
+      try { principal = await authenticate(request); } catch { principal = null; }
+    }
+    if (socket.destroyed) return;
+    if (verifyRequest && !verifyRequest(request, principal)) {
       socket.write('HTTP/1.1 403 Forbidden\r\nConnection: close\r\n\r\n');
       socket.destroy();
       return;
     }
     wss.handleUpgrade(request, socket, head, (client) => {
+      client.principal = principal;
       wss.emit('connection', client, request);
     });
   });
 
   wss.on('connection', (client) => {
-    client.send(JSON.stringify({ type: 'hello', timestamp: new Date().toISOString() }));
+    client.principal ??= null;
+    client.send(JSON.stringify({ type: 'hello', timestamp: new Date().toISOString(), principal: principalSummary(client.principal) }));
+    let authFailures = 0;
 
     // Per-client channel subscriptions
     const clientChannelUnsubs = new Map();
 
-    client.on('message', (raw) => {
+    client.on('message', async (raw) => {
       try {
         const msg = JSON.parse(String(raw));
-        if (msg.type === 'subscribe_channel' && msg.channel) {
+        if (msg.type === 'auth') {
+          const principal = authenticateToken && typeof msg.token === 'string'
+            ? await authenticateToken(msg.token).catch(() => null)
+            : null;
+          if (client.readyState !== client.OPEN) return;
+          if (principal) {
+            authFailures = 0;
+            client.principal = principal;
+            client.send(JSON.stringify({ type: 'authenticated', principal: principalSummary(principal) }));
+          } else {
+            authFailures += 1;
+            client.send(JSON.stringify({ type: 'auth_failed' }));
+            if (authFailures >= MAX_WS_AUTH_FAILURES) client.close(1008, 'Unauthorized');
+          }
+        } else if (msg.type === 'subscribe_channel' && msg.channel) {
           const ch = String(msg.channel).slice(0, 128);
           if (!clientChannelUnsubs.has(ch)) {
             const unsub = eventBus.subscribeChannel(ch, (event) => {
-              if (client.readyState === client.OPEN) {
+              if (client.readyState === client.OPEN && eventVisibleTo(event, client.principal)) {
                 client.send(JSON.stringify({ type: 'channel_event', channel: ch, event }));
               }
             });
@@ -167,11 +204,31 @@ export function attachEventWebSocketServer(server, verifyRequest) {
   const unsubscribe = eventBus.subscribe((event) => {
     const payload = JSON.stringify({ type: 'event', event });
     wss.clients.forEach((client) => {
-      if (client.readyState === client.OPEN) client.send(payload);
+      if (client.readyState === client.OPEN && eventVisibleTo(event, client.principal)) client.send(payload);
     });
   });
 
+  let revalidating = false;
+  const revalidateTimer = revalidate ? setInterval(async () => {
+    if (revalidating) return;
+    revalidating = true;
+    try {
+      for (const client of wss.clients) {
+        if (!client.principal) continue;
+        const before = client.principal;
+        const current = await revalidate(before).catch(() => null);
+        if (client.principal !== before) continue; // re-authenticated meanwhile
+        client.principal = current;
+        if (!current && client.readyState === client.OPEN) client.send(JSON.stringify({ type: 'auth_expired' }));
+      }
+    } finally {
+      revalidating = false;
+    }
+  }, WS_REVALIDATE_MS) : null;
+  revalidateTimer?.unref?.();
+
   server.on('close', () => {
+    if (revalidateTimer) clearInterval(revalidateTimer);
     unsubscribe();
     wss.close();
     wsEventServerAttached = false;

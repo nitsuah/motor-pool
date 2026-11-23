@@ -34,6 +34,9 @@ const baseTestEnv = {
   DATABASE_URL: '',
   // Suites call the in-process app from loopback without a token.
   DASHBOARD_ALLOW_LOOPBACK_NOAUTH: '1',
+  // ...and reach principal-only routes (exec, worktrees) as the local dev superadmin.
+  // Suites that test the 401/403 paths turn it off themselves.
+  MP_AUTH_DEV_MODE: '1',
   // The opt-out is ignored in production; an inherited NODE_ENV must not change suite results.
   NODE_ENV: 'test',
 };

@@ -2,6 +2,10 @@ import express from 'express';
 import cors from 'cors';
 import { createHostGuard, createOriginGuard, createUpgradeVerifier } from './modules/origin-guard.js';
 import { createDashboardAuth } from './modules/dashboard-auth.js';
+import { createMemoryStore, createPgStore, createPrincipalService } from './modules/principals.js';
+import { createPrincipalAuth } from './modules/principal-auth.js';
+import { EXEC_ROLES } from './modules/exec-flag.js';
+import { createAdminRouter, whoAmIHandler } from './routes/admin.js';
 import axios from 'axios';
 import dotenv from 'dotenv';
 import { fileURLToPath } from 'url';
@@ -13,6 +17,7 @@ import { exec, execFile } from 'child_process';
 import { promisify } from 'util';
 import net from 'net';
 import {
+  getPool,
   getStatus as getPersistenceStatus,
   initPersistence,
   markSessionEnded,
@@ -400,6 +405,20 @@ async function fetchOllamaModels(baseUrl, timeoutMs = 4000) {
 
 await initTracing(logStructured);
 await initPersistence(logStructured);
+
+// Principals & API tokens: Postgres when persistence is up, else in-memory for this process.
+const principalService = createPrincipalService({
+  store: getPool() ? createPgStore(getPool()) : createMemoryStore(),
+  logStructured,
+});
+let authBootstrapError = null;
+try {
+  const result = await principalService.bootstrap();
+  logStructured('info', 'auth_store_ready', { store: principalService.storeKind, bootstrap: result.reason ?? 'created' });
+} catch (err) {
+  authBootstrapError = err;
+  logStructured('error', 'auth_bootstrap_failed', { error: err.message });
+}
 initSessionSnapshot(sessions, logStructured);
 
 const _baseUpsertSessionContext = upsertSessionContext;
@@ -529,9 +548,18 @@ const apiLimiter = rateLimit({
 // Also covers /auth/ (login), so token guessing is throttled; this sits before the auth middleware.
 app.use(['/api/', '/auth/'], apiLimiter);
 // Everything below requires the dashboard token (login page, /auth/login and /health excepted).
-const dashboardAuth = createDashboardAuth();
+const dashboardAuth = createDashboardAuth({ verifyPrincipalToken: (t) => principalService.verifyToken(t) });
+const principalAuth = createPrincipalAuth({ service: principalService, sessionBinding: dashboardAuth.sessionBinding, logStructured });
 app.use(dashboardAuth.loginRouter());
+// Attach req.principal (API token, token-bound session, or dev mode) before the dashboard gate.
+app.use(principalAuth.resolve());
 app.use(dashboardAuth.middleware());
+// Principal-only routes: shell, worktrees, administration, and the imps API.
+app.use('/api/workspace/exec', principalAuth.requireAuth(EXEC_ROLES));
+app.use('/api/worktrees', principalAuth.requireAuth(EXEC_ROLES));
+app.use('/api/admin', principalAuth.requireAuth(['superadmin']));
+app.use('/api/imps', principalAuth.requireAuth(['superadmin', 'operator', 'dispatcher']));
+app.use('/api/runner', principalAuth.requireAuth(['runner']));
 app.get('/health', (_req, res) => res.json({ status: 'ok' }));
 
 
@@ -643,6 +671,8 @@ app.use('/api', createWebhooksRouter({
   normalizeTaskPriority, resolveTaskAssignment, buildTaskSummary,
 }));
 
+app.get('/api/me', principalAuth.requireAuth(), whoAmIHandler);
+app.use('/api/admin', createAdminRouter({ service: principalService, logStructured }));
 app.use('/api/metrics', createMetricsRouter({ sessions, eventBus }));
 
 app.get('/api/experiences', (req, res) => {
@@ -736,6 +766,8 @@ app.get('/', (req, res) => {
 export {
   attachEventWebSocketServer,
   dashboardAuth,
+  principalAuth,
+  principalService,
   applyOutputControls,
   app,
   calculateAverageMessagesPerSession,
@@ -794,6 +826,13 @@ if (process.env.AGENT_DASHBOARD_DISABLE_LISTEN !== '1') {
   if (dashboardAuth.generated) {
     console.log(`Dashboard access token (generated for this run): ${dashboardAuth.token}`);
   }
+  if (authBootstrapError) {
+    logStructured('error', 'auth_config_invalid', { error: authBootstrapError.message });
+    process.exit(1);
+  }
+  if (principalAuth.devModeRequested()) {
+    logStructured('warn', principalAuth.isProduction() ? 'auth_dev_mode_ignored' : 'auth_dev_mode_enabled', { reason: principalAuth.isProduction() ? 'production' : 'MP_AUTH_DEV_MODE' });
+  }
   if (dashboardAuth.optOutRequested() && dashboardAuth.isProduction()) {
     logStructured('warn', 'dashboard_auth_optout_ignored', { reason: 'production' });
   }
@@ -816,7 +855,11 @@ if (process.env.AGENT_DASHBOARD_DISABLE_LISTEN !== '1') {
   });
 
   const verifyOriginAndHost = createUpgradeVerifier(hostGuardOptions);
-  attachEventWebSocketServer(server, (request) => verifyOriginAndHost(request) && dashboardAuth.isAuthorized(request));
+  attachEventWebSocketServer(
+    server,
+    (request, principal) => verifyOriginAndHost(request) && (Boolean(principal) || dashboardAuth.isAuthorized(request)),
+    { authenticate: principalAuth.authenticate, authenticateToken: principalAuth.authenticateToken, revalidate: principalAuth.revalidate },
+  );
 
   // Start the background task auto-runner (picks up pending tasks by priority)
   // dispatchMessage: creates or reuses a session, then runs the agent loop non-streaming

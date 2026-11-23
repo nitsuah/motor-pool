@@ -123,6 +123,18 @@ The root `.env` is used for Compose interpolation and the dashboard's `env_file`
 
 Open [http://localhost:3000](http://localhost:3000) — that's it.
 
+**API tokens.** Shell exec, agent worktrees and `/api/admin` need a principal's API token. Set `MP_BOOTSTRAP_TOKEN` in `.env` before the first start (`node dashboard/scripts/mp-auth.mjs gen-bootstrap` prints one), then mint a token per person or device and revoke the bootstrap one:
+
+```powershell
+$env:MP_TOKEN = '<bootstrap token>'
+docker exec -e MP_TOKEN agent-dashboard node scripts/mp-auth.mjs add-principal austin --role superadmin
+docker exec -e MP_TOKEN agent-dashboard node scripts/mp-auth.mjs mint austin --label laptop
+docker exec -e MP_TOKEN agent-dashboard node scripts/mp-auth.mjs tokens --principal superadmin   # find the bootstrap token's id
+docker exec -e MP_TOKEN agent-dashboard node scripts/mp-auth.mjs revoke <id>
+```
+
+Sign in at `/login` with the minted token to act as that principal in the dashboard. For local development outside Compose, `MP_AUTH_DEV_MODE=1` treats loopback requests as a local superadmin (off by default, never in production). Details: [docs/API.md](./docs/API.md#authentication).
+
 Add opt-in profiles as needed:
 
 ```powershell
@@ -582,6 +594,8 @@ services:
 ```
 
 ## Safety & Security
+
+- Principals and API tokens: per-principal roles, hashed expiring revocable tokens, and per-owner visibility of job events (see [docs/API.md](./docs/API.md#authentication))
 
 - The default Ollama-first setup keeps model inference local; configuring a BYOK provider sends requests to that provider
 - NemoClaw's optional sandbox profile is currently deferred and should not be treated as the active safe-mode enforcement path

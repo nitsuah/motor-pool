@@ -175,9 +175,9 @@ export function useWorkspaceOps() {
     }
   };
 
-  // With WORKSPACE_EXEC_TOKEN set on the server, the terminal must send that
-  // token. The user types it once per tab (kept in sessionStorage); the server
-  // never hands it out.
+  // Exec needs an operator or superadmin principal. Signing in with an API
+  // token covers it; otherwise the user types a token once per tab (kept in
+  // sessionStorage) and it is sent as a bearer. The server never hands it out.
   const EXEC_TOKEN_KEY = 'workspace_exec_token';
   const readExecToken = () => {
     try { return sessionStorage.getItem(EXEC_TOKEN_KEY) || ''; } catch { return ''; }
@@ -193,7 +193,7 @@ export function useWorkspaceOps() {
     });
     let res = await send(readExecToken());
     if (res.status === 401) {
-      const entered = window.prompt('Workspace exec token (WORKSPACE_EXEC_TOKEN):') || '';
+      const entered = window.prompt('API token (operator or superadmin, mp_…):') || '';
       if (entered.trim()) {
         try { sessionStorage.setItem(EXEC_TOKEN_KEY, entered.trim()); } catch { /* storage blocked */ }
         res = await send(entered.trim());

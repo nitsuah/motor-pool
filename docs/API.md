@@ -12,7 +12,42 @@ http://localhost:3000/api
 
 ## Authentication
 
-No authentication required in the current release.
+Two layers:
+
+1. **Dashboard gate.** Every route except `/login`, `POST /auth/login` and `/health` needs the dashboard token (`DASHBOARD_TOKEN`, as `Authorization: Bearer` or the session cookie from `/login`), or a valid API token.
+2. **Principals.** Some routes also need an API token belonging to a principal with the right role. Send `Authorization: Bearer mp_<id>_<secret>`, or sign in at `/login` with the API token (the session then acts as that principal until the token is revoked or expires).
+
+| Routes | Roles |
+| --- | --- |
+| `POST /api/workspace/exec`, `/api/worktrees*` | `superadmin`, `operator` |
+| `/api/admin/*` | `superadmin` |
+| `/api/imps*` | `superadmin`, `operator`, `dispatcher` |
+| `/api/runner/*` | `runner` |
+| `GET /api/me` | any principal |
+
+A missing or invalid token returns `401 {"success": false, "error": "Unauthorized"}` with `WWW-Authenticate: Bearer`; a valid token with the wrong role returns `403 {"success": false, "error": "Forbidden"}`.
+
+**Bootstrap.** Set `MP_BOOTSTRAP_TOKEN` (at least 32 characters; `node dashboard/scripts/mp-auth.mjs gen-bootstrap` prints one) before the first start. With no principals yet, it becomes the token of a `superadmin` principal. Mint your own tokens with it, then revoke it (`DELETE /api/admin/tokens/<id>`; `GET /api/admin/tokens?principal=superadmin` shows the id, which is `bootstrap` unless the value was in `mp_…` form).
+
+**Local development.** `MP_AUTH_DEV_MODE=1` makes plain loopback requests (loopback socket and Host, no proxy headers) act as the `dev` superadmin. Off by default; ignored under `NODE_ENV=production`.
+
+### Principals and tokens (superadmin)
+
+| Method | Path | Body / query | Result |
+| --- | --- | --- | --- |
+| GET | `/api/admin/principals` | | `{ principals: [...] }` |
+| POST | `/api/admin/principals` | `{ id, role, name?, tenant? }` | `201 { principal }`; 409 if the id exists |
+| DELETE | `/api/admin/principals/:id` | | disables it and revokes its tokens; 409 for the last active superadmin |
+| GET | `/api/admin/tokens` | `?principal=<id>` | `{ tokens: [...] }` (never the token or its hash) |
+| POST | `/api/admin/tokens` | `{ principalId, label?, expiresInDays? (1-3650, default 90), scopes? }` | `201 { token: { id, token, expiresAt, ... } }`; the plaintext `token` is shown only here |
+| DELETE | `/api/admin/tokens/:id` | | revokes it at once |
+| GET | `/api/me` | | `{ principal: { id, name, role, tenant, via } }` |
+
+Admin responses carry `Cache-Control: no-store`. From a shell: `MP_TOKEN=<superadmin token> node dashboard/scripts/mp-auth.mjs mint austin-cc --label laptop` (see the script header for every command; in Compose run it with `docker exec -e MP_TOKEN agent-dashboard node scripts/mp-auth.mjs …`).
+
+### WebSocket `/ws/events`
+
+The socket is attributed to a principal from the upgrade's `Authorization` header or a token-bound session cookie, or later by sending `{ "type": "auth", "token": "mp_…" }` (reply `authenticated` or `auth_failed`; five failures close the socket with 1008). Job events (`event_type` starting with `job_`, carrying `metadata.job = { id, owner_id, tenant, visibility }`) are delivered only to the job's owner, to superadmins, and to the same tenant when `visibility` is `tenant`. A socket without a principal receives no job events. Clients cannot publish `job_*` event types to channels.
 
 ## Common Response Format
 

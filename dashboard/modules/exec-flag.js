@@ -16,6 +16,9 @@ export function shellExecEnabled(env = process.env) {
   return ['1', 'true'].includes(String(env.WORKSPACE_EXEC ?? '').trim().toLowerCase());
 }
 
+/** Principal roles allowed to run shell commands and launch worktrees. */
+export const EXEC_ROLES = Object.freeze(['superadmin', 'operator']);
+
 // remoteAddress is always an IP literal, never a hostname.
 const LOOPBACK = new Set(['127.0.0.1', '::1']);
 
@@ -33,12 +36,15 @@ function bearerToken(header) {
 }
 
 /**
- * Who may call the exec route. With WORKSPACE_EXEC_TOKEN set, the request must
+ * Who may call the exec route. In the server, requireAuth already admitted an
+ * operator or superadmin principal (req.principal), and that is sufficient.
+ * Without one (the router mounted on its own), with WORKSPACE_EXEC_TOKEN set, the request must
  * carry it as `Authorization: Bearer <token>`. Without a token, only a loopback
  * peer is accepted, and never under NODE_ENV=production.
  * Returns { ok: true } or { ok: false, status, error }.
  */
 export function authorizeExec(req, env = process.env) {
+  if (req.principal && EXEC_ROLES.includes(req.principal.role)) return { ok: true };
   const token = String(env.WORKSPACE_EXEC_TOKEN ?? '').trim();
   if (token) {
     const presented = bearerToken(req.headers?.authorization);

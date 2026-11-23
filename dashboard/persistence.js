@@ -103,6 +103,8 @@ async function initPersistence(logStructured) {
       );
     `);
 
+    await migrateAuthTables(pool);
+
     enabled = true;
     lastError = null;
     logStructured('info', 'persistence_ready', { enabled: true });
@@ -113,6 +115,53 @@ async function initPersistence(logStructured) {
     logStructured('warn', 'persistence_unavailable', { error: error.message });
     return getStatus();
   }
+}
+
+// Additive, idempotent migration for principals and API tokens (imps plan D6).
+// Token rows hold only the SHA-256 of the token; `id` is the lookup prefix.
+const AUTH_SCHEMA_VERSION = 1;
+async function migrateAuthTables(db) {
+  await db.query(`
+    CREATE TABLE IF NOT EXISTS schema_version (
+      component TEXT PRIMARY KEY,
+      version INTEGER NOT NULL,
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+    );
+  `);
+  await db.query(`
+    CREATE TABLE IF NOT EXISTS principals (
+      id TEXT PRIMARY KEY,
+      name TEXT NOT NULL,
+      role TEXT NOT NULL CHECK (role IN ('superadmin','operator','dispatcher','runner')),
+      tenant TEXT NOT NULL DEFAULT 'default',
+      created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+      disabled_at TIMESTAMPTZ
+    );
+  `);
+  await db.query(`
+    CREATE TABLE IF NOT EXISTS api_tokens (
+      id TEXT PRIMARY KEY,
+      principal_id TEXT NOT NULL REFERENCES principals(id),
+      token_hash TEXT NOT NULL UNIQUE,
+      label TEXT,
+      scopes TEXT[] NOT NULL DEFAULT '{}',
+      created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+      expires_at TIMESTAMPTZ,
+      last_used_at TIMESTAMPTZ,
+      revoked_at TIMESTAMPTZ
+    );
+  `);
+  await db.query('CREATE INDEX IF NOT EXISTS api_tokens_principal_idx ON api_tokens (principal_id)');
+  await db.query(
+    `INSERT INTO schema_version (component, version) VALUES ('auth', $1)
+     ON CONFLICT (component) DO UPDATE SET version = GREATEST(schema_version.version, EXCLUDED.version), updated_at = now()`,
+    [AUTH_SCHEMA_VERSION],
+  );
+}
+
+/** The live pool when persistence is enabled, else null. */
+function getPool() {
+  return enabled ? pool : null;
 }
 
 async function persistEvent(event, logStructured) {
@@ -211,8 +260,10 @@ async function markSessionEnded(sessionId, endedAt = new Date(), logStructured) 
 export {
   assertUrlSafeDbPassword,
   buildSslOption,
+  getPool,
   getStatus,
   initPersistence,
+  migrateAuthTables,
   markSessionEnded,
   persistEvent,
   upsertSessionContext,
