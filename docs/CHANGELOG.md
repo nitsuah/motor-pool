@@ -36,6 +36,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Logger unit test** — `dashboard/tests/logger-unit.js` covers `logStructured` routing (info→log, warn→warn, error→error, unknown→log), JSON payload shape (timestamp, level, eventType, data), timestamp parseability, and data-field override semantics while preserving first-argument routing.
 - **TokenEconomizer integration** — Microsoft TokenEconomizer plugin for motor-pool.
   TokenEconomizer reduces coding agent costs by learning from past sessions in a
   repository. Provides three mechanisms: micro-skills (repo-specific facts from
