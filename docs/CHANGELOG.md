@@ -37,6 +37,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 
 - **Unit tests for `dashboard/modules/session-turn.js`** (`dashboard/tests/session-turn-unit.js`) — covers `preflightTurn` handled path and safe-mode toggle, `ensureTurnTool` with empty `TOOL_SERVERS`, `finalizeReply` truncation and partial flag, and `recordTurnError` error counting and events.
+- **Logger unit test** — `dashboard/tests/logger-unit.js` covers `logStructured` routing (info→log, warn→warn, error→error, unknown→log), JSON payload shape (timestamp, level, eventType, data), timestamp parseability, and data-field override semantics while preserving first-argument routing.
 - **TokenEconomizer integration** — Microsoft TokenEconomizer plugin for motor-pool.
   TokenEconomizer reduces coding agent costs by learning from past sessions in a
   repository. Provides three mechanisms: micro-skills (repo-specific facts from
