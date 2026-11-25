@@ -132,7 +132,11 @@ resetEvents();
   const result = finalizeReply(session, longReply, safetyMode, deps);
 
   assert.strictEqual(result.truncated, true, 'returns truncated: true');
-  assert.ok(result.content.length > 10, 'content is truncated with notice');
+  assert.strictEqual(
+    result.content,
+    `${'x'.repeat(10)}\n\n[response truncated to 10 chars]`,
+    'content includes exactly ten reply characters and the truncation notice'
+  );
   assert.strictEqual(session.status, 'idle', 'session status set to idle');
   assert.strictEqual(session.messages.length, 1, 'assistant message pushed');
   assert.strictEqual(session.messages[0].role, 'assistant', 'message role is assistant');
