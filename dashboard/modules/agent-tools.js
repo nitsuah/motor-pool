@@ -188,6 +188,15 @@ export function createAgentHelpers({ WORKSPACE_ROOT, execAsync, TOOL_SERVERS, TO
     }
   }
 
+  function resolveWorkspaceRoot(repoRoot = WORKSPACE_ROOT) {
+    if (!WORKSPACE_ROOT) return null;
+    const root = resolvePath(WORKSPACE_ROOT);
+    const requested = repoRoot ? resolvePath(repoRoot) : root;
+    const rootPrefix = root.endsWith(sep) ? root : root + sep;
+    if (requested !== root && !requested.startsWith(rootPrefix)) return null;
+    return isInsideWorkspaceReal(requested, root) ? requested : null;
+  }
+
   /** Enabled plugin tools, shaped as OpenAI/Ollama function-call definitions. */
   function pluginToolDefinitions() {
     if (!pluginRegistry) return [];
@@ -263,7 +272,7 @@ export function createAgentHelpers({ WORKSPACE_ROOT, execAsync, TOOL_SERVERS, TO
   }
 
   async function callAgentTool(toolName, toolArgs, session) {
-    const workspaceRoot = session?.repoRoot ? resolvePath(session.repoRoot) : WORKSPACE_ROOT;
+    const workspaceRoot = resolveWorkspaceRoot(session?.repoRoot);
     const rootPrefix = workspaceRoot ? (workspaceRoot.endsWith(sep) ? workspaceRoot : workspaceRoot + sep) : null;
     try {
       if (toolName === 'bash') {
