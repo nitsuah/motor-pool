@@ -189,10 +189,11 @@ try {
   assert.strictEqual(out.toolLog[0].result.content, 'file contents\n', 'tool actually read the file');
   console.log('  ✅ runAgentLoop executes read_file and feeds the result back');
 
-  // ── per-run repoRoot is passed through to workspace tool handlers ──────────
+  // ── per-run repoRoot is passed through to every filesystem tool ──────────
   const REPO_ROOT = join(WORKSPACE, 'repo-root');
   mkdirSync(REPO_ROOT);
   writeFileSync(join(REPO_ROOT, 'repo-only.txt'), 'repo-root contents');
+
   script = [toolCall('read_file', { path: 'repo-only.txt' }), { content: 'repo root read' }];
   out = await helpers.runAgentLoop(
     [{ role: 'user', content: 'go' }],
@@ -203,14 +204,55 @@ try {
     session,
     { repoRoot: REPO_ROOT },
   );
-  assert.strictEqual(
-    out.toolLog[0].result.content,
-    'repo-root contents',
-    'read_file uses the repoRoot supplied in runAgentLoop options',
-  );
-  rmSync(REPO_ROOT, { recursive: true, force: true });
-  console.log('  ✅ runAgentLoop passes repoRoot through to workspace tool handlers');
+  assert.strictEqual(out.toolLog[0].result.content, 'repo-root contents');
 
+  script = [toolCall('write_file', { path: 'written.txt', content: 'repo-root write' }), { content: 'repo root write' }];
+  out = await helpers.runAgentLoop(
+    [{ role: 'user', content: 'go' }],
+    'ollama',
+    LLM_URL,
+    {},
+    DEVELOPER_TOOLS,
+    session,
+    { repoRoot: REPO_ROOT },
+  );
+  assert.equal(out.toolLog[0].result.success, true);
+  assert.equal(readFileSync(join(REPO_ROOT, 'written.txt'), 'utf8'), 'repo-root write');
+  assert.equal(existsSync(join(WORKSPACE, 'written.txt')), false);
+
+  script = [toolCall('list_files', { path: '.' }), { content: 'repo root listed' }];
+  out = await helpers.runAgentLoop(
+    [{ role: 'user', content: 'go' }],
+    'ollama',
+    LLM_URL,
+    {},
+    DEVELOPER_TOOLS,
+    session,
+    { repoRoot: REPO_ROOT },
+  );
+  assert.ok(out.toolLog[0].result.entries.some(entry => entry.name === 'repo-only.txt'));
+  assert.ok(out.toolLog[0].result.entries.some(entry => entry.name === 'written.txt'));
+  assert.equal(out.toolLog[0].result.entries.some(entry => entry.name === 'hello.txt'), false);
+
+  script = [toolCall('write_artifact', { filename: 'repo-report.md', content: '# Repo report' }), { content: 'artifact written' }];
+  out = await helpers.runAgentLoop(
+    [{ role: 'user', content: 'go' }],
+    'ollama',
+    LLM_URL,
+    {},
+    DEVELOPER_TOOLS,
+    session,
+    { repoRoot: REPO_ROOT },
+  );
+  assert.equal(out.toolLog[0].result.success, true);
+  assert.equal(
+    readFileSync(join(REPO_ROOT, 'artifacts', 'repo-report.md'), 'utf8'),
+    '# Repo report',
+  );
+  assert.equal(existsSync(join(WORKSPACE, 'artifacts', 'repo-report.md')), false);
+
+  rmSync(REPO_ROOT, { recursive: true, force: true });
+  console.log('  ✅ repoRoot scopes read_file, write_file, list_files and write_artifact');
   // ── write_file / list_files ────────────────────────────────────────────────
   script = [toolCall('write_file', { path: 'out.txt', content: 'written by agent' }), { content: 'wrote it' }];
   out = await run(helpers);
