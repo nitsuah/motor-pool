@@ -190,7 +190,8 @@ try {
   console.log('  ✅ runAgentLoop executes read_file and feeds the result back');
 
   // ── per-run repoRoot is passed through to workspace tool handlers ──────────
-  const REPO_ROOT = realpathSync(mkdtempSync(join(tmpdir(), 'ab-repo-root-')));
+  const REPO_ROOT = join(WORKSPACE, 'repo-root');
+  mkdirSync(REPO_ROOT);
   writeFileSync(join(REPO_ROOT, 'repo-only.txt'), 'repo-root contents');
   script = [toolCall('read_file', { path: 'repo-only.txt' }), { content: 'repo root read' }];
   out = await helpers.runAgentLoop(
