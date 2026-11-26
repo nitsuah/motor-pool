@@ -14,6 +14,19 @@ async function runTests() {
   assert.equal(await disabled.getMicroskillsForInjection(), '');
   assert.equal(invokeCount, 0);
 
+  // Test: a live enabled callback observes plugin reloads without a server restart
+  invokeCount = 0;
+  let liveEnabled = false;
+  const dynamicClient = createTokenEconomizer({
+    invoke: async () => { invokeCount++; return { microskills: ['live'] }; },
+    isEnabled: () => liveEnabled,
+  });
+  assert.equal(await dynamicClient.getMicroskillsForInjection(), '');
+  assert.equal(invokeCount, 0);
+  liveEnabled = true;
+  assert.equal(await dynamicClient.getMicroskillsForInjection(), '- live');
+  assert.equal(invokeCount, 1);
+
   // Test 2: enabled with invoke returning { sessions: 2 }
   invokeCount = 0;
   const enabled = createTokenEconomizer({

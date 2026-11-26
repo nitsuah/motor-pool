@@ -40,6 +40,7 @@ export function createSessionsRouter({
   serviceRegistry,
   dockerControlEnabled,
   runComposeAction,
+  tokenEconomizer,
 }) {
   const router = express.Router();
 
@@ -50,7 +51,7 @@ export function createSessionsRouter({
     runPromptHandlers, prepareSessionForLlmCall, resolveEndpointUrl,
     getExperienceTools, runAgentLoop,
     upsertSessionContext, activeDockerRunnerModelRef,
-    TOOL_SERVERS, serviceRegistry, dockerControlEnabled, runComposeAction,
+    TOOL_SERVERS, serviceRegistry, dockerControlEnabled, runComposeAction, tokenEconomizer,
   };
 
   router.post('/', async (req, res) => {

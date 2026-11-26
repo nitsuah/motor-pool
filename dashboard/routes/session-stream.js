@@ -1,6 +1,7 @@
 import axios from 'axios';
 import { buildSystemMessages, outputFiltersActive } from '../safety.js';
 import { preflightTurn, ensureTurnTool, finalizeReply, recordTurnError } from '../modules/session-turn.js';
+import { injectTokenEconomizerMicroskills } from '../modules/token-economizer-microskills.js';
 
 /**
  * POST /api/sessions/:id/stream — SSE frames: token | reset | tool_call | done | error.
@@ -18,7 +19,7 @@ export async function handleSessionStream(req, res, deps) {
   const {
     sessions, LLM_CONFIG, DEVICE_PROFILE,
     resolveEndpointUrl, prepareSessionForLlmCall,
-    getExperienceTools, runAgentLoop, activeDockerRunnerModelRef, logStructured,
+    getExperienceTools, runAgentLoop, activeDockerRunnerModelRef, logStructured, tokenEconomizer,
   } = deps;
   const session = sessions.get(req.params.id);
   if (!session) return res.status(404).json({ success: false, error: 'Session not found' });
@@ -84,6 +85,7 @@ export async function handleSessionStream(req, res, deps) {
       session.llmUrl = await resolveEndpointUrl('primary');
     }
     const prepared = await prepareSessionForLlmCall(session);
+    const requestModel = session.model;
     if (LLM_CONFIG[session.endpoint]?.backendType === 'docker-runner') {
       activeDockerRunnerModelRef.current = { key: session.endpoint, model: session.model, at: new Date() };
     }
@@ -91,7 +93,10 @@ export async function handleSessionStream(req, res, deps) {
     const { apiStyle } = prepared;
     const apiKey = LLM_CONFIG[session.endpoint]?.apiKey || null;
     const streamHeaders = apiKey ? { Authorization: `Bearer ${apiKey}` } : {};
-    const systemMessages = buildSystemMessages({ ...session, safetyMode });
+    const systemMessages = await injectTokenEconomizerMicroskills(
+      buildSystemMessages({ ...session, safetyMode }),
+      tokenEconomizer,
+    );
     const historyMessages = session.messages.map(m => ({ role: m.role, content: m.content }));
     const msgs = [...systemMessages, ...historyMessages];
 
@@ -150,7 +155,7 @@ export async function handleSessionStream(req, res, deps) {
     if (clientGone) upstream.abort();
     const streamResponse = await axios.post(
       apiStyle === 'openai' ? `${llmUrl}/chat/completions` : `${llmUrl}/api/chat`,
-      { model: session.model, messages: msgs, stream: true },
+      { model: requestModel, messages: msgs, stream: true },
       { headers: streamHeaders, responseType: 'stream', timeout: 120000, signal: upstream.signal }
     );
 

@@ -48,6 +48,7 @@ import { createMcpRegistryRouter } from './routes/mcp-registry.js';
 import { createPluginsRouter } from './routes/plugins.js';
 import { createWorktreesRouter } from './routes/worktrees.js';
 import { createPluginRegistry } from './modules/plugin-loader.js';
+import { createTokenEconomizer } from './modules/token-economizer.js';
 import { startTaskRunner } from './task-runner.js';
 import outputsRouter from './routes/outputs.js';
 import {
@@ -452,6 +453,25 @@ async function markSessionEndedWithSnapshot(sessionId, endedAt, log) {
 const pluginRegistry = createPluginRegistry({ eventBus, logStructured });
 pluginRegistry.reload();
 
+const tokenEconomizer = createTokenEconomizer({
+  isEnabled: () => pluginRegistry.get('tokeneconomizer')?.enabled === true,
+  invoke: async (toolName, body) => {
+    const plugin = pluginRegistry.get('tokeneconomizer');
+    if (!plugin?.enabled) return { ok: false, reason: 'disabled' };
+    const tool = pluginRegistry.getTool('tokeneconomizer', toolName);
+    if (!tool) return { ok: false, reason: 'unknown_tool' };
+    const response = await axios({
+      method: tool.method,
+      url: tool.endpoint,
+      timeout: tool.timeoutMs,
+      maxRedirects: 0,
+      headers: plugin.headers,
+      data: body,
+    });
+    return response.data;
+  },
+});
+
 const { getExperienceTools, runAgentLoop } = createAgentHelpers({
   WORKSPACE_ROOT, execAsync, TOOL_SERVERS, TOOL_CALL_TIMEOUT_MS, pluginRegistry,
 });
@@ -665,6 +685,7 @@ app.use('/api/sessions', createSessionsRouter({
   resolveSessionEndpoint: resolveSessionEndpointWithCustom, resolveConfiguredSafetyMode, isEndpointAllowed: isEndpointAllowedWithCustom,
   getExperienceConfig, getAllowedEndpoints, coerceModelForEndpoint,
   resolveEndpointUrl, prepareSessionForLlmCall, ensureRunnableModelForSession,
+  tokenEconomizer,
   getExperienceTools, runPromptHandlers, runAgentLoop,
   upsertSessionContext: upsertSessionContextWithSnapshot, markSessionEnded: markSessionEndedWithSnapshot, persistEvent, activeDockerRunnerModelRef,
   TOOL_SERVERS, serviceRegistry: getServiceRegistry(), dockerControlEnabled: DOCKER_CONTROL_ENABLED, runComposeAction,
