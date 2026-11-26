@@ -156,7 +156,7 @@ export function createAgentHelpers({ WORKSPACE_ROOT, execAsync, TOOL_SERVERS, TO
     if (!workspaceRoot) return null;
     const root = resolvePath(workspaceRoot);
     const rootPrefix = root.endsWith(sep) ? root : root + sep;
-    const safe = reqPath ? reqPath.replace(/\\/g, '/').replace(/^\\/+/, '') : '';
+    const safe = reqPath ? reqPath.replace(/\\/g, '/').replace(/^\/+/, '') : '';
     const abs = resolvePath(root, safe);
     if (abs !== root && !abs.startsWith(rootPrefix)) return null;
     return isInsideWorkspaceReal(abs, root) ? abs : null;
