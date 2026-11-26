@@ -240,7 +240,7 @@ try {
     'ollama',
     LLM_URL,
     {},
-    DEVELOPER_TOOLS,
+    RESEARCH_TOOLS,
     session,
     { repoRoot: REPO_ROOT },
   );
