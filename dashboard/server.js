@@ -453,7 +453,6 @@ async function markSessionEndedWithSnapshot(sessionId, endedAt, log) {
 const pluginRegistry = createPluginRegistry({ eventBus, logStructured });
 pluginRegistry.reload();
 
-const tokenEconomizerPlugin = pluginRegistry.get('tokeneconomizer');
 const tokenEconomizer = createTokenEconomizer({
   isEnabled: () => pluginRegistry.get('tokeneconomizer')?.enabled === true,
   invoke: async (toolName, body) => {
