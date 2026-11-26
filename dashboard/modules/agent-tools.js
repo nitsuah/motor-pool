@@ -152,23 +152,23 @@ const PLUGIN_ARGS_MAX_BYTES = 256 * 1024;
 
 export function createAgentHelpers({ WORKSPACE_ROOT, execAsync, TOOL_SERVERS, TOOL_CALL_TIMEOUT_MS, pluginRegistry = null }) {
   if (WORKSPACE_ROOT) warnIfPinningOptOut();
-  const ROOT_PREFIX = WORKSPACE_ROOT ? (WORKSPACE_ROOT.endsWith(sep) ? WORKSPACE_ROOT : WORKSPACE_ROOT + sep) : null;
-
-  function resolveWorkspacePath(reqPath) {
-    if (!WORKSPACE_ROOT) return null;
-    const safe = reqPath ? reqPath.replace(/\\/g, '/').replace(/^\/+/, '') : '';
-    const abs = resolvePath(WORKSPACE_ROOT, safe);
-    if (abs !== WORKSPACE_ROOT && !abs.startsWith(ROOT_PREFIX)) return null;
-    return isInsideWorkspaceReal(abs) ? abs : null;
+  function resolveWorkspacePath(reqPath, workspaceRoot = WORKSPACE_ROOT) {
+    if (!workspaceRoot) return null;
+    const root = resolvePath(workspaceRoot);
+    const rootPrefix = root.endsWith(sep) ? root : root + sep;
+    const safe = reqPath ? reqPath.replace(/\\/g, '/').replace(/^\\/+/, '') : '';
+    const abs = resolvePath(root, safe);
+    if (abs !== root && !abs.startsWith(rootPrefix)) return null;
+    return isInsideWorkspaceReal(abs, root) ? abs : null;
   }
 
   /**
    * The string check above cannot see symbolic links. Resolve the real location of the deepest existing
    * path component (a dangling link counts as escaping) and require it to stay under the real workspace root.
    */
-  function isInsideWorkspaceReal(abs) {
+  function isInsideWorkspaceReal(abs, workspaceRoot = WORKSPACE_ROOT) {
     try {
-      const rootReal = realpathSync(WORKSPACE_ROOT);
+      const rootReal = realpathSync(workspaceRoot);
       let probe = abs;
       for (;;) {
         try {
@@ -263,16 +263,18 @@ export function createAgentHelpers({ WORKSPACE_ROOT, execAsync, TOOL_SERVERS, TO
   }
 
   async function callAgentTool(toolName, toolArgs, session) {
+    const workspaceRoot = session?.repoRoot ? resolvePath(session.repoRoot) : WORKSPACE_ROOT;
+    const rootPrefix = workspaceRoot ? (workspaceRoot.endsWith(sep) ? workspaceRoot : workspaceRoot + sep) : null;
     try {
       if (toolName === 'bash') {
         if (!shellExecEnabled()) return JSON.stringify({ error: 'Shell execution is disabled (WORKSPACE_EXEC is not enabled)' });
-        if (!WORKSPACE_ROOT) return JSON.stringify({ error: 'Workspace not mounted (WORKSPACE_ROOT not set)' });
+        if (!workspaceRoot) return JSON.stringify({ error: 'Workspace not mounted (WORKSPACE_ROOT not set)' });
         const { command } = toolArgs;
         if (BASH_BLOCKLIST.some(p => String(command).includes(p))) {
           return JSON.stringify({ error: 'Command blocked by safety policy' });
         }
         try {
-          const { stdout, stderr } = await execAsync(String(command), { cwd: WORKSPACE_ROOT, timeout: 30000, shell: true, env: agentShellEnv() });
+          const { stdout, stderr } = await execAsync(String(command), { cwd: workspaceRoot, timeout: 30000, shell: true, env: agentShellEnv() });
           return JSON.stringify({ stdout: stdout.trim(), stderr: stderr.trim(), exitCode: 0 });
         } catch (err) {
           return JSON.stringify({ stdout: (err.stdout || '').trim(), stderr: (err.stderr || err.message).trim(), exitCode: err.code || 1 });
@@ -280,14 +282,14 @@ export function createAgentHelpers({ WORKSPACE_ROOT, execAsync, TOOL_SERVERS, TO
       }
 
       if (toolName === 'read_file') {
-        if (!WORKSPACE_ROOT) return JSON.stringify({ error: 'Workspace not mounted' });
-        const abs = resolveWorkspacePath(toolArgs.path);
+        if (!workspaceRoot) return JSON.stringify({ error: 'Workspace not mounted' });
+        const abs = resolveWorkspacePath(toolArgs.path, workspaceRoot);
         if (!abs) return JSON.stringify({ error: 'Invalid path (path traversal detected)' });
-        if (abs === WORKSPACE_ROOT || !abs.startsWith(ROOT_PREFIX)) return JSON.stringify({ error: 'Invalid path' });
+        if (abs === workspaceRoot || !abs.startsWith(rootPrefix)) return JSON.stringify({ error: 'Invalid path' });
         let fh;
         try {
           // Read through a descriptor that was verified to be inside the workspace.
-          fh = await openInside(WORKSPACE_ROOT, abs, fsConstants.O_RDONLY);
+          fh = await openInside(workspaceRoot, abs, fsConstants.O_RDONLY);
           const s = await fh.stat();
           if (s.size > 512 * 1024) return JSON.stringify({ error: 'File too large (> 512 KB)' });
           const content = await fh.readFile('utf8');
@@ -307,12 +309,12 @@ export function createAgentHelpers({ WORKSPACE_ROOT, execAsync, TOOL_SERVERS, TO
         let fh;
         try {
           const parentAbs = resolvePath(abs, '..');
-          if (parentAbs !== WORKSPACE_ROOT) {
+          if (parentAbs !== workspaceRoot) {
             if (!parentAbs.startsWith(ROOT_PREFIX)) return JSON.stringify({ error: 'Invalid path' });
-            await mkdirInside(WORKSPACE_ROOT, parentAbs);
+            await mkdirInside(workspaceRoot, parentAbs);
           }
           // Open without truncating, verify the descriptor, then truncate and write.
-          fh = await openInside(WORKSPACE_ROOT, abs, fsConstants.O_WRONLY | fsConstants.O_CREAT);
+          fh = await openInside(workspaceRoot, abs, fsConstants.O_WRONLY | fsConstants.O_CREAT);
           await fh.truncate(0);
           await fh.writeFile(String(toolArgs.content), 'utf8');
           return JSON.stringify({ success: true, path: toolArgs.path, bytes: Buffer.byteLength(String(toolArgs.content), 'utf8') });
@@ -325,11 +327,11 @@ export function createAgentHelpers({ WORKSPACE_ROOT, execAsync, TOOL_SERVERS, TO
 
       if (toolName === 'list_files') {
         if (!WORKSPACE_ROOT) return JSON.stringify({ error: 'Workspace not mounted' });
-        const abs = resolveWorkspacePath(toolArgs.path || '');
+        const abs = resolveWorkspacePath(toolArgs.path || '', workspaceRoot);
         if (!abs) return JSON.stringify({ error: 'Invalid path' });
         if (abs !== WORKSPACE_ROOT && !abs.startsWith(ROOT_PREFIX)) return JSON.stringify({ error: 'Invalid path' });
         try {
-          const entries = await readdirInside(WORKSPACE_ROOT, abs);
+          const entries = await readdirInside(workspaceRoot, abs);
           return JSON.stringify({ entries: entries.map(e => ({ name: e.name, type: e.isDirectory ? 'dir' : 'file' })) });
         } catch (err) {
           return JSON.stringify({ error: err.message });
@@ -355,13 +357,13 @@ export function createAgentHelpers({ WORKSPACE_ROOT, execAsync, TOOL_SERVERS, TO
       if (toolName === 'write_artifact') {
         if (!WORKSPACE_ROOT) return JSON.stringify({ error: 'Workspace not mounted' });
         const filename = String(toolArgs.filename || 'artifact.md').replace(/[/\\]/g, '-');
-        const abs = resolvePath(WORKSPACE_ROOT, 'artifacts', filename);
+        const abs = resolvePath(workspaceRoot, 'artifacts', filename);
         if (!abs.startsWith(ROOT_PREFIX)) return JSON.stringify({ error: 'Invalid filename' });
         let fh;
         try {
           const dirAbs = resolvePath(abs, '..');
           if (!dirAbs.startsWith(ROOT_PREFIX)) return JSON.stringify({ error: 'Invalid filename' });
-          await mkdirInside(WORKSPACE_ROOT, dirAbs);
+          await mkdirInside(workspaceRoot, dirAbs);
           fh = await openInside(WORKSPACE_ROOT, abs, fsConstants.O_WRONLY | fsConstants.O_CREAT);
           await fh.truncate(0);
           await fh.writeFile(String(toolArgs.content), 'utf8');
@@ -580,6 +582,7 @@ export function createAgentHelpers({ WORKSPACE_ROOT, execAsync, TOOL_SERVERS, TO
 
   async function runAgentLoop(msgs, apiStyle, llmUrl, llmHeaders, tools, session, options = {}) {
     const MAX_ITERATIONS = 5;
+    const toolSession = options.repoRoot ? { ...session, repoRoot: options.repoRoot } : session;
     const toolLog = [];
     const localMsgs = [...msgs];
     let consecutiveErrors = 0;
@@ -648,7 +651,7 @@ export function createAgentHelpers({ WORKSPACE_ROOT, execAsync, TOOL_SERVERS, TO
         const rawResult = argsError
           ? JSON.stringify({ error: argsError })
           : allowedToolNames.has(name)
-            ? await callAgentTool(name, args, session)
+            ? await callAgentTool(name, args, toolSession)
             : JSON.stringify({ error: `Tool "${name}" is not in the active tool list for this experience` });
         const result = capToolResult(rawResult);
 
