@@ -277,13 +277,13 @@ export function createAgentHelpers({ WORKSPACE_ROOT, execAsync, TOOL_SERVERS, TO
     try {
       if (toolName === 'bash') {
         if (!shellExecEnabled()) return JSON.stringify({ error: 'Shell execution is disabled (WORKSPACE_EXEC is not enabled)' });
-        if (!workspaceRoot) return JSON.stringify({ error: 'Workspace not mounted (WORKSPACE_ROOT not set)' });
+        if (!WORKSPACE_ROOT) return JSON.stringify({ error: 'Workspace not mounted (WORKSPACE_ROOT not set)' });
         const { command } = toolArgs;
         if (BASH_BLOCKLIST.some(p => String(command).includes(p))) {
           return JSON.stringify({ error: 'Command blocked by safety policy' });
         }
         try {
-          const { stdout, stderr } = await execAsync(String(command), { cwd: workspaceRoot, timeout: 30000, shell: true, env: agentShellEnv() });
+          const { stdout, stderr } = await execAsync(String(command), { cwd: WORKSPACE_ROOT, timeout: 30000, shell: true, env: agentShellEnv() });
           return JSON.stringify({ stdout: stdout.trim(), stderr: stderr.trim(), exitCode: 0 });
         } catch (err) {
           return JSON.stringify({ stdout: (err.stdout || '').trim(), stderr: (err.stderr || err.message).trim(), exitCode: err.code || 1 });
