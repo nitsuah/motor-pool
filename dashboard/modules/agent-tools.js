@@ -302,15 +302,15 @@ export function createAgentHelpers({ WORKSPACE_ROOT, execAsync, TOOL_SERVERS, TO
       }
 
       if (toolName === 'write_file') {
-        if (!WORKSPACE_ROOT) return JSON.stringify({ error: 'Workspace not mounted' });
-        const abs = resolveWorkspacePath(toolArgs.path);
+        if (!workspaceRoot) return JSON.stringify({ error: 'Workspace not mounted' });
+        const abs = resolveWorkspacePath(toolArgs.path, workspaceRoot);
         if (!abs) return JSON.stringify({ error: 'Invalid path' });
-        if (abs === WORKSPACE_ROOT || !abs.startsWith(ROOT_PREFIX)) return JSON.stringify({ error: 'Invalid path' });
+        if (abs === workspaceRoot || !abs.startsWith(rootPrefix)) return JSON.stringify({ error: 'Invalid path' });
         let fh;
         try {
           const parentAbs = resolvePath(abs, '..');
           if (parentAbs !== workspaceRoot) {
-            if (!parentAbs.startsWith(ROOT_PREFIX)) return JSON.stringify({ error: 'Invalid path' });
+            if (!parentAbs.startsWith(rootPrefix)) return JSON.stringify({ error: 'Invalid path' });
             await mkdirInside(workspaceRoot, parentAbs);
           }
           // Open without truncating, verify the descriptor, then truncate and write.
@@ -326,10 +326,10 @@ export function createAgentHelpers({ WORKSPACE_ROOT, execAsync, TOOL_SERVERS, TO
       }
 
       if (toolName === 'list_files') {
-        if (!WORKSPACE_ROOT) return JSON.stringify({ error: 'Workspace not mounted' });
+        if (!workspaceRoot) return JSON.stringify({ error: 'Workspace not mounted' });
         const abs = resolveWorkspacePath(toolArgs.path || '', workspaceRoot);
         if (!abs) return JSON.stringify({ error: 'Invalid path' });
-        if (abs !== WORKSPACE_ROOT && !abs.startsWith(ROOT_PREFIX)) return JSON.stringify({ error: 'Invalid path' });
+        if (abs !== WORKSPACE_ROOT && !abs.startsWith(rootPrefix)) return JSON.stringify({ error: 'Invalid path' });
         try {
           const entries = await readdirInside(workspaceRoot, abs);
           return JSON.stringify({ entries: entries.map(e => ({ name: e.name, type: e.isDirectory ? 'dir' : 'file' })) });
@@ -355,16 +355,16 @@ export function createAgentHelpers({ WORKSPACE_ROOT, execAsync, TOOL_SERVERS, TO
       }
 
       if (toolName === 'write_artifact') {
-        if (!WORKSPACE_ROOT) return JSON.stringify({ error: 'Workspace not mounted' });
+        if (!workspaceRoot) return JSON.stringify({ error: 'Workspace not mounted' });
         const filename = String(toolArgs.filename || 'artifact.md').replace(/[/\\]/g, '-');
         const abs = resolvePath(workspaceRoot, 'artifacts', filename);
-        if (!abs.startsWith(ROOT_PREFIX)) return JSON.stringify({ error: 'Invalid filename' });
+        if (!abs.startsWith(rootPrefix)) return JSON.stringify({ error: 'Invalid filename' });
         let fh;
         try {
           const dirAbs = resolvePath(abs, '..');
-          if (!dirAbs.startsWith(ROOT_PREFIX)) return JSON.stringify({ error: 'Invalid filename' });
+          if (!dirAbs.startsWith(rootPrefix)) return JSON.stringify({ error: 'Invalid filename' });
           await mkdirInside(workspaceRoot, dirAbs);
-          fh = await openInside(WORKSPACE_ROOT, abs, fsConstants.O_WRONLY | fsConstants.O_CREAT);
+          fh = await openInside(workspaceRoot, abs, fsConstants.O_WRONLY | fsConstants.O_CREAT);
           await fh.truncate(0);
           await fh.writeFile(String(toolArgs.content), 'utf8');
           return JSON.stringify({ success: true, path: `artifacts/${filename}` });
