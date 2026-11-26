@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 import { injectTokenEconomizerMicroskills } from '../modules/token-economizer-microskills.js';
 
 const base = [{ role: 'system', content: 'Base policy' }, { role: 'user', content: 'hello' }];
@@ -36,5 +37,10 @@ const base = [{ role: 'system', content: 'Base policy' }, { role: 'user', conten
     getMicroskillsForInjection: async () => '   ',
   });
   assert.equal(result, base);
+}
+for (const route of ['session-message.js', 'session-stream.js']) {
+  const source = readFileSync(new URL(`../routes/${route}`, import.meta.url), 'utf8');
+  assert.match(source, /injectTokenEconomizerMicroskills/);
+  assert.match(source, /await injectTokenEconomizerMicroskills/);
 }
 console.log('session-microskills: ok');
