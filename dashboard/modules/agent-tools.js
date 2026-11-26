@@ -329,7 +329,7 @@ export function createAgentHelpers({ WORKSPACE_ROOT, execAsync, TOOL_SERVERS, TO
         if (!workspaceRoot) return JSON.stringify({ error: 'Workspace not mounted' });
         const abs = resolveWorkspacePath(toolArgs.path || '', workspaceRoot);
         if (!abs) return JSON.stringify({ error: 'Invalid path' });
-        if (abs !== WORKSPACE_ROOT && !abs.startsWith(rootPrefix)) return JSON.stringify({ error: 'Invalid path' });
+        if (abs !== workspaceRoot && !abs.startsWith(rootPrefix)) return JSON.stringify({ error: 'Invalid path' });
         try {
           const entries = await readdirInside(workspaceRoot, abs);
           return JSON.stringify({ entries: entries.map(e => ({ name: e.name, type: e.isDirectory ? 'dir' : 'file' })) });
