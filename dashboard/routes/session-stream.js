@@ -85,6 +85,7 @@ export async function handleSessionStream(req, res, deps) {
       session.llmUrl = await resolveEndpointUrl('primary');
     }
     const prepared = await prepareSessionForLlmCall(session);
+    const requestModel = session.model;
     if (LLM_CONFIG[session.endpoint]?.backendType === 'docker-runner') {
       activeDockerRunnerModelRef.current = { key: session.endpoint, model: session.model, at: new Date() };
     }
@@ -154,7 +155,7 @@ export async function handleSessionStream(req, res, deps) {
     if (clientGone) upstream.abort();
     const streamResponse = await axios.post(
       apiStyle === 'openai' ? `${llmUrl}/chat/completions` : `${llmUrl}/api/chat`,
-      { model: session.model, messages: msgs, stream: true },
+      { model: requestModel, messages: msgs, stream: true },
       { headers: streamHeaders, responseType: 'stream', timeout: 120000, signal: upstream.signal }
     );
 
