@@ -188,7 +188,7 @@ export function createAgentHelpers({ WORKSPACE_ROOT, execAsync, TOOL_SERVERS, TO
     }
   }
 
-  function resolveWorkspaceRoot(repoRoot = WORKSPACE_ROOT) {
+  function resolveWorkspaceRoot(repoRoot) {
     if (!WORKSPACE_ROOT) return null;
     const root = resolvePath(WORKSPACE_ROOT);
     const requested = repoRoot ? resolvePath(repoRoot) : root;
