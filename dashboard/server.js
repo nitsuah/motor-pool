@@ -455,7 +455,7 @@ pluginRegistry.reload();
 
 const tokenEconomizerPlugin = pluginRegistry.get('tokeneconomizer');
 const tokenEconomizer = createTokenEconomizer({
-  isEnabled: tokenEconomizerPlugin?.enabled === true,
+  isEnabled: () => pluginRegistry.get('tokeneconomizer')?.enabled === true,
   invoke: async (toolName, body) => {
     const plugin = pluginRegistry.get('tokeneconomizer');
     if (!plugin?.enabled) return { ok: false, reason: 'disabled' };
