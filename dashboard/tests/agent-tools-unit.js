@@ -189,6 +189,27 @@ try {
   assert.strictEqual(out.toolLog[0].result.content, 'file contents\n', 'tool actually read the file');
   console.log('  ✅ runAgentLoop executes read_file and feeds the result back');
 
+  // ── per-run repoRoot is passed through to workspace tool handlers ──────────
+  const REPO_ROOT = realpathSync(mkdtempSync(join(tmpdir(), 'ab-repo-root-')));
+  writeFileSync(join(REPO_ROOT, 'repo-only.txt'), 'repo-root contents');
+  script = [toolCall('read_file', { path: 'repo-only.txt' }), { content: 'repo root read' }];
+  out = await helpers.runAgentLoop(
+    [{ role: 'user', content: 'go' }],
+    'ollama',
+    LLM_URL,
+    {},
+    DEVELOPER_TOOLS,
+    session,
+    { repoRoot: REPO_ROOT },
+  );
+  assert.strictEqual(
+    out.toolLog[0].result.content,
+    'repo-root contents',
+    'read_file uses the repoRoot supplied in runAgentLoop options',
+  );
+  rmSync(REPO_ROOT, { recursive: true, force: true });
+  console.log('  ✅ runAgentLoop passes repoRoot through to workspace tool handlers');
+
   // ── write_file / list_files ────────────────────────────────────────────────
   script = [toolCall('write_file', { path: 'out.txt', content: 'written by agent' }), { content: 'wrote it' }];
   out = await run(helpers);
