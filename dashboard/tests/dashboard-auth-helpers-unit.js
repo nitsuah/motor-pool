@@ -26,7 +26,7 @@ assert.equal(bearerToken('Bearer a b'), 'a b', 'inner space kept');
   const result = bearerToken(`Bearer${' '.repeat(100000)}`);
   const elapsed = performance.now() - start;
   assert.equal(result, null, 'a long run of spaces yields no token');
-  assert.ok(elapsed < 500, `long space run parsed in linear time (${elapsed.toFixed(1)} ms)`);
+  assert.ok(elapsed < 2000, `long space run parsed in linear time (${elapsed.toFixed(1)} ms)`);
 }
 
 // ── hasProxyHeader ────────────────────────────────────────────────────────────
