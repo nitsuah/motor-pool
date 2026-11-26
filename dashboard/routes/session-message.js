@@ -1,10 +1,11 @@
 import { buildSystemMessages } from '../safety.js';
 import { preflightTurn, ensureTurnTool, finalizeReply, recordTurnError } from '../modules/session-turn.js';
+import { injectTokenEconomizerMicroskills } from '../modules/token-economizer-microskills.js';
 
 export async function handleSessionMessage(req, res, deps) {
   const {
     sessions, LLM_CONFIG, prepareSessionForLlmCall,
-    getExperienceTools, runAgentLoop, activeDockerRunnerModelRef, logStructured,
+    getExperienceTools, runAgentLoop, activeDockerRunnerModelRef, logStructured, tokenEconomizer,
   } = deps;
   const session = sessions.get(req.params.id);
   if (!session) return res.status(404).json({ success: false, error: 'Session not found' });
@@ -42,7 +43,10 @@ export async function handleSessionMessage(req, res, deps) {
     const apiKey = LLM_CONFIG[session.endpoint]?.apiKey || null;
     const llmHeaders = apiKey ? { Authorization: `Bearer ${apiKey}` } : {};
 
-    const systemMessages = buildSystemMessages({ ...session, safetyMode: turn.safetyMode });
+    const systemMessages = await injectTokenEconomizerMicroskills(
+      buildSystemMessages({ ...session, safetyMode: turn.safetyMode }),
+      tokenEconomizer,
+    );
     const historyMessages = session.messages.map(m => ({ role: m.role, content: m.content }));
     const msgs = [...systemMessages, ...historyMessages];
 
