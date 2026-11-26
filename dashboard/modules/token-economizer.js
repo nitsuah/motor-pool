@@ -13,7 +13,7 @@ export function createTokenEconomizer({ invoke, isEnabled }) {
   }
 
   async function getStatus() {
-    if (!isEnabled) return { ok: false, reason: 'disabled' };
+    if (!(typeof isEnabled === 'function' ? isEnabled() : isEnabled)) return { ok: false, reason: 'disabled' };
     try {
       return { ok: true, status: await call('status', { json: true }) };
     } catch (err) {
@@ -22,7 +22,7 @@ export function createTokenEconomizer({ invoke, isEnabled }) {
   }
 
   async function getMicroskillsForInjection() {
-    if (!isEnabled) return '';
+    if (!(typeof isEnabled === 'function' ? isEnabled() : isEnabled)) return '';
     try {
       const result = await call('microskills', {});
       if (typeof result === 'string') return result.trim();
