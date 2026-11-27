@@ -181,6 +181,49 @@ try {
   assert.equal(adminCreatedSessionRead.data.session.userId, 'bob', 'superadmin can explicitly create for another principal');
   assert.equal(adminCreatedSessionRead.data.session.userRole, 'runner');
 
+  const aliceBulkSession = await call('/api/sessions', {
+    method: 'POST', token: alice.token, body: { name: 'alice-bulk-delete' },
+  });
+  const bobBulkSession = await call('/api/sessions', {
+    method: 'POST', token: bob.token, body: { name: 'bob-bulk-delete' },
+  });
+  const bobDeleteAll = await call('/api/sessions', {
+    method: 'DELETE', token: bob.token, body: { deleteAll: true },
+  });
+  assert.equal(bobDeleteAll.status, 200);
+  assert.equal((await call(`/api/sessions/${aliceBulkSession.data.session.id}`, { token: alice.token })).status, 200,
+    'deleteAll only removes the caller principal sessions');
+  assert.equal((await call(`/api/sessions/${bobBulkSession.data.session.id}`, { token: bob.token })).status, 404);
+  assert.equal((await call(`/api/sessions/${adminCreatedSessionId}`, { token: BOOT })).status, 404,
+    'superadmin-created Bob session was removed by Bob bulk deletion');
+
+  const bobBatchSession = await call('/api/sessions', {
+    method: 'POST', token: bob.token, body: { name: 'bob-explicit-batch' },
+  });
+  const aliceBatchSession = await call('/api/sessions', {
+    method: 'POST', token: alice.token, body: { name: 'alice-explicit-batch' },
+  });
+  const mixedBatch = await call('/api/sessions', {
+    method: 'DELETE',
+    token: bob.token,
+    body: { ids: [bobBatchSession.data.session.id, aliceBatchSession.data.session.id] },
+  });
+  assert.equal(mixedBatch.status, 404, 'mixed-owner batch is rejected before deleting anything');
+  assert.equal((await call(`/api/sessions/${bobBatchSession.data.session.id}`, { token: bob.token })).status, 200,
+    'mixed-owner rejection does not partially delete the caller session');
+  assert.equal((await call(`/api/sessions/${aliceBatchSession.data.session.id}`, { token: alice.token })).status, 200,
+    'mixed-owner rejection leaves the other principal session untouched');
+
+  const ownBatch = await call('/api/sessions', {
+    method: 'DELETE', token: bob.token, body: { ids: [bobBatchSession.data.session.id] },
+  });
+  assert.equal(ownBatch.status, 200);
+  assert.equal(ownBatch.data.deleted, 1);
+  const adminBatch = await call('/api/sessions', {
+    method: 'DELETE', token: BOOT, body: { ids: [aliceBatchSession.data.session.id] },
+  });
+  assert.equal(adminBatch.status, 200, 'superadmin retains explicit cross-principal deletion');
+
   const deleteProbe = await call('/api/sessions', {
     method: 'POST', token: alice.token, body: { name: 'idempotent-delete-test' },
   });
