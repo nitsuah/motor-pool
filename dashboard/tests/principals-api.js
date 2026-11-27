@@ -8,6 +8,7 @@
  */
 import assert from 'node:assert/strict';
 import { WebSocket } from 'ws';
+import { createUpgradeVerifier } from '../modules/origin-guard.js';
 
 // The unit runner turns dev mode on for every suite; this one tests without it.
 delete process.env.MP_AUTH_DEV_MODE;
@@ -22,8 +23,10 @@ const { eventBus } = await import('../modules/event-bus.js');
 
 const server = app.listen(0, '127.0.0.1');
 await new Promise(r => server.once('listening', r));
-// Same wiring as server.js (minus the Host/Origin check).
-attachEventWebSocketServer(server, () => true, {
+// Match the production WebSocket wiring: Host/Origin validation plus the separate
+// dashboard gate, principal authentication, token revalidation, and event filtering.
+const upgradeVerifier = createUpgradeVerifier({ getCorsOrigins: () => [], getAllowedHosts: () => [] });
+attachEventWebSocketServer(server, (request) => upgradeVerifier(request), {
   authenticate: principalAuth.authenticate, authenticateToken: principalAuth.authenticateToken,
   revalidate: principalAuth.revalidate, isGateAuthorized: (request) => dashboardAuth.isAuthorized(request),
 });
@@ -97,6 +100,12 @@ try {
     assert.equal(r.headers.get('cache-control'), 'no-store');
     return r.data.token;
   };
+  // A dashboard-only credential must not satisfy the separate principal-role gate.
+  const dashboardOnlyExec = await call('/api/workspace/exec', {
+    method: 'POST', token: dashboardAuth.token, body: { command: 'id' },
+  });
+  assert.equal(dashboardOnlyExec.status, 403, 'dashboard authentication alone cannot authorize shell execution');
+
   const alice = await mint('alice');
   const bob = await mint('bob');
   const ops = await mint('ops');
