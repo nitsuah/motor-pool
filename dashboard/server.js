@@ -678,7 +678,7 @@ function isEndpointAllowedWithCustom(experience, endpoint) {
   return isEndpointAllowed(experience, endpoint);
 }
 
-app.use('/api/sessions', createSessionsRouter({
+app.use('/api/sessions', principalAuth.requireAuth(), createSessionsRouter({
   sessions, sessionCounterRef, eventBus, logStructured,
   LLM_CONFIG, PUBLIC_DEMO_MODE, DEMO_EXPERIENCE, MAX_INPUT_CHARS, MAX_OUTPUT_CHARS,
   DEVICE_PROFILE, resolveRequestedExperience, isKnownExperience, isKnownSafetyMode,
