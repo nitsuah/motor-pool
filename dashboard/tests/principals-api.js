@@ -239,6 +239,8 @@ try {
   assert.equal((await call(`/api/sessions/${deleteProbeId}`, { method: 'DELETE', token: alice.token })).status, 200);
   assert.equal((await call(`/api/sessions/${deleteProbeId}`, { method: 'DELETE', token: alice.token })).status, 200,
     'deleting an already-deleted session remains idempotent');
+  assert.equal((await call(`/api/sessions/${deleteProbeId}/messages`, { method: 'DELETE', token: alice.token })).status, 404,
+    'nested DELETE paths do not inherit the base-route idempotency exception');
 
   // ── Revocation ────────────────────────────────────────────────────────
   const spare = await mint('ops');
