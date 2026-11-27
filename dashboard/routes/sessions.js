@@ -47,7 +47,12 @@ export function createSessionsRouter({
   // from the authenticated principal before every ID-scoped read or mutation.
   router.use('/:id', (req, res, next) => {
     const session = sessions.get(req.params.id);
-    if (!session) return res.status(404).json({ success: false, error: 'Session not found' });
+    if (!session) {
+      // Preserve the DELETE /:id idempotency contract: deleting an already
+      // deleted session is a successful no-op. Other ID-scoped paths 404.
+      if (req.method === 'DELETE' && req.path === `/${req.params.id}`) return next();
+      return res.status(404).json({ success: false, error: 'Session not found' });
+    }
     if (req.principal?.role !== 'superadmin' && session.userId !== req.principal?.id) {
       // Use the same response as a missing session to avoid confirming its existence.
       return res.status(404).json({ success: false, error: 'Session not found' });
@@ -95,12 +100,18 @@ export function createSessionsRouter({
 
     const sessionId = `sess_${Date.now()}_${randomBytes(5).toString('hex')}`;
     const resolvedLlmUrl = await resolveEndpointUrl(endpoint);
+    // Superadmins may create sessions on behalf of another principal for
+    // administrative/dev workflows. Every other role is bound to its token.
+    const sessionOwnerId = req.principal.role === 'superadmin' && typeof _requestedUserId === 'string'
+      ? _requestedUserId : req.principal.id;
+    const sessionOwnerRole = req.principal.role === 'superadmin' && typeof _requestedUserRole === 'string'
+      ? _requestedUserRole : req.principal.role;
 
     const session = {
       id: sessionId, name, model, endpoint,
       llmUrl: resolvedLlmUrl, messages: [],
       createdAt: new Date(), updatedAt: new Date(),
-      userId: req.principal.id, userRole: req.principal.role,
+      userId: sessionOwnerId, userRole: sessionOwnerRole,
       experience, safetyMode: resolvedSafetyMode, useSafeModeEnabled: false,
       status: 'idle', lastActivity: new Date(), errorCount: 0,
     };
