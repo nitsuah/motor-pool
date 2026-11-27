@@ -45,6 +45,13 @@ export function createSessionsRouter({
   const router = express.Router();
   // Session identifiers are not authorization credentials. Resolve ownership
   // from the authenticated principal before every ID-scoped read or mutation.
+  // Mark only the exact DELETE /:id route before the shared ID authorization
+  // middleware; nested DELETE routes must still 404 for missing sessions.
+  router.delete('/:id', (req, _res, next) => {
+    req.sessionDeleteRequest = true;
+    next();
+  });
+
   router.use('/:id', (req, res, next) => {
     const principal = req.principal;
     if (!principal?.id || !principal?.role) {
@@ -54,7 +61,7 @@ export function createSessionsRouter({
     if (!session) {
       // Preserve the DELETE /:id idempotency contract: deleting an already
       // deleted session is a successful no-op. Other ID-scoped paths 404.
-      if (req.method === 'DELETE' && req.path === `/${req.params.id}`) return next();
+      if (req.method === 'DELETE' && req.sessionDeleteRequest === true) return next();
       return res.status(404).json({ success: false, error: 'Session not found' });
     }
     if (principal.role !== 'superadmin' && session.userId !== principal.id) {
