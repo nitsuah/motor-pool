@@ -50,7 +50,7 @@ export function createSessionsRouter({
     if (!session) {
       // Preserve the DELETE /:id idempotency contract: deleting an already
       // deleted session is a successful no-op. Other ID-scoped paths 404.
-      if (req.method === 'DELETE' && req.path === `/${req.params.id}`) return next();
+      if (req.method === 'DELETE' && req.path === '/') return next();
       return res.status(404).json({ success: false, error: 'Session not found' });
     }
     if (req.principal?.role !== 'superadmin' && session.userId !== req.principal?.id) {
