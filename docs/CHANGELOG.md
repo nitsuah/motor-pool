@@ -47,6 +47,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- The TokenEconomizer button is an icon so phone session tabs stay visible; journey baselines include it (#277–#281).
 - Status-only TokenEconomizer panel in the top bar: shows disabled, unreachable or enabled plus the reported status fields. It shows no savings figure ("unmeasured") and has no actions (#250).
 
 - Unit tests for principal-auth: `authenticate`, dev mode, `revalidate`, `authenticateToken`, `resolve` and `requireAuth`.

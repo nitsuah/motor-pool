@@ -42,8 +42,10 @@ export default function TokenEconomizerPanel() {
         aria-expanded={open}
         onClick={() => { setOpen(p => !p); if (!open) refresh(); }}
         title="TokenEconomizer status"
+        aria-label="TokenEconomizer status"
       >
-        TokenEconomizer <span className="topbar-logo-caret">▾</span>
+        {/* An icon keeps the top bar to one row of tabs on a phone. */}
+        💰 <span className="topbar-logo-caret">▾</span>
       </button>
       {open && (
         <div className="topbar-new-panel" style={{ minWidth: '16rem' }} role="status">
