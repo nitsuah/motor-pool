@@ -104,7 +104,8 @@ try {
   const dashboardOnlyExec = await call('/api/workspace/exec', {
     method: 'POST', token: dashboardAuth.token, body: { command: 'id' },
   });
-  assert.equal(dashboardOnlyExec.status, 403, 'dashboard authentication alone cannot authorize shell execution');
+  // The dashboard token is not a principal token, so requireAuth rejects it (401) before any role check.
+  assert.equal(dashboardOnlyExec.status, 401, 'dashboard authentication alone cannot authorize shell execution');
 
   const alice = await mint('alice');
   const bob = await mint('bob');
