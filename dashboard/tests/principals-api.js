@@ -147,7 +147,9 @@ try {
   // Session ids are not bearer credentials: a principal may only access its own
   // sessions, and the caller cannot choose the owner or role when creating one.
   const dashboardOnlySessions = await call('/api/sessions');
-  assert.equal(dashboardOnlySessions.status, 401, 'dashboard token alone cannot access principal-owned sessions');
+  assert.equal(dashboardOnlySessions.status, 401, 'anonymous callers cannot access principal-owned sessions');
+  const dashboardTokenSessions = await call('/api/sessions', { token: dashboardAuth.token });
+  assert.equal(dashboardTokenSessions.status, 401, 'dashboard token alone cannot access principal-owned sessions');
   const createdSession = await call('/api/sessions', {
     method: 'POST', token: alice.token, body: { userId: 'bob', userRole: 'superadmin', name: 'ownership-test' },
   });
