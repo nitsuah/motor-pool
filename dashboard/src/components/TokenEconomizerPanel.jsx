@@ -32,6 +32,8 @@ export default function TokenEconomizerPanel() {
   }, [open]);
 
   const lines = state?.ok ? summarizeStatus(state.status) : [];
+  // Say "unmeasured" only when the backend reported no savings field of its own.
+  const reportsSavings = lines.some(line => /^[^:]*saving/i.test(line));
 
   return (
     <div className="topbar-new-wrap" ref={wrapRef} style={{ marginRight: '0.1rem' }}>
@@ -54,7 +56,7 @@ export default function TokenEconomizerPanel() {
           {lines.map(line => (
             <div key={line} style={{ fontSize: '0.7rem', opacity: 0.75, overflowWrap: 'anywhere' }}>{line}</div>
           ))}
-          {state?.ok && (
+          {state?.ok && !reportsSavings && (
             <div style={{ fontSize: '0.7rem', opacity: 0.6, marginTop: '0.35rem' }}>Token savings: unmeasured</div>
           )}
         </div>
