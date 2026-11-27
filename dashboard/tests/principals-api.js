@@ -131,6 +131,19 @@ try {
   assert.equal((await call('/api/me', { token: alice.token })).data.principal.id, 'alice');
   console.log('  ok role checks: dispatcher 403, operator through, runner-only routes');
 
+  // Runtime endpoint changes alter outbound destinations and provider credentials.
+  // Only operator/superadmin principals may mutate the registry.
+  const endpointBody = { key: 'security-role-test', url: 'https://example.com/v1', apiStyle: 'openai', defaultModel: 'test-model' };
+  assert.equal((await call('/api/config/endpoints', { method: 'POST', token: alice.token, body: endpointBody })).status, 403,
+    'dispatcher cannot add a runtime endpoint');
+  assert.equal((await call('/api/config/endpoints', { method: 'POST', token: ops.token, body: endpointBody })).status, 200,
+    'operator can add a runtime endpoint');
+  assert.equal((await call('/api/config/endpoints/security-role-test', { method: 'DELETE', token: alice.token })).status, 403,
+    'dispatcher cannot remove a runtime endpoint');
+  assert.equal((await call('/api/config/endpoints/security-role-test', { method: 'DELETE', token: ops.token })).status, 200,
+    'operator can remove a runtime endpoint');
+
+
   // Session ids are not bearer credentials: a principal may only access its own
   // sessions, and the caller cannot choose the owner or role when creating one.
   const dashboardOnlySessions = await call('/api/sessions');
@@ -151,7 +164,6 @@ try {
   const bobList = await call('/api/sessions?userId=alice', { token: bob.token });
   assert.equal(bobList.status, 200);
   assert.ok(!bobList.data.sessions.some(s => s.id === sessionId), 'query filters cannot reveal another principal sessions');
-
 
   // ── Revocation ────────────────────────────────────────────────────────
   const spare = await mint('ops');

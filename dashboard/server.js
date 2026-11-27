@@ -715,7 +715,10 @@ app.use('/api', createToolsRouter({ TOOL_SERVERS, DOCKER_CONTROL_ENABLED, servic
 
 app.use('/api', createConnectorsRouter({ BB_MCP_ENABLED, BB_MCP_URL, logStructured }));
 
-app.use('/api', createEndpointsRouter({ LLM_CONFIG, logStructured }));
+app.use('/api', createEndpointsRouter({
+  LLM_CONFIG, logStructured,
+  requireEndpointWrite: principalAuth.requireAuth(['superadmin', 'operator']),
+}));
 app.use('/api', createDiscoverRouter({ LLM_CONFIG, logStructured }));
 app.use('/api', createChannelsRouter({ eventBus, logStructured }));
 app.use('/api', createMcpRegistryRouter({ logStructured, TOOL_SERVERS, serviceRegistry: getServiceRegistry(), DOCKER_CONTROL_ENABLED, runComposeAction }));

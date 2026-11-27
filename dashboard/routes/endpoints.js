@@ -55,7 +55,7 @@ function persistCustomEndpoints(LLM_CONFIG) {
   saveEndpoints(custom);
 }
 
-export function createEndpointsRouter({ LLM_CONFIG, logStructured }) {
+export function createEndpointsRouter({ LLM_CONFIG, logStructured, requireEndpointWrite = (_req, res) => res.status(503).json({ success: false, error: 'Endpoint authorization unavailable' }) }) {
   const router = express.Router();
 
   router.get('/config/endpoints', (req, res) => {
@@ -71,7 +71,7 @@ export function createEndpointsRouter({ LLM_CONFIG, logStructured }) {
     res.json({ success: true, endpoints: list });
   });
 
-  router.post('/config/endpoints', express.json(), (req, res) => {
+  router.post('/config/endpoints', requireEndpointWrite, express.json(), (req, res) => {
     const { key, name, url, apiStyle, defaultModel, apiKey } = req.body || {};
     if (!key || !url) {
       return res.status(400).json({ success: false, error: 'key and url are required' });
@@ -130,7 +130,7 @@ export function createEndpointsRouter({ LLM_CONFIG, logStructured }) {
     }
   });
 
-  router.delete('/config/endpoints/:key', (req, res) => {
+  router.delete('/config/endpoints/:key', requireEndpointWrite, (req, res) => {
     const { key } = req.params;
     if (isBuiltinEndpointKey(key)) {
       return res.status(400).json({ success: false, error: `"${key}" is a built-in endpoint and cannot be removed` });
