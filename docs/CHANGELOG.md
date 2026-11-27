@@ -22,6 +22,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- Landing page: quick start that boots from a fresh clone (required settings, sign-in, separate GPU command, PowerShell variants, success checks), current roadmap and feature cards, workspace screenshots, a mobile Quick start link and a skip link. README quick start lists the same required values; `promo/spots.json` maps the launch video and current features (#264).
+
 - TokenEconomizer HTTP wrapper redacts command output before returning it: values of secret-named keys (key, token, secret, password, auth, credential) and bearer/provider-shaped tokens are masked, so `config show` cannot leak credentials over HTTP. Mutating toolprune/config actions were already 403 (#168).
 - TokenEconomizer HTTP wrapper now caps concurrent child processes. New `TOKEN_ECONOMIZER_MAX_CONCURRENT` env var (default 2) limits in-flight `runTeCommand` calls; excess requests return 503 `TE_BUSY`. Covered by `test/tokeneconomizer-concurrency.test.mjs` (#149).
 - The 3D home dashboard (`three.js`) now loads as a separate chunk instead of shipping in the initial dashboard bundle (#116).

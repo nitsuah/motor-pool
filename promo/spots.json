@@ -20,14 +20,16 @@
       "screenshots": [
         "docs/screenshots/system-panel.png"
       ],
-      "spots": []
+      "spots": [
+        "launch-20s"
+      ]
     },
     {
       "id": "task-queue-visualization",
       "title": "Task Queue Visualization",
       "category": "Core Functionality",
       "screenshots": [
-        "docs/screenshots/metrics-panel.png"
+        "docs/screenshots/task-queue-visualization.png"
       ],
       "spots": []
     },
@@ -52,21 +54,27 @@
       "id": "dynamic-task-assignment",
       "title": "Dynamic Task Assignment",
       "category": "Core Functionality",
-      "screenshots": [],
+      "screenshots": [
+        "docs/screenshots/dynamic-task-assignment.png"
+      ],
       "spots": []
     },
     {
       "id": "workspace-file-engine",
       "title": "Workspace File Engine",
       "category": "Core Functionality",
-      "screenshots": [],
+      "screenshots": [
+        "docs/screenshots/workspace-file-engine.png"
+      ],
       "spots": []
     },
     {
       "id": "workspace-ide",
       "title": "Workspace IDE",
       "category": "Core Functionality",
-      "screenshots": [],
+      "screenshots": [
+        "docs/screenshots/workspace-ide.png"
+      ],
       "spots": []
     },
     {
@@ -102,7 +110,9 @@
       "screenshots": [
         "docs/screenshots/dashboard-overview.png"
       ],
-      "spots": []
+      "spots": [
+        "launch-20s"
+      ]
     },
     {
       "id": "content-studio-website-agent",
@@ -194,6 +204,14 @@
       "visual": "none"
     },
     {
+      "id": "streaming-tool-enabled-agent-turns",
+      "title": "Streaming Tool-Enabled Agent Turns",
+      "category": "Integrations & AI Runtimes",
+      "screenshots": [],
+      "spots": [],
+      "visual": "none"
+    },
+    {
       "id": "live-model-pull-status",
       "title": "Live Model Pull Status",
       "category": "UI/UX",
@@ -206,14 +224,18 @@
       "id": "responsive-dashboard",
       "title": "Responsive Dashboard",
       "category": "UI/UX",
-      "screenshots": [],
+      "screenshots": [
+        "docs/screenshots/responsive-dashboard.png"
+      ],
       "spots": []
     },
     {
       "id": "dark-light-mode-support",
       "title": "Dark/Light Mode Support",
       "category": "UI/UX",
-      "screenshots": [],
+      "screenshots": [
+        "docs/screenshots/dark-light-mode-support.png"
+      ],
       "spots": []
     },
     {
@@ -263,7 +285,9 @@
       "screenshots": [
         "docs/screenshots/discover-scan-result.png"
       ],
-      "spots": []
+      "spots": [
+        "launch-20s"
+      ]
     },
     {
       "id": "live-service-lifecycle-control",
@@ -272,7 +296,9 @@
       "screenshots": [
         "docs/screenshots/system-panel.png"
       ],
-      "spots": []
+      "spots": [
+        "launch-20s"
+      ]
     },
     {
       "id": "model-management",
@@ -333,6 +359,14 @@
       "visual": "none"
     },
     {
+      "id": "nightly-journeys",
+      "title": "Nightly Journeys",
+      "category": "DevOps & Infrastructure",
+      "screenshots": [],
+      "spots": [],
+      "visual": "none"
+    },
+    {
       "id": "sanitized-gateway-proxy",
       "title": "Sanitized Gateway Proxy",
       "category": "Security & Verification",
@@ -340,6 +374,14 @@
         "docs/screenshots/metrics-panel.png"
       ],
       "spots": []
+    },
+    {
+      "id": "principals-api-tokens",
+      "title": "Principals & API Tokens",
+      "category": "Security & Verification",
+      "screenshots": [],
+      "spots": [],
+      "visual": "none"
     },
     {
       "id": "modular-plugin-architecture",
@@ -394,7 +436,12 @@
       "seconds": 20,
       "format": "landscape",
       "tool": "brag (one-off, source not kept)",
-      "features": [],
+      "features": [
+        "3d-liminaldashboard-home",
+        "live-service-lifecycle-control",
+        "service-discovery-and-panel-control",
+        "real-time-status-monitoring"
+      ],
       "published": "site/assets/motor-pool-launch.mp4",
       "rendered": "2026-10-01"
     }
