@@ -121,7 +121,7 @@ docker compose --env-file .env -f config/docker-compose.yml -f config/docker-com
 
 The root `.env` is used for Compose interpolation and the dashboard's `env_file`. Before the first `up`, set two values in it: `DASHBOARD_TOKEN` (required under Compose; a random string of at least 24 characters) and `POSTGRES_PASSWORD` (required; letters, digits and `. _ ~ -` only, because it is embedded in `DATABASE_URL`). The optional GPU overlay is NVIDIA/CUDA-only; AMD and runtime-aware selection are tracked in [issue #117](https://github.com/nitsuah/motor-pool/issues/117).
 
-Open [http://localhost:3000/login](http://localhost:3000/login) and sign in with your `DASHBOARD_TOKEN`. The first start downloads the default model `llama3.1:8b-instruct-q4_K_M` (about 4.9 GB); follow it with `docker logs -f ollama-init`. On smaller hosts set `PRIMARY_LLM_MODEL=llama3.2:3b` (about 2 GB).
+Open [http://localhost:3000/login](http://localhost:3000/login) and sign in with your `DASHBOARD_TOKEN`. The first start downloads the default model `llama3.1:8b-instruct-q4_K_M` (about 4.9 GB); follow it with `docker logs -f ollama-init`. On smaller hosts set `PRIMARY_LLM_MODEL=llama3.2:3b` (about 2 GB). `.env.example` names the default; Compose falls back to `llama3.2:3b` only when `PRIMARY_LLM_MODEL` is unset.
 
 **API tokens.** Shell exec, agent worktrees and `/api/admin` need a principal's API token. Set `MP_BOOTSTRAP_TOKEN` in `.env` before the first start (`node dashboard/scripts/mp-auth.mjs gen-bootstrap` prints one), then mint a token per person or device and revoke the bootstrap one:
 
