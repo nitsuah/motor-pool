@@ -223,6 +223,12 @@ try {
     method: 'DELETE', token: BOOT, body: { ids: [aliceBatchSession.data.session.id] },
   });
   assert.equal(adminBatch.status, 200, 'superadmin retains explicit cross-principal deletion');
+  const adminDeleteAll = await call('/api/sessions', {
+    method: 'DELETE', token: BOOT, body: { deleteAll: true },
+  });
+  assert.equal(adminDeleteAll.status, 200, 'superadmin retains deleteAll bypass');
+  assert.equal((await call(`/api/sessions/${sessionId}`, { token: alice.token })).status, 404,
+    'superadmin deleteAll removes sessions across principals');
 
   const deleteProbe = await call('/api/sessions', {
     method: 'POST', token: alice.token, body: { name: 'idempotent-delete-test' },
