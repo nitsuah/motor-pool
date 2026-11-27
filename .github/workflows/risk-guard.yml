@@ -29,3 +29,12 @@ jobs:
     permissions:
       contents: read
       pull-requests: read
+
+  app:
+    name: App-backed guard (opt-in)
+    if: github.event_name == 'pull_request_target' && vars.RISK_GUARD_APP_CLIENT_ID != ''
+    uses: nitsuah/.github/.github/workflows/risk-guard-app.yml@c34db982a42a41ee0c05579183186145dc6d1dd7
+    with:
+      app_client_id: ${{ vars.RISK_GUARD_APP_CLIENT_ID }}
+    secrets:
+      RISK_GUARD_APP_PRIVATE_KEY: ${{ secrets.RISK_GUARD_APP_PRIVATE_KEY }}
