@@ -9,6 +9,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+- CI: enforce the risk guard from the trusted base-branch workflow after bootstrap.
+
 ### CI
 
 - CI: adopt the shared risk guard workflow (#253).
