@@ -43,6 +43,18 @@ export function createSessionsRouter({
   tokenEconomizer,
 }) {
   const router = express.Router();
+  // Session identifiers are not authorization credentials. Resolve ownership
+  // from the authenticated principal before every ID-scoped read or mutation.
+  router.use('/:id', (req, res, next) => {
+    const session = sessions.get(req.params.id);
+    if (!session) return res.status(404).json({ success: false, error: 'Session not found' });
+    if (req.principal?.role !== 'superadmin' && session.userId !== req.principal?.id) {
+      // Use the same response as a missing session to avoid confirming its existence.
+      return res.status(404).json({ success: false, error: 'Session not found' });
+    }
+    return next();
+  });
+
 
   // Shared deps passed to the extracted message/stream handlers
   const handlerDeps = {
@@ -58,8 +70,8 @@ export function createSessionsRouter({
     const {
       endpoint: requestedEndpoint = 'primary',
       name = `session-${++sessionCounterRef.current}`,
-      userId,
-      userRole,
+      userId: _requestedUserId,
+      userRole: _requestedUserRole,
       experience: requestedExperience = 'developer',
       safetyMode,
     } = req.body;
@@ -88,7 +100,7 @@ export function createSessionsRouter({
       id: sessionId, name, model, endpoint,
       llmUrl: resolvedLlmUrl, messages: [],
       createdAt: new Date(), updatedAt: new Date(),
-      userId: userId || 'anonymous', userRole: userRole || null,
+      userId: req.principal.id, userRole: req.principal.role,
       experience, safetyMode: resolvedSafetyMode, useSafeModeEnabled: false,
       status: 'idle', lastActivity: new Date(), errorCount: 0,
     };
@@ -115,6 +127,9 @@ export function createSessionsRouter({
   router.get('/', (req, res) => {
     const { experience, userId: filterUserId, endpoint: filterEndpoint } = req.query;
     let sessionList = Array.from(sessions.values());
+    if (req.principal.role !== 'superadmin') {
+      sessionList = sessionList.filter(s => s.userId === req.principal.id);
+    }
     if (experience) sessionList = sessionList.filter(s => s.experience === experience);
     if (filterUserId) sessionList = sessionList.filter(s => s.userId === filterUserId);
     if (filterEndpoint) sessionList = sessionList.filter(s => s.endpoint === filterEndpoint);
