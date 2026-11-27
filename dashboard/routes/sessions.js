@@ -45,13 +45,6 @@ export function createSessionsRouter({
   const router = express.Router();
   // Session identifiers are not authorization credentials. Resolve ownership
   // from the authenticated principal before every ID-scoped read or mutation.
-  // Mark only the exact DELETE /:id route before the shared ID authorization
-  // middleware; nested DELETE routes must still 404 for missing sessions.
-  router.delete('/:id', (req, _res, next) => {
-    req.sessionDeleteRequest = true;
-    next();
-  });
-
   router.use('/:id', (req, res, next) => {
     const principal = req.principal;
     if (!principal?.id || !principal?.role) {
@@ -61,7 +54,7 @@ export function createSessionsRouter({
     if (!session) {
       // Preserve the DELETE /:id idempotency contract: deleting an already
       // deleted session is a successful no-op. Other ID-scoped paths 404.
-      if (req.method === 'DELETE' && req.sessionDeleteRequest === true) return next();
+      if (req.method === 'DELETE' && req.path === '/') return next();
       return res.status(404).json({ success: false, error: 'Session not found' });
     }
     if (principal.role !== 'superadmin' && session.userId !== principal.id) {
@@ -117,9 +110,11 @@ export function createSessionsRouter({
     const resolvedLlmUrl = await resolveEndpointUrl(endpoint);
     // Superadmins may create sessions on behalf of another principal for
     // administrative/dev workflows. Every other role is bound to its token.
-    const sessionOwnerId = req.principal.role === 'superadmin' && typeof requestedUserId === 'string'
+    const sessionOwnerId = req.principal.role === 'superadmin'
+      && typeof requestedUserId === 'string' && requestedUserId.trim()
       ? requestedUserId : req.principal.id;
-    const sessionOwnerRole = req.principal.role === 'superadmin' && typeof requestedUserRole === 'string'
+    const sessionOwnerRole = req.principal.role === 'superadmin'
+      && typeof requestedUserRole === 'string' && requestedUserRole.trim()
       ? requestedUserRole : req.principal.role;
 
     const session = {
@@ -380,7 +375,7 @@ export function createSessionsRouter({
     }
 
     const { ids, deleteAll } = req.body || {};
-    if (!Array.isArray(ids) && deleteAll !== true) {
+    if (!Array.isArray(ids) && !deleteAll) {
       return res.status(400).json({ success: false, error: 'Provide an ids array or set deleteAll: true' });
     }
 
