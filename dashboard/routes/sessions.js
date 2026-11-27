@@ -46,6 +46,10 @@ export function createSessionsRouter({
   // Session identifiers are not authorization credentials. Resolve ownership
   // from the authenticated principal before every ID-scoped read or mutation.
   router.use('/:id', (req, res, next) => {
+    const principal = req.principal;
+    if (!principal?.id || !principal?.role) {
+      return res.status(401).json({ success: false, error: 'Principal authentication required' });
+    }
     const session = sessions.get(req.params.id);
     if (!session) {
       // Preserve the DELETE /:id idempotency contract: deleting an already
@@ -53,7 +57,7 @@ export function createSessionsRouter({
       if (req.method === 'DELETE' && req.path === '/') return next();
       return res.status(404).json({ success: false, error: 'Session not found' });
     }
-    if (req.principal?.role !== 'superadmin' && session.userId !== req.principal?.id) {
+    if (principal.role !== 'superadmin' && session.userId !== principal.id) {
       // Use the same response as a missing session to avoid confirming its existence.
       return res.status(404).json({ success: false, error: 'Session not found' });
     }
@@ -75,8 +79,8 @@ export function createSessionsRouter({
     const {
       endpoint: requestedEndpoint = 'primary',
       name = `session-${++sessionCounterRef.current}`,
-      userId: _requestedUserId,
-      userRole: _requestedUserRole,
+      userId: requestedUserId,
+      userRole: requestedUserRole,
       experience: requestedExperience = 'developer',
       safetyMode,
     } = req.body;
@@ -98,14 +102,18 @@ export function createSessionsRouter({
       : coerceModelForEndpoint(endpoint, req.body.model) || LLM_CONFIG[endpoint]?.defaultModel || LLM_CONFIG.primary.defaultModel;
     const resolvedSafetyMode = resolveConfiguredSafetyMode(experience, safetyMode);
 
+    if (!req.principal?.id || !req.principal?.role) {
+      return res.status(401).json({ success: false, error: 'Principal authentication required' });
+    }
+
     const sessionId = `sess_${Date.now()}_${randomBytes(5).toString('hex')}`;
     const resolvedLlmUrl = await resolveEndpointUrl(endpoint);
     // Superadmins may create sessions on behalf of another principal for
     // administrative/dev workflows. Every other role is bound to its token.
-    const sessionOwnerId = req.principal.role === 'superadmin' && typeof _requestedUserId === 'string'
-      ? _requestedUserId : req.principal.id;
-    const sessionOwnerRole = req.principal.role === 'superadmin' && typeof _requestedUserRole === 'string'
-      ? _requestedUserRole : req.principal.role;
+    const sessionOwnerId = req.principal.role === 'superadmin' && typeof requestedUserId === 'string'
+      ? requestedUserId : req.principal.id;
+    const sessionOwnerRole = req.principal.role === 'superadmin' && typeof requestedUserRole === 'string'
+      ? requestedUserRole : req.principal.role;
 
     const session = {
       id: sessionId, name, model, endpoint,
@@ -136,6 +144,9 @@ export function createSessionsRouter({
   });
 
   router.get('/', (req, res) => {
+    if (!req.principal?.id || !req.principal?.role) {
+      return res.status(401).json({ success: false, error: 'Principal authentication required' });
+    }
     const { experience, userId: filterUserId, endpoint: filterEndpoint } = req.query;
     let sessionList = Array.from(sessions.values());
     if (req.principal.role !== 'superadmin') {
