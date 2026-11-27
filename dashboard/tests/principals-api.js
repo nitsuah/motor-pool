@@ -180,6 +180,13 @@ try {
   const adminCreatedSessionRead = await call(`/api/sessions/${adminCreatedSessionId}`, { token: BOOT });
   assert.equal(adminCreatedSessionRead.data.session.userId, 'bob', 'superadmin can explicitly create for another principal');
   assert.equal(adminCreatedSessionRead.data.session.userRole, 'runner');
+  const emptyOwnerSession = await call('/api/sessions', {
+    method: 'POST', token: BOOT, body: { userId: '', userRole: '', name: 'empty-owner-fallback' },
+  });
+  assert.equal(emptyOwnerSession.status, 200);
+  const emptyOwnerRead = await call(`/api/sessions/${emptyOwnerSession.data.session.id}`, { token: BOOT });
+  assert.equal(emptyOwnerRead.data.session.userId, 'superadmin', 'empty owner falls back to the authenticated superadmin');
+  assert.equal(emptyOwnerRead.data.session.userRole, 'superadmin', 'empty role falls back to the authenticated superadmin');
 
   const aliceBulkSession = await call('/api/sessions', {
     method: 'POST', token: alice.token, body: { name: 'alice-bulk-delete' },
