@@ -374,20 +374,45 @@ export function createSessionsRouter({
   });
 
   router.delete('/', express.json(), (req, res) => {
+    const principal = req.principal;
+    if (!principal?.id || !principal?.role) {
+      return res.status(401).json({ success: false, error: 'Principal authentication required' });
+    }
+
     const { ids, deleteAll } = req.body || {};
-    if (!Array.isArray(ids) && !deleteAll) {
+    if (!Array.isArray(ids) && deleteAll !== true) {
       return res.status(400).json({ success: false, error: 'Provide an ids array or set deleteAll: true' });
     }
-    const toDelete = Array.isArray(ids) ? ids : Array.from(sessions.keys());
+
+    const isSuperadmin = principal.role === 'superadmin';
+    const requestedIds = Array.isArray(ids) ? ids : Array.from(sessions.keys());
+
+    // Validate the entire explicit batch before any side effect. Missing ids
+    // remain idempotent no-ops; another principal's existing id returns the
+    // same 404 as a missing id, and never causes a partial deletion.
+    if (Array.isArray(ids) && !isSuperadmin) {
+      const hasForeignSession = requestedIds.some((id) => {
+        const session = sessions.get(id);
+        return session && session.userId !== principal.id;
+      });
+      if (hasForeignSession) {
+        return res.status(404).json({ success: false, error: 'Session not found' });
+      }
+    }
+
+    const toDelete = requestedIds.filter((id) => {
+      const session = sessions.get(id);
+      return session && (isSuperadmin || session.userId === principal.id);
+    });
     let deleted = 0;
     for (const id of toDelete) {
-      if (!sessions.has(id)) continue;
       const session = sessions.get(id);
+      if (!session) continue;
       session.endedAt = new Date();
       eventBus.emit('session_end', {
-        session_id: id, user_id: session?.userId,
-        model: session?.model, endpoint: session?.endpoint, experience: session?.experience,
-        metadata: { messageCount: session?.messages.length },
+        session_id: id, user_id: session.userId,
+        model: session.model, endpoint: session.endpoint, experience: session.experience,
+        metadata: { messageCount: session.messages.length },
       });
       upsertSessionContext(session, logStructured);
       markSessionEnded(id, session.endedAt, logStructured);
