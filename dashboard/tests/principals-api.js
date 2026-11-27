@@ -174,8 +174,20 @@ try {
     method: 'POST', token: BOOT, body: { userId: 'bob', userRole: 'runner', name: 'admin-created-session' },
   });
   assert.equal(adminCreatedSession.status, 200);
-  assert.equal(adminCreatedSession.data.session.userId, 'bob', 'superadmin can explicitly create for another principal');
-  assert.equal(adminCreatedSession.data.session.userRole, 'runner');
+  const adminCreatedSessionId = adminCreatedSession.data.session.id;
+  const adminCreatedSessionRead = await call(`/api/sessions/${adminCreatedSessionId}`, { token: BOOT });
+  assert.equal(adminCreatedSessionRead.data.session.userId, 'bob', 'superadmin can explicitly create for another principal');
+  assert.equal(adminCreatedSessionRead.data.session.userRole, 'runner');
+
+  const deleteProbe = await call('/api/sessions', {
+    method: 'POST', token: alice.token, body: { name: 'idempotent-delete-test' },
+  });
+  const deleteProbeId = deleteProbe.data.session.id;
+  assert.equal((await call(`/api/sessions/${deleteProbeId}`, { method: 'DELETE', token: bob.token })).status, 404,
+    'another principal cannot delete a session by id');
+  assert.equal((await call(`/api/sessions/${deleteProbeId}`, { method: 'DELETE', token: alice.token })).status, 200);
+  assert.equal((await call(`/api/sessions/${deleteProbeId}`, { method: 'DELETE', token: alice.token })).status, 200,
+    'deleting an already-deleted session remains idempotent');
 
   // ── Revocation ────────────────────────────────────────────────────────
   const spare = await mint('ops');
