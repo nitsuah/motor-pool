@@ -15,10 +15,16 @@ export async function getStatus(fetchImpl = fetch) {
     if (res.status === 404) return { ok: false, reason: 'not installed' };
     const data = await res.json().catch(() => null);
     if (!res.ok || !data?.success) return { ok: false, reason: 'unreachable' };
-    return { ok: true, status: data.result ?? null };
+    return { ok: true, status: unwrap(data.result) };
   } catch {
     return { ok: false, reason: 'unreachable' };
   }
+}
+
+/** The wrapper answers { success, command, output }; `output` is the CLI's text, JSON when asked. */
+function unwrap(result) {
+  if (typeof result?.output !== 'string') return result ?? null;
+  try { return JSON.parse(result.output); } catch { return result.output; }
 }
 
 /** Short lines for the panel: only top-level scalar fields the backend reported. */

@@ -11,7 +11,10 @@ const reply = (status, body) => async () => ({
 let sent;
 const ok = await getStatus(async (url, init) => {
   sent = { url, init };
-  return reply(200, { success: true, result: { learned: 3, nested: { a: 1 } } })();
+  return reply(200, {
+    success: true,
+    result: { success: true, command: 'status', output: JSON.stringify({ learned: 3, nested: { a: 1 } }) },
+  })();
 });
 assert.equal(sent.url, '/api/plugins/tokeneconomizer/tools/status/invoke');
 assert.equal(sent.init.method, 'POST');
@@ -23,6 +26,8 @@ assert.deepEqual(await getStatus(reply(409, {})), { ok: false, reason: 'disabled
 assert.deepEqual(await getStatus(reply(404, {})), { ok: false, reason: 'not installed' });
 assert.deepEqual(await getStatus(reply(502, { success: false })), { ok: false, reason: 'unreachable' });
 assert.deepEqual(await getStatus(async () => { throw new Error('offline'); }), { ok: false, reason: 'unreachable' });
+const plain = await getStatus(reply(200, { success: true, result: { success: true, command: 'status', output: 'not json' } }));
+assert.deepEqual(plain, { ok: true, status: 'not json' });
 assert.deepEqual(summarizeStatus(null), []);
 assert.deepEqual(summarizeStatus('  ready '), ['ready']);
 
