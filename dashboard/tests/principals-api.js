@@ -131,6 +131,28 @@ try {
   assert.equal((await call('/api/me', { token: alice.token })).data.principal.id, 'alice');
   console.log('  ok role checks: dispatcher 403, operator through, runner-only routes');
 
+  // Session ids are not bearer credentials: a principal may only access its own
+  // sessions, and the caller cannot choose the owner or role when creating one.
+  const dashboardOnlySessions = await call('/api/sessions');
+  assert.equal(dashboardOnlySessions.status, 401, 'dashboard token alone cannot access principal-owned sessions');
+  const createdSession = await call('/api/sessions', {
+    method: 'POST', token: alice.token, body: { userId: 'bob', userRole: 'superadmin', name: 'ownership-test' },
+  });
+  assert.equal(createdSession.status, 200);
+  const sessionId = createdSession.data.session.id;
+  const ownSession = await call(`/api/sessions/${sessionId}`, { token: alice.token });
+  assert.equal(ownSession.status, 200);
+  assert.equal(ownSession.data.session.userId, 'alice', 'session owner comes from the principal, not request JSON');
+  assert.equal(ownSession.data.session.userRole, 'dispatcher', 'session role comes from the principal, not request JSON');
+  assert.equal((await call(`/api/sessions/${sessionId}`, { token: bob.token })).status, 404,
+    'another principal cannot read a session by id');
+  assert.equal((await call(`/api/sessions/${sessionId}/restart`, { method: 'POST', token: bob.token })).status, 404,
+    'another principal cannot mutate a session by id');
+  const bobList = await call('/api/sessions?userId=alice', { token: bob.token });
+  assert.equal(bobList.status, 200);
+  assert.ok(!bobList.data.sessions.some(s => s.id === sessionId), 'query filters cannot reveal another principal sessions');
+
+
   // ── Revocation ────────────────────────────────────────────────────────
   const spare = await mint('ops');
   assert.equal((await call('/api/me', { token: spare.token })).status, 200);
