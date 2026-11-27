@@ -165,6 +165,18 @@ try {
   assert.equal(bobList.status, 200);
   assert.ok(!bobList.data.sessions.some(s => s.id === sessionId), 'query filters cannot reveal another principal sessions');
 
+  const superadminSession = await call(`/api/sessions/${sessionId}`, { token: BOOT });
+  assert.equal(superadminSession.status, 200, 'superadmin can read another principal session');
+  const superadminList = await call('/api/sessions?userId=alice', { token: BOOT });
+  assert.equal(superadminList.status, 200);
+  assert.ok(superadminList.data.sessions.some(s => s.id === sessionId), 'superadmin can list sessions across principals');
+  const adminCreatedSession = await call('/api/sessions', {
+    method: 'POST', token: BOOT, body: { userId: 'bob', userRole: 'runner', name: 'admin-created-session' },
+  });
+  assert.equal(adminCreatedSession.status, 200);
+  assert.equal(adminCreatedSession.data.session.userId, 'bob', 'superadmin can explicitly create for another principal');
+  assert.equal(adminCreatedSession.data.session.userRole, 'runner');
+
   // ── Revocation ────────────────────────────────────────────────────────
   const spare = await mint('ops');
   assert.equal((await call('/api/me', { token: spare.token })).status, 200);
