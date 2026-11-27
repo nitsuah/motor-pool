@@ -43,6 +43,27 @@ export function createSessionsRouter({
   tokenEconomizer,
 }) {
   const router = express.Router();
+  // Session identifiers are not authorization credentials. Resolve ownership
+  // from the authenticated principal before every ID-scoped read or mutation.
+  router.use('/:id', (req, res, next) => {
+    const principal = req.principal;
+    if (!principal?.id || !principal?.role) {
+      return res.status(401).json({ success: false, error: 'Principal authentication required' });
+    }
+    const session = sessions.get(req.params.id);
+    if (!session) {
+      // Preserve the DELETE /:id idempotency contract: deleting an already
+      // deleted session is a successful no-op. Other ID-scoped paths 404.
+      if (req.method === 'DELETE' && req.path === '/') return next();
+      return res.status(404).json({ success: false, error: 'Session not found' });
+    }
+    if (principal.role !== 'superadmin' && session.userId !== principal.id) {
+      // Use the same response as a missing session to avoid confirming its existence.
+      return res.status(404).json({ success: false, error: 'Session not found' });
+    }
+    return next();
+  });
+
 
   // Shared deps passed to the extracted message/stream handlers
   const handlerDeps = {
@@ -58,8 +79,8 @@ export function createSessionsRouter({
     const {
       endpoint: requestedEndpoint = 'primary',
       name = `session-${++sessionCounterRef.current}`,
-      userId,
-      userRole,
+      userId: requestedUserId,
+      userRole: requestedUserRole,
       experience: requestedExperience = 'developer',
       safetyMode,
     } = req.body;
@@ -81,14 +102,26 @@ export function createSessionsRouter({
       : coerceModelForEndpoint(endpoint, req.body.model) || LLM_CONFIG[endpoint]?.defaultModel || LLM_CONFIG.primary.defaultModel;
     const resolvedSafetyMode = resolveConfiguredSafetyMode(experience, safetyMode);
 
+    if (!req.principal?.id || !req.principal?.role) {
+      return res.status(401).json({ success: false, error: 'Principal authentication required' });
+    }
+
     const sessionId = `sess_${Date.now()}_${randomBytes(5).toString('hex')}`;
     const resolvedLlmUrl = await resolveEndpointUrl(endpoint);
+    // Superadmins may create sessions on behalf of another principal for
+    // administrative/dev workflows. Every other role is bound to its token.
+    const sessionOwnerId = req.principal.role === 'superadmin'
+      && typeof requestedUserId === 'string' && requestedUserId.trim()
+      ? requestedUserId : req.principal.id;
+    const sessionOwnerRole = req.principal.role === 'superadmin'
+      && typeof requestedUserRole === 'string' && requestedUserRole.trim()
+      ? requestedUserRole : req.principal.role;
 
     const session = {
       id: sessionId, name, model, endpoint,
       llmUrl: resolvedLlmUrl, messages: [],
       createdAt: new Date(), updatedAt: new Date(),
-      userId: userId || 'anonymous', userRole: userRole || null,
+      userId: sessionOwnerId, userRole: sessionOwnerRole,
       experience, safetyMode: resolvedSafetyMode, useSafeModeEnabled: false,
       status: 'idle', lastActivity: new Date(), errorCount: 0,
     };
@@ -113,8 +146,14 @@ export function createSessionsRouter({
   });
 
   router.get('/', (req, res) => {
+    if (!req.principal?.id || !req.principal?.role) {
+      return res.status(401).json({ success: false, error: 'Principal authentication required' });
+    }
     const { experience, userId: filterUserId, endpoint: filterEndpoint } = req.query;
     let sessionList = Array.from(sessions.values());
+    if (req.principal.role !== 'superadmin') {
+      sessionList = sessionList.filter(s => s.userId === req.principal.id);
+    }
     if (experience) sessionList = sessionList.filter(s => s.experience === experience);
     if (filterUserId) sessionList = sessionList.filter(s => s.userId === filterUserId);
     if (filterEndpoint) sessionList = sessionList.filter(s => s.endpoint === filterEndpoint);
@@ -330,20 +369,45 @@ export function createSessionsRouter({
   });
 
   router.delete('/', express.json(), (req, res) => {
+    const principal = req.principal;
+    if (!principal?.id || !principal?.role) {
+      return res.status(401).json({ success: false, error: 'Principal authentication required' });
+    }
+
     const { ids, deleteAll } = req.body || {};
     if (!Array.isArray(ids) && !deleteAll) {
       return res.status(400).json({ success: false, error: 'Provide an ids array or set deleteAll: true' });
     }
-    const toDelete = Array.isArray(ids) ? ids : Array.from(sessions.keys());
+
+    const isSuperadmin = principal.role === 'superadmin';
+    const requestedIds = Array.isArray(ids) ? ids : Array.from(sessions.keys());
+
+    // Validate the entire explicit batch before any side effect. Missing ids
+    // remain idempotent no-ops; another principal's existing id returns the
+    // same 404 as a missing id, and never causes a partial deletion.
+    if (Array.isArray(ids) && !isSuperadmin) {
+      const hasForeignSession = requestedIds.some((id) => {
+        const session = sessions.get(id);
+        return session && session.userId !== principal.id;
+      });
+      if (hasForeignSession) {
+        return res.status(404).json({ success: false, error: 'Session not found' });
+      }
+    }
+
+    const toDelete = requestedIds.filter((id) => {
+      const session = sessions.get(id);
+      return session && (isSuperadmin || session.userId === principal.id);
+    });
     let deleted = 0;
     for (const id of toDelete) {
-      if (!sessions.has(id)) continue;
       const session = sessions.get(id);
+      if (!session) continue;
       session.endedAt = new Date();
       eventBus.emit('session_end', {
-        session_id: id, user_id: session?.userId,
-        model: session?.model, endpoint: session?.endpoint, experience: session?.experience,
-        metadata: { messageCount: session?.messages.length },
+        session_id: id, user_id: session.userId,
+        model: session.model, endpoint: session.endpoint, experience: session.experience,
+        metadata: { messageCount: session.messages.length },
       });
       upsertSessionContext(session, logStructured);
       markSessionEnded(id, session.endedAt, logStructured);

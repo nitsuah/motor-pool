@@ -144,6 +144,111 @@ try {
     'operator can remove a runtime endpoint');
 
 
+  // Session ids are not bearer credentials: a principal may only access its own
+  // sessions, and the caller cannot choose the owner or role when creating one.
+  const dashboardOnlySessions = await call('/api/sessions');
+  assert.equal(dashboardOnlySessions.status, 401, 'anonymous callers cannot access principal-owned sessions');
+  const dashboardTokenSessions = await call('/api/sessions', { token: dashboardAuth.token });
+  assert.equal(dashboardTokenSessions.status, 401, 'dashboard token alone cannot access principal-owned sessions');
+  const createdSession = await call('/api/sessions', {
+    method: 'POST', token: alice.token, body: { userId: 'bob', userRole: 'superadmin', name: 'ownership-test' },
+  });
+  assert.equal(createdSession.status, 200);
+  const sessionId = createdSession.data.session.id;
+  const ownSession = await call(`/api/sessions/${sessionId}`, { token: alice.token });
+  assert.equal(ownSession.status, 200);
+  assert.equal(ownSession.data.session.userId, 'alice', 'session owner comes from the principal, not request JSON');
+  assert.equal(ownSession.data.session.userRole, 'dispatcher', 'session role comes from the principal, not request JSON');
+  assert.equal((await call(`/api/sessions/${sessionId}`, { token: bob.token })).status, 404,
+    'another principal cannot read a session by id');
+  assert.equal((await call(`/api/sessions/${sessionId}/restart`, { method: 'POST', token: bob.token })).status, 404,
+    'another principal cannot mutate a session by id');
+  const bobList = await call('/api/sessions?userId=alice', { token: bob.token });
+  assert.equal(bobList.status, 200);
+  assert.ok(!bobList.data.sessions.some(s => s.id === sessionId), 'query filters cannot reveal another principal sessions');
+
+  const superadminSession = await call(`/api/sessions/${sessionId}`, { token: BOOT });
+  assert.equal(superadminSession.status, 200, 'superadmin can read another principal session');
+  const superadminList = await call('/api/sessions?userId=alice', { token: BOOT });
+  assert.equal(superadminList.status, 200);
+  assert.ok(superadminList.data.sessions.some(s => s.id === sessionId), 'superadmin can list sessions across principals');
+  const adminCreatedSession = await call('/api/sessions', {
+    method: 'POST', token: BOOT, body: { userId: 'bob', userRole: 'runner', name: 'admin-created-session' },
+  });
+  assert.equal(adminCreatedSession.status, 200);
+  const adminCreatedSessionId = adminCreatedSession.data.session.id;
+  const adminCreatedSessionRead = await call(`/api/sessions/${adminCreatedSessionId}`, { token: BOOT });
+  assert.equal(adminCreatedSessionRead.data.session.userId, 'bob', 'superadmin can explicitly create for another principal');
+  assert.equal(adminCreatedSessionRead.data.session.userRole, 'runner');
+  const emptyOwnerSession = await call('/api/sessions', {
+    method: 'POST', token: BOOT, body: { userId: '', userRole: '', name: 'empty-owner-fallback' },
+  });
+  assert.equal(emptyOwnerSession.status, 200);
+  const emptyOwnerRead = await call(`/api/sessions/${emptyOwnerSession.data.session.id}`, { token: BOOT });
+  assert.equal(emptyOwnerRead.data.session.userId, 'superadmin', 'empty owner falls back to the authenticated superadmin');
+  assert.equal(emptyOwnerRead.data.session.userRole, 'superadmin', 'empty role falls back to the authenticated superadmin');
+
+  const aliceBulkSession = await call('/api/sessions', {
+    method: 'POST', token: alice.token, body: { name: 'alice-bulk-delete' },
+  });
+  const bobBulkSession = await call('/api/sessions', {
+    method: 'POST', token: bob.token, body: { name: 'bob-bulk-delete' },
+  });
+  const bobDeleteAll = await call('/api/sessions', {
+    method: 'DELETE', token: bob.token, body: { deleteAll: true },
+  });
+  assert.equal(bobDeleteAll.status, 200);
+  assert.equal((await call(`/api/sessions/${aliceBulkSession.data.session.id}`, { token: alice.token })).status, 200,
+    'deleteAll only removes the caller principal sessions');
+  assert.equal((await call(`/api/sessions/${bobBulkSession.data.session.id}`, { token: bob.token })).status, 404);
+  assert.equal((await call(`/api/sessions/${adminCreatedSessionId}`, { token: BOOT })).status, 404,
+    'superadmin-created Bob session was removed by Bob bulk deletion');
+
+  const bobBatchSession = await call('/api/sessions', {
+    method: 'POST', token: bob.token, body: { name: 'bob-explicit-batch' },
+  });
+  const aliceBatchSession = await call('/api/sessions', {
+    method: 'POST', token: alice.token, body: { name: 'alice-explicit-batch' },
+  });
+  const mixedBatch = await call('/api/sessions', {
+    method: 'DELETE',
+    token: bob.token,
+    body: { ids: [bobBatchSession.data.session.id, aliceBatchSession.data.session.id] },
+  });
+  assert.equal(mixedBatch.status, 404, 'mixed-owner batch is rejected before deleting anything');
+  assert.equal((await call(`/api/sessions/${bobBatchSession.data.session.id}`, { token: bob.token })).status, 200,
+    'mixed-owner rejection does not partially delete the caller session');
+  assert.equal((await call(`/api/sessions/${aliceBatchSession.data.session.id}`, { token: alice.token })).status, 200,
+    'mixed-owner rejection leaves the other principal session untouched');
+
+  const ownBatch = await call('/api/sessions', {
+    method: 'DELETE', token: bob.token, body: { ids: [bobBatchSession.data.session.id] },
+  });
+  assert.equal(ownBatch.status, 200);
+  assert.equal(ownBatch.data.deleted, 1);
+  const adminBatch = await call('/api/sessions', {
+    method: 'DELETE', token: BOOT, body: { ids: [aliceBatchSession.data.session.id] },
+  });
+  assert.equal(adminBatch.status, 200, 'superadmin retains explicit cross-principal deletion');
+  const adminDeleteAll = await call('/api/sessions', {
+    method: 'DELETE', token: BOOT, body: { deleteAll: true },
+  });
+  assert.equal(adminDeleteAll.status, 200, 'superadmin retains deleteAll bypass');
+  assert.equal((await call(`/api/sessions/${sessionId}`, { token: alice.token })).status, 404,
+    'superadmin deleteAll removes sessions across principals');
+
+  const deleteProbe = await call('/api/sessions', {
+    method: 'POST', token: alice.token, body: { name: 'idempotent-delete-test' },
+  });
+  const deleteProbeId = deleteProbe.data.session.id;
+  assert.equal((await call(`/api/sessions/${deleteProbeId}`, { method: 'DELETE', token: bob.token })).status, 404,
+    'another principal cannot delete a session by id');
+  assert.equal((await call(`/api/sessions/${deleteProbeId}`, { method: 'DELETE', token: alice.token })).status, 200);
+  assert.equal((await call(`/api/sessions/${deleteProbeId}`, { method: 'DELETE', token: alice.token })).status, 200,
+    'deleting an already-deleted session remains idempotent');
+  assert.equal((await call(`/api/sessions/${deleteProbeId}/messages`, { method: 'DELETE', token: alice.token })).status, 404,
+    'nested DELETE paths do not inherit the base-route idempotency exception');
+
   // ── Revocation ────────────────────────────────────────────────────────
   const spare = await mint('ops');
   assert.equal((await call('/api/me', { token: spare.token })).status, 200);
