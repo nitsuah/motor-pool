@@ -17,7 +17,7 @@ jobs:
   bootstrap:
     name: Bootstrap (untrusted)
     if: github.event_name == 'pull_request'
-    uses: nitsuah/.github/.github/workflows/risk-guard.yml@a94cae3fa28c0a330d39cd95b276a1bdcec6aeb2 # main
+    uses: nitsuah/.github/.github/workflows/risk-guard.yml@c34db982a42a41ee0c05579183186145dc6d1dd7 # main
     permissions:
       contents: read
       pull-requests: read
@@ -25,7 +25,7 @@ jobs:
   guard:
     name: Trusted guard
     if: github.event_name == 'pull_request_target'
-    uses: nitsuah/.github/.github/workflows/risk-guard.yml@a94cae3fa28c0a330d39cd95b276a1bdcec6aeb2 # main
+    uses: nitsuah/.github/.github/workflows/risk-guard.yml@c34db982a42a41ee0c05579183186145dc6d1dd7 # main
     permissions:
       contents: read
       pull-requests: read
