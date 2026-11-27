@@ -106,6 +106,8 @@ try {
   });
   // The dashboard token is not a principal token, so requireAuth rejects it (401) before any role check.
   assert.equal(dashboardOnlyExec.status, 401, 'dashboard authentication alone cannot authorize shell execution');
+  assert.deepEqual(dashboardOnlyExec.data, { success: false, error: 'Unauthorized' },
+    'dashboard credentials are rejected by principal authentication before route authorization');
 
   const alice = await mint('alice');
   const bob = await mint('bob');
